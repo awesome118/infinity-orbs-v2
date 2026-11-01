@@ -98,7 +98,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   chronoFlow: {
     name: 'Chrono Flow',
-    desc: '-120ms cooldown and minimum floor per level.',
+    desc: '5% multiplicative cooldown reduction per level, compounding after all other Speed effects. Also lowers the base cooldown floor by 120ms per level; the theoretical cooldown can pass below 300ms.',
     maxLevel: 20,
     costMultiplier: 2,
   },
@@ -2413,10 +2413,16 @@ export function effectiveRollCritChance(s: PlayerState): number {
   );
 }
 
-export function cooldownMs(s: PlayerState, isAuto = false): number {
+/**
+ * The theoretical cooldown after every permanent and temporary Speed effect.
+ * This value is intentionally allowed below 300ms so Cooldown Reclaimer can
+ * recover the overflow. Only cooldownMs() applies the live activation floor.
+ */
+export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
-  const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
+  const chronoFlowLevel = Math.max(0, Math.min(20, Math.floor(Number(s.masterySkills?.chronoFlow ?? 0) || 0)));
+  const chronoFlowFloorReduction = chronoFlowLevel * 120;
   const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
   const temporalCompressionReduction = (s.prestigeUpgrades?.temporalCompression ?? 0) * 75;
   const levelBenefits = getLevelBenefits(Math.max(1, s.level || 1));
@@ -2426,126 +2432,80 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
   const coinReduction = speedLevel * 150;
 
+  // Upgrades can remove the base floor entirely. No intermediate Speed layer
+  // is clamped: all multipliers compound before the one final 300ms safety cap.
   const floor = Math.max(
-    800,
+    0,
     2000 -
       permReduction -
       guildSpeedReduction -
-      masteryChronoReduction -
+      chronoFlowFloorReduction -
       steadyHandsReduction -
       temporalCompressionReduction -
       levelReduction,
   );
-  // Prestige cooldown investments reduce the active cooldown as well as
-  // lowering its minimum floor. Otherwise a 15s base cooldown makes these
-  // upgrades effectively inert at ordinary roll speeds.
   const directCooldownReduction =
-    permReduction + masteryChronoReduction + steadyHandsReduction + temporalCompressionReduction;
+    permReduction + steadyHandsReduction + temporalCompressionReduction;
   let cd = Math.max(
     floor,
     BASE_COOLDOWN_MS - coinReduction - directCooldownReduction,
   );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
-    const overclockFactor = 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
-    cd = Math.max(700, Math.round(cd * overclockFactor));
+    cd *= 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
   }
   if (
     typeof s.turboRollUntil === 'number' &&
     Number.isSafeInteger(s.turboRollUntil) &&
     s.turboRollUntil > Date.now()
   ) {
-    const turboReduction = (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
-    cd = Math.max(600, Math.round(cd * turboReduction));
+    cd *= (s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75;
   }
-
   if (isPremiumBoosterActive(s, 'hyperdrive')) {
-    cd = Math.max(400, Math.round(cd * 0.25));
+    cd *= 0.25;
   }
   if (s.globalBoosters?.speed) {
-    cd = Math.max(300, Math.round(cd * globalBoosterSpeedMultiplier(s.globalBoosters.speed)));
+    cd *= globalBoosterSpeedMultiplier(s.globalBoosters.speed);
   }
   if (s.guildCombo) {
-    cd = Math.max(300, Math.round(cd * guildComboSpeedMultiplier(s.guildCombo)));
+    cd *= guildComboSpeedMultiplier(s.guildCombo);
   }
   if (s.dailyStreakCommunity?.speedMultiplier) {
-    cd = Math.max(300, Math.round(cd * s.dailyStreakCommunity.speedMultiplier));
+    cd *= s.dailyStreakCommunity.speedMultiplier;
   }
 
-  // Unbroken Momentum increases actual roll frequency by dividing cooldown
-  // by the best-session Speed multiplier; the common 300ms floor still applies.
   const momentumSpeedMultiplier = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
     ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
     : 0);
-  cd = Math.round(cd / momentumSpeedMultiplier);
+  cd /= momentumSpeedMultiplier;
   if (
     isAuto &&
     s.alignmentActiveChoice === 'clockwork' &&
     (s.alignmentActiveUntil ?? 0) > Date.now()
   ) {
-    cd = Math.max(300, Math.round(cd * 0.80));
+    cd *= 0.80;
   }
-  return Math.max(300, cd);
+
+  // Chrono Flow compounds with all other effects so endgame Speed investments
+  // can create a genuine sub-300ms overflow.
+  cd *= Math.pow(0.95, chronoFlowLevel);
+  return Number.isFinite(cd) ? Math.max(0, Math.round(cd)) : 0;
+}
+
+export function cooldownMs(s: PlayerState, isAuto = false): number {
+  return Math.max(300, theoreticalCooldownMs(s, isAuto));
 }
 
 /**
- * Time Energy is generated only by cooldown that all existing speed effects
- * would otherwise push beneath the 300ms activation floor.
+ * Recover 10% of the total theoretical cooldown below the 300ms live floor
+ * per Cooldown Reclaimer level. At level 10, all underflow is recovered.
  */
 export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false): number {
   const level = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.cooldownReclaimer ?? 0) || 0)));
   if (level <= 0) return 0;
 
-  const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
-  const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
-  const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
-  const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
-  const temporalCompressionReduction = (s.prestigeUpgrades?.temporalCompression ?? 0) * 75;
-  const levelReduction = getLevelBenefits(Math.max(1, s.level || 1)).cooldownReductionMs;
-  const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
-  const floor = Math.max(
-    800,
-    2000 - permReduction - guildSpeedReduction - masteryChronoReduction -
-      steadyHandsReduction - temporalCompressionReduction - levelReduction,
-  );
-  const directCooldownReduction =
-    permReduction + masteryChronoReduction + steadyHandsReduction + temporalCompressionReduction;
-  let theoretical = Math.max(floor, BASE_COOLDOWN_MS - speedLevel * 150 - directCooldownReduction);
-  let wastedMs = 0;
-
-  // The live cooldown clamps each booster layer to 300ms. Capture only the
-  // amount each layer would shave below that floor, then continue from 300ms.
-  const applyClampedSpeed = (multiplier: number) => {
-    const target = Math.round(theoretical * multiplier);
-    wastedMs += Math.max(0, 300 - target);
-    theoretical = Math.max(300, target);
-  };
-
-  if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
-    theoretical = Math.max(700, Math.round(theoretical * (1 - s.prestigeUpgrades.autoOverclock * 0.05)));
-  }
-  if (typeof s.turboRollUntil === 'number' && s.turboRollUntil > Date.now()) {
-    theoretical = Math.max(600, Math.round(theoretical * ((s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75)));
-  }
-  if (isPremiumBoosterActive(s, 'hyperdrive')) {
-    theoretical = Math.max(400, Math.round(theoretical * 0.25));
-  }
-  if (s.globalBoosters?.speed) applyClampedSpeed(globalBoosterSpeedMultiplier(s.globalBoosters.speed));
-  if (s.guildCombo) applyClampedSpeed(guildComboSpeedMultiplier(s.guildCombo));
-  if (s.dailyStreakCommunity?.speedMultiplier) applyClampedSpeed(s.dailyStreakCommunity.speedMultiplier);
-
-  const momentum = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
-    ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
-    : 0);
-  // Momentum and Clockwork are applied after the intermediate clamps in the
-  // live cooldown function, so account for their combined final underflow once.
-  theoretical = Math.round(theoretical / momentum);
-  if (isAuto && s.alignmentActiveChoice === 'clockwork' && (s.alignmentActiveUntil ?? 0) > Date.now()) {
-    theoretical = Math.round(theoretical * 0.80);
-  }
-  wastedMs += Math.max(0, 300 - theoretical);
-
-  return Math.min(TIME_ENERGY_MAX_MS, Math.max(0, Math.floor(wastedMs * level * 0.10)));
+  const underflowMs = Math.max(0, 300 - theoreticalCooldownMs(s, isAuto));
+  return Math.min(TIME_ENERGY_MAX_MS, Math.floor(underflowMs * level * 0.10));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!

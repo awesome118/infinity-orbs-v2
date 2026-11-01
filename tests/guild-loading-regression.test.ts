@@ -41,7 +41,7 @@ test('Production Guild parsing repairs non-authoritative nested state before str
     'production nested-state recovery helper must exist');
   const recovery = social.slice(recoveryStart, recoveryEnd);
   assert.match(recovery, /guild\.tasks = guild\.tasks\.slice\(0, 3\)\.map/);
-  assert.match(recovery, /guild\.chat = guild\.chat/);
+  assert.match(recovery, /delete guild\.chat/);
   assert.match(recovery, /delete guild\.boss/);
   assert.match(recovery, /guild\.perks\[rank\] = clampInteger/);
   assert.match(recovery, /guild\.combo\.endsAt = clampInteger/);
@@ -60,4 +60,15 @@ test('Production Guild parsing repairs non-authoritative nested state before str
     'nested non-authoritative fields must be repaired before validation');
   assert.match(parser, /\['owner', 'officer', 'member'\]\.includes\(\(member as any\)\.role\)/);
   assert.match(parser, /\(\(member as any\)\.userId == null \|\| typeof \(member as any\)\.userId === 'string'\)/);
+});
+
+
+test('Guild activity logs are removed from the player UI and no longer persisted', () => {
+  const guildUi = source('src/client/components/GuildsAndSocial.tsx');
+  const social = source('src/server/social.ts');
+  const app = source('src/server/app.ts');
+  assert.doesNotMatch(guildUi, /Guild Log|GuildMessage|chatMessages|handleReportChat|\/api\/guilds\/chat/);
+  assert.doesNotMatch(social, /guild\.chat\.push\s*\(/);
+  assert.match(social, /delete guild\.chat/);
+  assert.doesNotMatch(app, /\/api\/guilds\/chat/);
 });

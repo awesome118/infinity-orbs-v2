@@ -76,7 +76,6 @@ import {
   guildInfo,
   joinGuild,
   leaveGuild,
-  postGuildMessage,
   buyGuildPerk,
   setGuildTrust,
   kickGuildMember,
@@ -92,7 +91,6 @@ import {
   recordGlobalChatComment,
   resolveGlobalChatCommentAuthor,
   reportGlobalChatMessage,
-  reportGuildChatMessage,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
 
@@ -1725,16 +1723,6 @@ export function createApp() {
 
   app.post('/api/guilds/leave', async (_req, res) => {
     try { res.json(await leaveGuild()); } catch (e) { badRequest(res, e, 'Could not leave guild.'); }
-  });
-
-  app.post('/api/guilds/chat', async (req, res) => {
-    try { res.json({ message: await postGuildMessage(req.body?.text ?? '') }); }
-    catch (e) { badRequest(res, e, 'Could not post message.'); }
-  });
-
-  app.post('/api/guilds/chat/report', async (req, res) => {
-    try { res.json(await reportGuildChatMessage(req.body?.messageId ?? '')); }
-    catch (e) { badRequest(res, e, 'Could not report guild chat message.'); }
   });
 
   app.post('/api/guilds/perk', async (req, res) => {

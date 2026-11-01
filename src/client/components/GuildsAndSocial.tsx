@@ -4,7 +4,6 @@ import {
   Users,
   Trophy,
   Globe,
-  MessageSquare,
   Plus,
   LogOut,
   Sparkles,
@@ -19,7 +18,6 @@ import {
   UserCheck,
   UserPlus,
   UserMinus,
-  Flag,
   RefreshCw,
 } from 'lucide-react';
 import type {
@@ -27,7 +25,6 @@ import type {
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
-  GuildMessage,
   LeaderboardBoards,
   LeaderboardId,
 } from '../../shared/social.js';
@@ -128,10 +125,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const createGuildInFlightRef = useRef(false);
   const [socialError, setSocialError] = useState('');
   const [socialNotice, setSocialNotice] = useState('');
-  const [chatMessages, setChatMessages] = useState<GuildMessage[]>([]);
-  const [reportingId, setReportingId] = useState<string | null>(null);
-  const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
-  const [chatReportError, setChatReportError] = useState('');
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardId>('collectionValue');
   const leaderboardBoards: LeaderboardBoards = leaderboards ?? {
     collectionValue: leaderboard,
@@ -194,14 +187,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     };
   }, [activeTab, onRefreshLeaderboards]);
 
-  useEffect(() => {
-    setChatMessages(prev => {
-      const merged = new Map<string, GuildMessage>();
-      for (const msg of prev) merged.set(msg.id, msg);
-      for (const msg of myGuild?.chat ?? []) merged.set(msg.id, msg);
-      return Array.from(merged.values()).sort((a, b) => a.timestamp - b.timestamp).slice(-100);
-    });
-  }, [myGuild?.id, myGuild?.chat]);
 
   const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
   const normalizeUsername = (value: string) => value.trim().toLowerCase();
@@ -214,38 +199,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     if (!currentGuildMember || normalizeUsername(member.username) === normalizeUsername(playerUsername) || member.role === 'owner') return false;
     if (currentGuildMember.role === 'owner') return true;
     return canManageGuild && member.role !== 'officer' && member.trusted !== true;
-  };
-
-  const handleReportChat = async (message: GuildMessage) => {
-    if (message.isSystem || reportingId || reportedIds.has(message.id)) return;
-    setReportingId(message.id);
-    setChatReportError('');
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 12_000);
-    try {
-      const response = await fetch('/api/guilds/chat/report', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({ messageId: message.id }),
-      });
-      const payload = await response.json().catch(() => ({})) as { error?: unknown };
-      if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'Could not report message.');
-      setReportedIds(prev => {
-        const next = new Set(prev);
-        next.add(message.id);
-        return new Set(Array.from(next).slice(-200));
-      });
-      setSocialNotice('Report sent to subreddit moderators.');
-    } catch (error) {
-      setChatReportError(error instanceof Error && error.name === 'AbortError'
-        ? 'Reporting timed out. Check your connection and try again.'
-        : error instanceof Error ? error.message : 'Could not report message.');
-    } finally {
-      window.clearTimeout(timeout);
-      setReportingId(null);
-    }
   };
 
   const handleCreateGuild = async (e: React.FormEvent) => {
@@ -843,76 +796,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
                 </div>
 
-                {/* Guild Log / Activity Feed */}
-                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3 h-80">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <MessageSquare className="w-4 h-4 text-cyan-400" />
-                        <span>Guild Log</span>
-                      </h3>
-                      <p className="mt-0.5 text-[9px] text-slate-600">Automated guild activity only. Player chat is disabled.</p>
-                    </div>
-                  </div>
-                  {chatReportError && <p role="alert" className="text-[10px] leading-relaxed text-rose-300">{chatReportError}</p>}
 
-                  {/* Message History */}
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
-                    {chatMessages.length > 0 ? (
-                      chatMessages.filter(msg => msg.isSystem).map(msg => (
-                        <div
-                          key={msg.id}
-                          className={`text-xs p-2 rounded-xl ${
-                            msg.isSystem
-                              ? 'bg-purple-950/30 text-purple-300 border border-purple-800/30 text-[11px]'
-                              : 'bg-slate-950/60 text-slate-300 border border-slate-800/60'
-                          }`}
-                        >
-                          {!msg.isSystem && (
-                            <>
-                              <span className="inline-flex items-center gap-1.5 font-bold block text-[10px] mb-0.5">
-                                <span className={msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen'
-                                  ? 'font-black text-red-400'
-                                  : 'text-cyan-400'}>
-                                  {msg.username}
-                                </span>
-                                {msg.username.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen' && (
-                                  <span className="rounded border border-red-500/40 bg-red-500/10 px-1 py-0.5 text-[8px] font-black tracking-wider text-red-300">ADMIN</span>
-                                )}
-                              </span>
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="min-w-0 break-words">{msg.text}</span>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    void handleReportChat(msg);
-                                  }}
-                                  disabled={reportingId === msg.id || reportedIds.has(msg.id)}
-                                  aria-busy={reportingId === msg.id}
-                                  className="relative z-20 shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 px-3 py-2 text-[10px] font-black text-rose-300 hover:border-rose-400/60 hover:bg-rose-950/40 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer touch-manipulation"
-                                  title={reportedIds.has(msg.id) ? 'Report sent to subreddit moderators' : 'Report this message'}
-                                  aria-label={reportedIds.has(msg.id) ? 'Message reported' : 'Report message'}
-                                >
-                                  <Flag className="h-3.5 w-3.5" />
-                                  <span>{reportedIds.has(msg.id) ? 'Sent' : reportingId === msg.id ? 'Sending…' : 'Report'}</span>
-                                </button>
-                              </div>
-                            </>
-                          )}
-                          {msg.isSystem && <span>{msg.text}</span>}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center text-slate-500 text-xs py-8">
-                        Guild actions and milestones will appear here. Player chat is disabled.
-                      </div>
-                    )}
-                  </div>
-
-
-                </div>
               </div>
             </div>
           ) : (

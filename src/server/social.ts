@@ -283,31 +283,8 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     }
   }
 
-  // Chat is cosmetic/moderation context, not progression or membership state.
-  // Keep valid recent messages and omit malformed optional metadata.
-  if (guild.chat != null) {
-    if (!Array.isArray(guild.chat)) {
-      delete guild.chat;
-    } else {
-      guild.chat = guild.chat
-        .filter((value: unknown): value is Record<string, unknown> =>
-          isRecordValue(value) &&
-          typeof value.id === 'string' && !!value.id.trim() &&
-          typeof value.username === 'string' && !!value.username.trim() &&
-          typeof value.text === 'string' && !!value.text.trim() &&
-          Number.isSafeInteger(value.timestamp) && Number(value.timestamp) >= 0,
-        )
-        .slice(-50)
-        .map((message: Record<string, unknown>) => ({
-          id: message.id,
-          username: message.username,
-          text: message.text,
-          timestamp: message.timestamp,
-          ...(typeof message.userId === 'string' ? { userId: message.userId } : {}),
-          ...(typeof message.isSystem === 'boolean' ? { isSystem: message.isSystem } : {}),
-        }));
-    }
-  }
+  // Retire legacy activity history; Guild membership and progress remain unaffected.
+  delete guild.chat;
 
 
 }
@@ -410,22 +387,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
     }
   }
 
-  if (guild.chat != null) {
-    if (!Array.isArray(guild.chat)) throw invalid('guild.chat (expected array)');
-    for (const message of guild.chat) {
-      if (
-        !isRecordValue(message) ||
-        typeof message.id !== 'string' || !message.id.trim() ||
-        typeof message.username !== 'string' || !message.username.trim() ||
-        typeof message.text !== 'string' || !message.text.trim() ||
-        !Number.isSafeInteger(message.timestamp) || Number(message.timestamp) < 0 ||
-        (message.userId != null && typeof message.userId !== 'string') ||
-        (message.isSystem != null && typeof message.isSystem !== 'boolean')
-      ) {
-        throw invalid('guild.chat[] (invalid message fields)');
-      }
-    }
-  }
+
 
 
 }
@@ -545,19 +507,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
     });
   }
 
-  if (Array.isArray(guild.chat)) {
-    guild.chat = guild.chat.filter((message: unknown) =>
-      isRecordValue(message) &&
-      typeof message.id === 'string' && !!message.id.trim() &&
-      typeof message.username === 'string' && !!message.username.trim() &&
-      typeof message.text === 'string' && !!message.text.trim() &&
-      isSafeGuildInteger(message.timestamp, 0) &&
-      (message.userId == null || typeof message.userId === 'string') &&
-      (message.isSystem == null || typeof message.isSystem === 'boolean'),
-    );
-  } else {
-    delete guild.chat;
-  }
+  delete guild.chat;
 
   return guild as unknown as Guild;
 }
@@ -1306,15 +1256,6 @@ export async function buyGuildPerk(perk: GuildPerkId) {
       comboRank: 'Combo Reserve',
       };
 
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${Date.now()}`,
-      username: 'System',
-      text: `${username()} upgraded ${perkNames[perk]} to Level ${guild.perks[perk]}.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
 
     return { guild, perk, level: guild.perks[perk], cost };
   });
@@ -1390,15 +1331,6 @@ export async function adminSetGuildAuthority(
       target.trusted = true;
     }
 
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${Date.now()}-admin-authority`,
-      username: 'System',
-      text: `Admin changed u/shadow_fen's Guild authority to ${authority === 'owner' ? 'Owner' : 'Trusted Member'}.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
     return {
       guildId: guild.id,
       guildName: guild.name,
@@ -1458,15 +1390,6 @@ export async function kickGuildMember(targetUsername: string) {
       !(member.username === target.username || (member.userId && target.userId && member.userId === target.userId)),
     );
 
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: 'msg-' + Date.now() + '-kick',
-      username: 'System',
-      text: actor.username + ' kicked ' + target.username + ' from the guild.',
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
 
     return { success: true, username: target.username };
   });
@@ -1556,15 +1479,6 @@ export async function joinGuild(guildId: string) {
       trusted: false,
       joinedAt: now,
     });
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${now}`,
-      username: 'System',
-      text: `${username()} joined the guild.`,
-      timestamp: now,
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
     return guild;
   });
 }
@@ -1584,42 +1498,11 @@ export async function leaveGuild() {
         const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
         topMember.role = 'owner';
         topMember.trusted = true;
-        if (!guild.chat) guild.chat = [];
-        guild.chat.push({
-          id: `msg-${Date.now()}-owner`,
-          username: 'System',
-          text: `${topMember.username} is now the guild owner.`,
-          timestamp: Date.now(),
-          isSystem: true,
-        });
       }
-      if (!guild.chat) guild.chat = [];
-      guild.chat.push({
-        id: `msg-${Date.now()}`,
-        username: 'System',
-        text: `${username()} left the guild.`,
-        timestamp: Date.now(),
-        isSystem: true,
-      });
-      if (guild.chat.length > 50) guild.chat.shift();
     }
 
     return { success: true };
   });
-}
-
-export async function reportGuildChatMessage(messageId: string): Promise<{ success: true }> {
-  const cleanId = String(messageId ?? '').trim();
-  if (!cleanId) throw new Error('Message ID is required.');
-  const guild = currentGuild(await loadGuilds());
-  if (!guild) throw new Error('You are not in a guild.');
-  const message = (guild.chat ?? []).find(item => item.id === cleanId);
-  if (!message || message.isSystem) throw new Error('That chat message is no longer available to report.');
-  return submitChatReport('Guild Chat', message);
-}
-
-export async function postGuildMessage(_text: string): Promise<never> {
-  throw new Error('Guild Log is read-only. Player chat is disabled.');
 }
 
 export async function contribute(value: number, rollCount = 1, bestRarity?: number) {
@@ -1665,15 +1548,6 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-            id: `msg-${Date.now()}-task-${completedTier}`,
-            username: 'System',
-            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          });
-          if (guild.chat.length > 50) guild.chat.shift();
         }
       }
       const firstTask = guild.tasks[0];
@@ -1732,15 +1606,6 @@ export async function prepareGuildRollEffects(
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-            id: `msg-${Date.now()}-task-${completedTier}`,
-            username: 'System',
-            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          });
-          if (guild.chat.length > 50) guild.chat.shift();
         }
       }
       const firstTask = guild.tasks[0];
