@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   applyRolls,
+  markCodexRarityWrite,
   claimOrbFrenzy,
   loadRaw,
   save,
@@ -2272,6 +2273,16 @@ debugRouter.post('/state', async (req, res) => {
         const amount = nonNegativeInteger(value);
         if (amount > 0) next[String(key)] = amount;
       }
+
+      // Current Codex data lives in generation-scoped Redis hashes, not in the
+      // player JSON. Mark both removed and incoming keys so admin fixtures can
+      // replace a collection (including clearing it) through the same save path
+      // used by live rolls. Missing keys are written as zero in their shard.
+      const affectedRarities = new Set([
+        ...Object.keys(s.collection ?? {}),
+        ...Object.keys(next),
+      ]);
+      for (const rarityKey of affectedRarities) markCodexRarityWrite(s, rarityKey);
       s.collection = next;
     }
 
