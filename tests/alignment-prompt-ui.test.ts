@@ -26,12 +26,15 @@ test('Celestial Alignment closes the blocking chooser immediately after selectio
   assert.ok(chooseHandler.includes('setAlignmentConfirmation(confirmation);'));
   assert.ok(chooseHandler.includes('setAlignmentConfirmationSeconds(60);'));
   assert.ok(chooseHandler.includes('setAlignmentPromptVisible(false);'));
-  assert.ok(chooseHandler.indexOf('setAlignmentPromptVisible(false);') < chooseHandler.indexOf('const result = await getJson'));
+  assert.ok(chooseHandler.indexOf('setAlignmentPromptVisible(false);') > chooseHandler.indexOf('const result = await getJson'));
+  assert.ok(!chooseHandler.includes('setAlignmentPromptVisible(false);\\n    try'));
   assert.ok(chooseHandler.includes('setAlignmentChoiceError(message);'));
   assert.ok(chooseHandler.includes('setAlignmentPromptVisible(true);'));
   assert.ok(main.includes('data-testid="celestial-alignment-saving"'));
-  assert.ok(main.includes('role="alert"'));
-  assert.ok(main.includes('alignmentPromptVisible && alignmentConfirmation === null && alignmentStatus?.pending'));
+  assert.ok(main.includes('Your choice is queued. This window will close automatically when your selection is saved.'));
+  assert.ok(!main.includes('fixed inset-x-0 top-4 z-[91]'));
+  assert.ok(main.includes('alignmentPromptVisible && alignmentConfirmation === null && (alignmentStatus?.pending || alignmentChoiceBusy || alignmentChoiceError !== null)'));
+  assert.ok(main.includes('!alignmentConfirmationRef.current && !alignmentChoiceBusy && !alignmentChoiceError'));
   assert.ok(main.includes('pointer-events-none fixed right-4 top-4'));
   assert.ok(main.includes('role="status" aria-live="polite"'));
   assert.ok(!main.includes('alignmentPromptVisible && (alignmentConfirmation !== null || alignmentStatus?.pending)'));
