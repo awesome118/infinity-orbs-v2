@@ -148,6 +148,16 @@ type ActiveTab =
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
 
+let nextUpgradeDiagnosticSequence = 1;
+
+function createUpgradeDiagnosticId(): string {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch { /* Fall through to a process-local unique ID. */ }
+  const sequence = nextUpgradeDiagnosticSequence++;
+  return 'upgrade-' + Date.now().toString(36) + '-' + sequence.toString(36);
+}
+
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
   const isRead = method === 'GET' || method === 'HEAD';
@@ -226,8 +236,14 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
         }
 
         receivedNonRetryableHttpError = true;
-        const httpError = new Error(message) as Error & { status?: number };
+        const httpError = new Error(message) as Error & {
+          status?: number;
+          code?: string;
+          diagnosticId?: string;
+        };
         httpError.status = res.status;
+        if (errorCode) httpError.code = errorCode;
+        if (typeof errorData.diagnosticId === 'string') httpError.diagnosticId = errorData.diagnosticId;
         throw httpError;
       }
 
@@ -2193,6 +2209,9 @@ function App() {
 
     const ids = upgradeBatchQueueRef.current.splice(0, 100);
     if (ids.length === 0) return;
+    const diagnosticId = createUpgradeDiagnosticId();
+    const requestStartedAt = Date.now();
+    const clientStateRevision = Number(stateRef.current?.stateRevision ?? 0);
     upgradeBatchInFlightRef.current = true;
     pendingMutationCountRef.current += 1;
 
@@ -2207,7 +2226,7 @@ function App() {
           }>('/api/upgrade/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids }),
+            body: JSON.stringify({ ids, diagnosticId, clientStateRevision }),
           });
 
           pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
@@ -2229,6 +2248,23 @@ function App() {
         } catch (error: any) {
           pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
           mutationResyncNeededRef.current = true;
+          // Report the rejected/uncertain transaction with the same correlation ID
+          // the server saw. This endpoint is memory-only and does not touch player
+          // state or Redis, so diagnostics never add writes to the purchase hot path.
+          void fetch('/api/diagnostics/upgrade-rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify({
+              diagnosticId,
+              ids,
+              status: Number(error?.status) || 0,
+              errorCode: String(error?.code ?? error?.name ?? 'UNKNOWN_ERROR').slice(0, 80),
+              message: String(error?.message ?? 'Upgrade verification failed.').slice(0, 180),
+              durationMs: Math.max(0, Date.now() - requestStartedAt),
+              clientStateRevision,
+            }),
+          }).catch(() => undefined);
           // The optimistic queue depends on the prior batch. If the server
           // rejects that batch, discard dependent predictions and read back truth.
           upgradeBatchQueueRef.current = [];
