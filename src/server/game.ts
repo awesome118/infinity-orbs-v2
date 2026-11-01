@@ -3586,7 +3586,7 @@ export async function getRollTicket(): Promise<{
           nextIndex: ticket.nextIndex,
           rollsRemaining: ROLL_TICKET_COUNT - ticket.nextIndex,
           expiresAt: ticket.expiresAt,
-          seeds: ticket.seeds,
+          seeds: ticket.seeds.slice(ticket.nextIndex, ticket.nextIndex + ROLL_PREDICTION_COUNT),
           predictionBaseRevision: Math.max(0, Math.floor(Number(state.stateRevision ?? 0)) || 0),
           predictionStartIndex: ticket.nextIndex,
           predictions,
