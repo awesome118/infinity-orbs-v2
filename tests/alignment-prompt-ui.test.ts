@@ -60,3 +60,14 @@ test('Clockwork applies through the Auto Roll request, server cooldown, and live
   assert.ok(rollHandler.includes('rollsRemainingUntilNext: cd'));
   assert.ok(client.includes('setReadyAt(lastRollAt + cooldownMs(timingState, true))'));
 });
+
+test('Alignment activation notice remains non-blocking and auto-dismisses after 60 seconds', () => {
+  const main = source('src/client/main.tsx');
+
+  assert.ok(main.includes('closesAt: Date.now() + 60_000'));
+  assert.ok(main.includes('setAlignmentConfirmationSeconds(60)'));
+  assert.ok(main.includes('const remaining = Math.max(0, Math.ceil((closesAt - Date.now()) / 1000))'));
+  assert.ok(main.includes('setAlignmentConfirmation(null)'));
+  assert.ok(main.includes('autoCooldownBeforeMs === alignmentConfirmation.autoCooldownMs'));
+  assert.ok(main.includes('Clockwork cannot shorten it further.'));
+});
