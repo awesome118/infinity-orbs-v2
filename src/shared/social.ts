@@ -28,7 +28,6 @@ export interface GuildTask {
   target: number;
   progress: number;
   reward: number;
-  guildXpReward: number;
   label: string;
 }
 
@@ -59,7 +58,6 @@ export interface GuildPerks {
   tokenYieldRank?: number; // Legacy alias for taskBountyRank.
   taskBountyRank?: number; // +5% Guild Tokens from completed Guild Tasks per rank.
   comboRank?: number; // +5% Guild Combo time per rank.
-  guildXpRank?: number; // +10% Guild XP generated per rank
 }
 
 export type GuildPerkId =
@@ -73,20 +71,7 @@ export type GuildPerkId =
   | 'tokenYieldRank'
   | 'taskBountyRank'
   | 'comboRank'
-  | 'guildXpRank';
-
-export interface GuildBoss {
-  id: string;
-  name: string;
-  tier: number;
-  maxHp: number;
-  currentHp: number;
-  rewardTokens?: number; // Legacy field; no longer granted.
-  rewardShards?: number; // Legacy field; no longer granted by the boss.
-  rewardGuildXp?: number;
-  defeated: boolean;
-  contributors: Record<string, number>; // username -> damage
-}
+;
 
 export interface Guild {
   id: string;
@@ -101,11 +86,9 @@ export interface Guild {
   tasks?: GuildTask[];
   taskCompletions?: number;
   combo?: GuildComboState;
-  boss?: GuildBoss;
   perks?: GuildPerks;
   chat?: GuildMessage[];
   bannerEffect?: string;
-  taxRate?: number; // 0-10% of earned Coins converted to Guild XP
 }
 
 export interface LeaderboardEntry {
@@ -208,25 +191,21 @@ export const CHALLENGE_POOL: GuildChallenge[] = [
 const GUILD_TASK_BASES: Record<ChallengeType, {
   target: number;
   reward: number;
-  guildXpReward: number;
   label: (target: number) => string;
 }> = {
   rolls: {
     target: 500,
     reward: 125,
-    guildXpReward: 75,
     label: target => `Perform ${target.toLocaleString()} guild rolls`,
   },
   value: {
     target: 50_000,
     reward: 175,
-    guildXpReward: 90,
     label: target => `Accumulate ${target.toLocaleString()} collection value`,
   },
   rare: {
     target: 5,
     reward: 250,
-    guildXpReward: 120,
     label: target => `Find ${target.toLocaleString()} orbs at 1/100+ rarity`,
   },
 };
@@ -234,22 +213,16 @@ const GUILD_TASK_BASES: Record<ChallengeType, {
 export function createGuildTask(
   type: ChallengeType,
   tier = 1,
-  guildLevel = 1,
 ): GuildTask {
   const safeTier = Math.max(1, Math.floor(Number(tier) || 1));
-  const safeLevel = Math.max(1, Math.floor(Number(guildLevel) || 1));
-  const levelScale = 1 + Math.min(2.5, Math.sqrt(Math.max(0, safeLevel - 1)) * 0.05);
   const typeScale = type === 'rolls' ? 1.35 : type === 'value' ? 1.45 : 1.30;
   const base = GUILD_TASK_BASES[type];
 
   const target = Math.max(1, Math.floor(
-    base.target * Math.pow(typeScale, safeTier - 1) * levelScale,
+    base.target * Math.pow(typeScale, safeTier - 1) ,
   ));
   const reward = Math.max(1, Math.floor(
     Math.min(25_000, base.reward * Math.pow(1.22, safeTier - 1)),
-  ));
-  const guildXpReward = Math.max(25, Math.floor(
-    Math.min(10_000, base.guildXpReward * Math.pow(1.18, safeTier - 1)),
   ));
 
   return {
@@ -259,42 +232,16 @@ export function createGuildTask(
     target,
     progress: 0,
     reward,
-    guildXpReward,
     label: base.label(target),
   };
 }
 
-export function createInitialGuildTasks(guildLevel = 1): GuildTask[] {
+export function createInitialGuildTasks(): GuildTask[] {
   return [
-    createGuildTask('rolls', 1, guildLevel),
-    createGuildTask('value', 1, guildLevel),
-    createGuildTask('rare', 1, guildLevel),
+    createGuildTask('rolls', 1),
+    createGuildTask('value', 1),
+    createGuildTask('rare', 1),
   ];
-}
-
-export function createInitialGuildBoss(tier = 1): GuildBoss {
-  const names = [
-    'Chronos Leviathan',
-    'Void Behemoth',
-    'Supernova Titan',
-    'Astral Colossus',
-    'Infinite Eclipse',
-  ];
-  const name = names[(tier - 1) % names.length];
-  const maxHp = 500_000 * Math.pow(2, tier - 1);
-  return {
-    id: `boss-t${tier}-${Date.now()}`,
-    name,
-    tier,
-    maxHp,
-    currentHp: maxHp,
-    rewardTokens: 0,
-    // Guild Bosses stay rewarding without scaling into hundreds of repeatable Shards.
-    rewardShards: Math.min(3, Math.max(1, Math.floor(Number.isFinite(tier) ? tier : 1))),
-    rewardGuildXp: 250 * tier,
-    defeated: false,
-    contributors: {},
-  };
 }
 
 export function challengeForWeek() {
