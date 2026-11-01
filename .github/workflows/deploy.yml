@@ -191,3 +191,5 @@ jobs:
 # Retry: restore the XP bar's tested accessible label while retaining the max-level announcement.
 # Explicit user request 2026-10-31: deploy current main release 2.1.29 to r/infinity_orbs_dev only.
 # Explicit user request 2026-10-31: retry v2.1.29 dev deployment after syncing the compact-dashboard preflight assertion.
+
+# 2026-10-31: relax the source-layout bound in the online/Frenzy sample-budget regression.
