@@ -3483,7 +3483,7 @@ function App() {
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             {alignmentChoiceBusy && (
               <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-center text-xs font-semibold text-cyan-100" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
-                Your choice is queued. This window will close automatically when your selection is saved.
+                Saving your choice. The 60-second window keeps counting down while this request is queued.
               </div>
             )}
             <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
