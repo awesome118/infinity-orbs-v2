@@ -145,11 +145,11 @@ test('API and player mutations share one distributed lock instead of double-lock
   assert.ok(playerLock.includes("throw new Error('PLAYER_MUTATION_QUEUED')"));
 });
 
-test('Celestial Alignment events use a slower bounded 90–180 minute interval, not exponential bursts', () => {
+test('Celestial Alignment events use a bounded 20–30 minute interval averaging 25 minutes', () => {
   const shared = source('src/shared/game.ts');
   const server = source('src/server/game.ts');
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 90 \* 60 \* 1_000/);
-  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 180 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 20 \* 60 \* 1_000/);
+  assert.match(shared, /CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 30 \* 60 \* 1_000/);
   assert.match(shared, /CELESTIAL_ALIGNMENT_DURATION_MS = 2 \* 60 \* 60 \* 1_000/);
   const scheduler = server.slice(server.indexOf('function nextCelestialAlignmentAt'), server.indexOf('export async function getCelestialAlignmentStatus'));
   assert.match(scheduler, /CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS/);
