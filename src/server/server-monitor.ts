@@ -114,7 +114,7 @@ export function recordUpgradeBatchDiagnostic(input: {
   const status = Math.max(0, Math.min(599, Math.floor(Number(input.status) || 0)));
   const durationMs = Math.max(0, Math.min(120_000, Number(input.durationMs) || 0));
   const errorCode = String(input.errorCode ?? '').replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 80);
-  const reason = String(input.message ?? '').replace(/\\s+/g, ' ').slice(0, 180);
+  const reason = String(input.message ?? '').replace(/\s+/g, ' ').slice(0, 180);
   const clientStateRevision = Number.isSafeInteger(input.clientStateRevision) ? Number(input.clientStateRevision) : null;
   const serverStateRevision = Number.isSafeInteger(input.serverStateRevision) ? Number(input.serverStateRevision) : null;
   const purchasedCount = Number.isSafeInteger(input.purchasedCount) ? Math.max(0, Number(input.purchasedCount)) : null;
