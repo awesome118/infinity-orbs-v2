@@ -15,7 +15,6 @@ import {
   Gem,
   Check,
   Coins,
-  Sword,
   Zap,
   UserCheck,
   UserPlus,
@@ -57,7 +56,6 @@ interface GuildsAndSocialProps {
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
   onToggleGuildTrust?: (username: string, trusted: boolean) => Promise<void>;
   onKickGuildMember?: (username: string) => Promise<void>;
-  onSetGuildTax?: (rate: number) => Promise<void>;
   playerUsername?: string;
   playerHasShared?: boolean;
   onRefreshLeaderboards?: (force?: boolean) => Promise<void>;
@@ -109,7 +107,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   onBuyGuildPerk,
   onToggleGuildTrust,
   onKickGuildMember,
-  onSetGuildTax,
   playerUsername = '',
   playerHasShared = false,
   onRefreshLeaderboards,
@@ -384,12 +381,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-black text-white">{myGuild.name}</h2>
-                        <span className="text-xs font-bold bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">
-                          Lv {myGuild.level}
-                        </span>
-                      </div>
+                        </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {myGuild.members.length} / {10 + Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens • {fmt(myGuild.xp ?? 0)} Guild XP
+                        {myGuild.members.length} / {10 + Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens
                       </p>
                     </div>
                   </div>
@@ -451,7 +445,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                             <span>{fmt(progress)} / {fmt(target)}</span>
                             <span className="text-amber-300">+{fmt(task.reward)} Tokens</span>
                           </div>
-                          <div className="text-[10px] text-fuchsia-300 mt-1">+{fmt(task.guildXpReward)} Guild XP</div>
                         </div>
                       );
                     })}
@@ -550,77 +543,13 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                 </div>
               </div>
 
-              {/* Weekly Guild Raid Boss */}
-              {myGuild.boss && (
-                <div className="bg-gradient-to-r from-red-950/40 via-slate-900 to-purple-950/40 border border-red-500/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-red-950/50">
-                        <Sword className="w-6 h-6 animate-pulse" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold uppercase tracking-wider text-red-400">
-                            Weekly Guild Titan
-                          </span>
-                          <span className="text-[10px] bg-red-500/20 text-red-300 font-bold px-2 py-0.5 rounded-full border border-red-500/30">
-                            Tier {myGuild.boss.tier}
-                          </span>
-                          {myGuild.boss.defeated && (
-                            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                              🏆 SLAIN!
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="text-base sm:text-lg font-black text-white">
-                          {myGuild.boss.name}
-                        </h3>
-                      </div>
-                    </div>
-
-                    <div className="text-right text-xs font-mono text-slate-400 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-xl">
-                      <span>Bounty: </span>
-                      <span className="text-fuchsia-300 font-bold">+{myGuild.boss.rewardGuildXp ?? 0} Guild XP</span>
-                      <span> & </span>
-                      <span className="text-cyan-300 font-bold">+{myGuild.boss.rewardShards ?? 0} Shards</span>
-                    </div>
-                  </div>
-
-                  {/* Boss HP Bar */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs font-mono">
-                      <span className="text-slate-400">Titan Vitality</span>
-                      <span className={`font-bold ${myGuild.boss.defeated ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {myGuild.boss.defeated ? '0' : fmt(myGuild.boss.currentHp)} / {fmt(myGuild.boss.maxHp)} HP
-                        {' '}({Math.max(0, Math.round((myGuild.boss.currentHp / myGuild.boss.maxHp) * 100))}%)
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          myGuild.boss.defeated
-                            ? 'bg-emerald-500'
-                            : 'bg-gradient-to-r from-red-600 via-rose-500 to-amber-500'
-                        }`}
-                        style={{
-                          width: `${Math.max(0, Math.min(100, (myGuild.boss.currentHp / myGuild.boss.maxHp) * 100))}%`,
-                        }}
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      ⚔️ All rolls made by guild members automatically deal damage to the Titan! Resets weekly with a new boss and bounty.
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* Guild Perks Chamber */}
               <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-amber-400" />
-                      <h3 className="text-base font-black text-white">Guild Upgrades (8 Passive Bonuses)</h3>
+                      <h3 className="text-base font-black text-white">Guild Upgrades (7 Passive Bonuses)</h3>
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Passive bonuses applied to all guild members. Upgrade using shared Guild Tokens.
@@ -697,15 +626,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       max: 40,
                       effect: `+${Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Max Members (10 base)`,
                     },
-                    {
-                      id: 'guildXpRank' as const,
-                      name: 'Guild Growth',
-                      desc: '+10% Guild XP generated per rank.',
-                      icon: <Trophy className="w-4 h-4 text-fuchsia-400" />,
-                      rank: myGuild.perks?.guildXpRank ?? 0,
-                      max: 20,
-                      effect: `+${((myGuild.perks?.guildXpRank ?? 0) * 10)}% Guild XP`,
-                    },
+
                   ].map(perk => {
                     const isMax = perk.rank >= perk.max;
                     const costBase = perk.id === 'memberCapacityRank' ? 250 : 100;
@@ -835,48 +756,6 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Coins className="w-4 h-4 text-amber-300" />
-                          Guild Tax
-                        </h4>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Converts a percentage of members' earned Coins into Guild XP at 100 Coins per XP.
-                        </p>
-                      </div>
-                      <span className="text-lg font-black text-amber-300">{myGuild.taxRate ?? 0}%</span>
-                    </div>
-                    <div className="grid grid-cols-5 gap-1.5 mt-3">
-                      {[0, 1, 2, 5, 10].map(rate => (
-                        <button
-                          key={rate}
-                          type="button"
-                          disabled={busy || !canManageGuild}
-                          onClick={() => {
-                            if (!onSetGuildTax || !canManageGuild) return;
-                            sound.playClick();
-                            void onSetGuildTax(rate);
-                          }}
-                          className={`py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
-                            (myGuild.taxRate ?? 0) === rate
-                              ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                              : canManageGuild
-                              ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                              : 'bg-slate-900 border-slate-800 text-slate-600'
-                          }`}
-                        >
-                          {rate}%
-                        </button>
-                      ))}
-                    </div>
-                    {!canManageGuild && (
-                      <p className="text-[10px] text-slate-600 mt-2">Owner, officers, and trusted members can manage guild upgrades and tax.</p>
-                    )}
-                  </div>
-                </div>
               </div>
 
               {/* Members List & Chat Columns */}
