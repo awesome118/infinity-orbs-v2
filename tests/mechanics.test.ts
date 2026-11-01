@@ -11,7 +11,6 @@ import {
   rollContinuum,
   calculatePrestigeDust,
   calculateCosmicDust,
-  MAX_COSMIC_DUST,
   aftershockCriticalLuckBonus,
   unbrokenMomentumSpeedBonus,
   recordRollingSessionActivity,
@@ -207,15 +206,20 @@ test('Prestige Dust has a million-value minimum step and logarithmic diminishing
   assert.equal(calculatePrestigeDust(300_000_000), 58);
 });
 
-test('Cosmic Dust earnings never exceed the 50-Dust wallet cap', () => {
+test('Cosmic Dust earnings are not capped at 50 and respect only the safe-integer storage boundary', () => {
   const state=createInitialState();
   state.collectionValue=300_000_000;
-  assert.equal(MAX_COSMIC_DUST,50);
-  assert.equal(calculateCosmicDust(state),50);
+  assert.equal(calculateCosmicDust(state),58);
   state.cosmicDust=49;
-  assert.equal(calculateCosmicDust(state),1,'only remaining capacity can be earned');
+  assert.equal(calculateCosmicDust(state),58,'existing Dust does not reduce prestige earnings');
   state.cosmicDust=50;
-  assert.equal(calculateCosmicDust(state),0,'prestige should not consume a run without any Dust reward');
+  assert.equal(calculateCosmicDust(state),58,'the old 50-Dust ceiling no longer applies');
+  state.cosmicDust=1_000;
+  assert.equal(calculateCosmicDust(state),58,'balances well above 50 can continue earning Dust');
+  state.cosmicDust=Number.MAX_SAFE_INTEGER-10;
+  assert.equal(calculateCosmicDust(state),10,'new earnings cannot overflow the safe-integer save format');
+  state.cosmicDust=Number.MAX_SAFE_INTEGER;
+  assert.equal(calculateCosmicDust(state),0,'a full safe-integer balance cannot overflow');
 });
 
 test('Aftershock turns the best record-breaking dry interval into permanent Critical Luck', () => {
