@@ -29,6 +29,12 @@ import {
   resolveShardPityReward,
   PRESTIGE_UPGRADES,
   cooldownMs,
+  cooldownReclaimerEnergyPerActivationMs,
+  TIME_ENERGY_INSTANT_ACTIVATION_COST_MS,
+  TIME_ENERGY_MAX_MS,
+  CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_DURATION_MS,
+  type CelestialAlignmentChoice,
   rollsPerActivation,
   luckMultiplier,
   upgradeCost,
@@ -1312,6 +1318,37 @@ const FRENZY_HANDOFF_TTL_MS = 60_000;
 const FRENZY_CLAIM_PROGRESS_PREFIX = 'io:frenzy:claim-progress:';
 const FRENZY_CLAIM_PROGRESS_TTL_MS = 3 * 60_000;
 const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
+const FRENZY_CLAIMERS_PREFIX = 'io:frenzy:claimers:v1:';
+
+function frenzyClaimersKey(postId: string): string {
+  return FRENZY_CLAIMERS_PREFIX + encodeURIComponent(postId);
+}
+
+interface FrenzyClaimersRecord {
+  count: number;
+  players: Array<{ userId: string; username: string; claimedAt: number }>;
+}
+
+function parseFrenzyClaimersRecord(raw: string | null): FrenzyClaimersRecord {
+  if (!raw) return { count: 0, players: [] };
+  try {
+    const value = JSON.parse(raw) as Partial<FrenzyClaimersRecord>;
+    const players = Array.isArray(value.players)
+      ? value.players.filter(player =>
+          player && typeof player.userId === 'string' &&
+          typeof player.username === 'string' &&
+          Number.isSafeInteger(player.claimedAt) && player.claimedAt > 0,
+        ).slice(0, 5)
+      : [];
+    const count = Number(value.count);
+    return {
+      count: Number.isSafeInteger(count) && count >= players.length ? count : players.length,
+      players,
+    };
+  } catch {
+    return { count: 0, players: [] };
+  }
+}
 
 function frenzyHandoffKey(userId: string): string {
   return FRENZY_HANDOFF_PREFIX + userId;
@@ -2808,6 +2845,13 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
     lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
     lastFrenzyClaimAt: normalizeCooldownTimestamp(parsed.lastFrenzyClaimAt, base.lastFrenzyClaimAt ?? 0),
+    timeEnergy: Math.min(TIME_ENERGY_MAX_MS, finiteNonNegativeInteger(parsed.timeEnergy, base.timeEnergy ?? 0)),
+    alignmentNextAt: finiteNonNegativeInteger(parsed.alignmentNextAt, base.alignmentNextAt ?? 0),
+    alignmentPendingAt: finiteNonNegativeInteger(parsed.alignmentPendingAt, base.alignmentPendingAt ?? 0),
+    alignmentActiveUntil: finiteNonNegativeInteger(parsed.alignmentActiveUntil, base.alignmentActiveUntil ?? 0),
+    alignmentActiveChoice: ['starseeker', 'goldenOrbit', 'clockwork'].includes(String(parsed.alignmentActiveChoice))
+      ? parsed.alignmentActiveChoice as CelestialAlignmentChoice
+      : null,
     lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
     level: restoredLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
@@ -2857,6 +2901,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
       altarLevel: finiteNonNegativeInteger(parsed.sacrifices?.altarLevel, base.sacrifices!.altarLevel),
       luckSurgeUntil: finiteNonNegativeInteger(parsed.sacrifices?.luckSurgeUntil, base.sacrifices!.luckSurgeUntil),
       altarPity: finiteNonNegativeInteger(parsed.sacrifices?.altarPity, base.sacrifices!.altarPity ?? 0),
+      altarInsuranceCredit: normalizeCoinAmount(parsed.sacrifices?.altarInsuranceCredit ?? 0),
     },
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
@@ -3884,12 +3929,20 @@ export async function applyRolls(
   // Rune Luck remains an explicit rarity multiplier, so a 10x Rune still multiplies rolled rarity.
   const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
-  const runeLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
+  const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
+  const starseekerActive = s.alignmentActiveChoice === 'starseeker' && (s.alignmentActiveUntil ?? 0) > Date.now();
+  const alignedLuckCandidate = starseekerActive
+    ? Math.pow(baseLuck * rawRuneLuckMultiplier, 1.05)
+    : baseLuck;
+  const alignedBaseLuck = Number.isFinite(alignedLuckCandidate)
+    ? Math.max(1, alignedLuckCandidate)
+    : Number.MAX_VALUE;
+  const runeLuckMultiplier = starseekerActive ? 1 : rawRuneLuckMultiplier;
 
   // Apex Fortune Mastery: chance on multi-roll to double the luck of that activation
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const isApex = rollCount > 1 && rng() < apexChance;
-  const effectiveLuck = isApex ? Math.min(Number.MAX_VALUE, baseLuck * 2) : baseLuck;
+  const effectiveLuck = isApex ? Math.min(Number.MAX_VALUE, alignedBaseLuck * 2) : alignedBaseLuck;
 
   const cm = critMultiplier(s);
   const levelBenefits = getLevelBenefits(s.level || 1);
@@ -4460,7 +4513,9 @@ export async function applyRolls(
   coinsGained = addCoinAmount(topCoins, extraCoins);
 
   // Level passives and other coin modifiers stack multiplicatively by source.
+  const goldenOrbitActive = s.alignmentActiveChoice === 'goldenOrbit' && (s.alignmentActiveUntil ?? 0) > Date.now();
   const coinBonusMul =
+    (goldenOrbitActive ? 1.5 : 1) *
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
     orbFingersMultiplier(s) *
@@ -5468,6 +5523,7 @@ export async function roll(
   ticketId?: string,
   ticketIndex?: number,
   useAllFreeRolls = false,
+  useTimeEnergy = false,
 ): Promise<RollResponse> {
   return withPlayerMutationLock(async () => {
     let ticketUse:
@@ -5522,20 +5578,33 @@ export async function roll(
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.
-    const usingFreeRoll = !usingChainPatcher && !isAuto && availableFreeRolls > 0;
     const cd = cooldownMs(s, isAuto);
-    if (!usingFreeRoll && s.lastRollAt !== null && now - s.lastRollAt < cd) {
+    if (useTimeEnergy && (isAuto || usingChainPatcher)) {
+      throw new Error('Time Energy can only power a manual, non-patched activation.');
+    }
+    if (useTimeEnergy && (s.masterySkills?.cooldownReclaimer ?? 0) <= 0) {
+      throw new Error('Cooldown Reclaimer Mastery is required.');
+    }
+    if (useTimeEnergy && (s.timeEnergy ?? 0) < TIME_ENERGY_INSTANT_ACTIVATION_COST_MS) {
+      throw new Error(`Requires ${TIME_ENERGY_INSTANT_ACTIVATION_COST_MS.toLocaleString()}ms of Time Energy.`);
+    }
+    const usingTimeEnergy = useTimeEnergy === true;
+    const usingFreeRoll = !usingTimeEnergy && !usingChainPatcher && !isAuto && availableFreeRolls > 0;
+    if (!usingFreeRoll && !usingTimeEnergy && s.lastRollAt !== null && now - s.lastRollAt < cd) {
       throw new Error(`Cooldown: ${((cd - now + s.lastRollAt) / 1000).toFixed(1)}s`);
     }
 
     // A Chain Patcher charge always takes priority over Free Rolls. Otherwise
     // only an explicit manual "Roll All" request spends the full saved balance.
-    const freeRollActivations = usingFreeRoll
+    const freeRollActivations = usingTimeEnergy
+      ? 1
+      : usingFreeRoll
       ? (useAllFreeRolls ? availableFreeRolls : 1)
       : 1;
     if (usingFreeRoll && freeRollActivations > 5_000) {
       throw new Error('You have too many stored Free Rolls for one batch (maximum 5,000). No rolls were spent.');
     }
+    if (usingTimeEnergy) s.timeEnergy = Math.max(0, (s.timeEnergy ?? 0) - TIME_ENERGY_INSTANT_ACTIVATION_COST_MS);
     if (usingFreeRoll) s.freeRolls = availableFreeRolls - freeRollActivations;
     const activations = usingChainPatcher ? 1 : freeRollActivations;
 
@@ -5588,6 +5657,10 @@ export async function roll(
 
     s.lastRollAt = now;
     s.lastSeenAt = now;
+    if (!usingTimeEnergy) {
+      const reclaimed = cooldownReclaimerEnergyPerActivationMs(s, isAuto) * activations;
+      s.timeEnergy = Math.min(TIME_ENERGY_MAX_MS, Math.max(0, (s.timeEnergy ?? 0) + reclaimed));
+    }
 
     await save(
       s,
@@ -6247,12 +6320,6 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
 
   const currentAltarLevel = Math.max(0, Math.floor(Number(s.sacrifices?.altarLevel ?? 0) || 0));
   const currentCoinFloor = altarCoinFloor(currentAltarLevel);
-  if (numCoins > 0 && numCoins < currentCoinFloor) {
-    throw new Error(`Coin offerings require at least ${currentCoinFloor.toLocaleString()} Coins at Altar Lvl ${currentAltarLevel}.`);
-  }
-  if (numCoins === 0 && numShards <= 0) {
-    throw new Error(`Sacrifice at least ${currentCoinFloor.toLocaleString()} Coins or 1 Shard.`);
-  }
   if (s.coins < numCoins) throw new Error('Not enough Coins to sacrifice.');
   if ((s.shards ?? 0) < numShards) throw new Error('Not enough Shards to sacrifice.');
 
@@ -6263,12 +6330,26 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
       altarLevel: 0,
       luckSurgeUntil: 0,
       altarPity: 0,
+      altarInsuranceCredit: 0,
     };
   }
 
   const sacrifices = s.sacrifices;
   const prevAltarLevel = sacrifices.altarLevel ?? 0;
   const previousPity = sacrifices.altarPity ?? 0;
+  const insuranceLevel = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.altarInsurance ?? 0) || 0)));
+  const previousInsuranceCredit = insuranceLevel > 0
+    ? normalizeCoinAmount(sacrifices.altarInsuranceCredit ?? 0)
+    : 0;
+  const effectiveCoinOffering = normalizeCoinAmount(numCoins + previousInsuranceCredit);
+  const hasCoinBreakthroughAttempt = effectiveCoinOffering >= currentCoinFloor && effectiveCoinOffering > 0;
+
+  if (numCoins > 0 && !hasCoinBreakthroughAttempt) {
+    throw new Error(`Coin offerings plus Altar Insurance credit require at least ${currentCoinFloor.toLocaleString()} effective Coins at Altar Lvl ${currentAltarLevel}.`);
+  }
+  if (numCoins === 0 && numShards <= 0 && !hasCoinBreakthroughAttempt) {
+    throw new Error(`Sacrifice at least ${currentCoinFloor.toLocaleString()} effective Coins or 1 Shard.`);
+  }
 
   s.coins -= numCoins;
   if (numShards > 0) spendShards(s, numShards);
@@ -6281,9 +6362,9 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   // happens when coins are actually offered.
   let altarBreakthroughChance = 0;
   let altarLeveledUp = false;
-  if (numCoins > 0) {
+  if (hasCoinBreakthroughAttempt) {
     altarBreakthroughChance = altarCoinDevotionChancePercent(
-      numCoins,
+      effectiveCoinOffering,
       previousPity,
       prevAltarLevel,
     );
@@ -6292,9 +6373,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
     if (altarLeveledUp) {
       sacrifices.altarLevel = prevAltarLevel + 1;
       sacrifices.altarPity = 0;
+      sacrifices.altarInsuranceCredit = 0;
       s.masteryPoints = (s.masteryPoints ?? 0) + 1;
     } else {
       sacrifices.altarPity = previousPity + 1;
+      sacrifices.altarInsuranceCredit = insuranceLevel > 0
+        ? normalizeCoinAmount(Math.floor(effectiveCoinOffering * insuranceLevel * 0.05))
+        : 0;
     }
   }
 
@@ -6315,6 +6400,8 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
     altarLeveledUp,
     altarBreakthroughChance,
     altarPity,
+    altarInsuranceCredit: sacrifices.altarInsuranceCredit ?? 0,
+    effectiveCoinOffering: hasCoinBreakthroughAttempt ? effectiveCoinOffering : 0,
     luckSurgeExtended,
     altarLevel: sacrifices.altarLevel,
     snapshot: playerSpySnapshot(s),
@@ -6326,6 +6413,7 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
     luckSurgeExtended,
     altarBreakthroughChance,
     altarPity,
+    altarInsuranceCredit: sacrifices.altarInsuranceCredit ?? 0,
   };
 
   });}
@@ -6355,6 +6443,10 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
       pityAccelerant: 0,
       apexFortune: 0,
       celestialVolley: 0,
+      cooldownReclaimer: 0,
+      altarInsurance: 0,
+      constellationAtlas: 0,
+      celestialAlignment: 0,
     };
   }
 
@@ -6370,6 +6462,10 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
 
   s.masteryPoints = (s.masteryPoints ?? 0) - cost;
   s.masterySkills[skillId] = currentLevel + 1;
+  if (skillId === 'celestialAlignment' && currentLevel === 0) {
+    s.alignmentPendingAt = 0;
+    s.alignmentNextAt = nextCelestialAlignmentAt(Date.now());
+  }
   await save(s);
   await appendPlayerSpyLog('mastery-upgrade-purchase', {
     skillId,
@@ -6381,6 +6477,76 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   return s;
 
   });}
+
+function nextCelestialAlignmentAt(now: number): number {
+  const sample = Math.max(Number.EPSILON, Math.min(1 - Number.EPSILON, serverRandom()));
+  const delay = -Math.log(1 - sample) * CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS;
+  return now + Math.max(1, Math.round(delay));
+}
+
+export async function getCelestialAlignmentStatus(): Promise<{
+  unlocked: boolean;
+  pending: boolean;
+  pendingAt: number;
+  activeChoice: CelestialAlignmentChoice | null;
+  activeUntil: number;
+  nextAt: number;
+}> {
+  return withPlayerMutationLock(async () => {
+    const s = await loadRaw();
+    if ((s.masterySkills?.celestialAlignment ?? 0) <= 0) {
+      return { unlocked: false, pending: false, pendingAt: 0, activeChoice: null, activeUntil: 0, nextAt: 0 };
+    }
+    const now = Date.now();
+    let changed = false;
+    if ((s.alignmentActiveUntil ?? 0) <= now && s.alignmentActiveChoice) {
+      s.alignmentActiveChoice = null;
+      s.alignmentActiveUntil = 0;
+      changed = true;
+    }
+    if (!(s.alignmentPendingAt ?? 0) && !(s.alignmentNextAt ?? 0)) {
+      s.alignmentNextAt = nextCelestialAlignmentAt(now);
+      changed = true;
+    }
+    if (!(s.alignmentPendingAt ?? 0) && (s.alignmentNextAt ?? 0) > 0 && (s.alignmentNextAt ?? 0) <= now) {
+      s.alignmentPendingAt = now;
+      s.alignmentNextAt = 0;
+      changed = true;
+    }
+    if (changed) await save(s);
+    return {
+      unlocked: true,
+      pending: (s.alignmentPendingAt ?? 0) > 0,
+      pendingAt: s.alignmentPendingAt ?? 0,
+      activeChoice: (s.alignmentActiveUntil ?? 0) > now ? s.alignmentActiveChoice ?? null : null,
+      activeUntil: (s.alignmentActiveUntil ?? 0) > now ? s.alignmentActiveUntil ?? 0 : 0,
+      nextAt: s.alignmentNextAt ?? 0,
+    };
+  });
+}
+
+export async function chooseCelestialAlignment(
+  choice: CelestialAlignmentChoice,
+): Promise<{ state: PlayerState; activeChoice: CelestialAlignmentChoice; activeUntil: number; nextAt: number }> {
+  return withPlayerMutationLock(async () => {
+    if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) {
+      throw new Error('Choose a valid Celestial Alignment effect.');
+    }
+    const s = await loadRaw();
+    if ((s.masterySkills?.celestialAlignment ?? 0) <= 0) {
+      throw new Error('Celestial Alignment Mastery is required.');
+    }
+    if (!(s.alignmentPendingAt ?? 0)) throw new Error('There is no Alignment choice waiting.');
+    const now = Date.now();
+    const activeUntil = now + CELESTIAL_ALIGNMENT_DURATION_MS;
+    s.alignmentPendingAt = 0;
+    s.alignmentActiveChoice = choice;
+    s.alignmentActiveUntil = activeUntil;
+    s.alignmentNextAt = nextCelestialAlignmentAt(now);
+    await save(s);
+    return { state: s, activeChoice: choice, activeUntil, nextAt: s.alignmentNextAt };
+  });
+}
 
 export async function synthesizeDust(): Promise<{ state: PlayerState; dustEarned: number }> {
   return withPlayerMutationLock(async () => {
@@ -6894,6 +7060,8 @@ export async function getOrbFrenzyInfo(): Promise<{
   canClaim: boolean;
   selfClaimTest: boolean;
   postId: string;
+  claimCount: number;
+  recentClaimers: Array<{ username: string; claimedAt: number }>;
   inGame?: boolean;
 }> {
   const contextPostId = String(context.postId ?? '').trim();
@@ -6918,6 +7086,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   const now = Date.now();
   const expiresAt = Number(data.expiresAt ?? frenzyPostExpiresAt(data.createdAt));
   const expired = isFrenzyPostRecordExpired(data, now);
+  const claimers = parseFrenzyClaimersRecord(await redis.get(frenzyClaimersKey(postId)));
   const claimedReceipt = await redis.get(frenzyClaimReceiptKey(postId, viewerId));
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
   // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
@@ -6960,6 +7129,8 @@ export async function getOrbFrenzyInfo(): Promise<{
     canClaim: !expired && !alreadyClaimedByViewer && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
+    claimCount: claimers.count,
+    recentClaimers: claimers.players.map(({ username, claimedAt }) => ({ username, claimedAt })),
     inGame: data.inGame === true,
   };
 }
@@ -7174,6 +7345,21 @@ export async function claimOrbFrenzy(options: {
   // Write a distinct idempotency receipt for this claimant. The post itself remains
   // unchanged, so any number of other players can claim it while each player can
   // only claim it once. WATCH/EXEC verifies the post didn't change during rewards.
+  const claimersKey = frenzyClaimersKey(postId);
+  const previousClaimersRaw = await redis.get(claimersKey);
+  const previousClaimers = parseFrenzyClaimersRecord(previousClaimersRaw);
+  const claimantUsername = String(context.username ?? s.username ?? 'Redditor')
+    .trim()
+    .replace(/^u\//i, '')
+    .slice(0, 32) || 'Redditor';
+  const nextClaimers: FrenzyClaimersRecord = {
+    count: previousClaimers.count + 1,
+    players: [
+      { userId: claimantId, username: claimantUsername, claimedAt: now },
+      ...previousClaimers.players.filter(player => player.userId !== claimantId),
+    ].slice(0, 5),
+  };
+
   await save(s, [
     {
       key: claimReceiptKey,
@@ -7188,6 +7374,13 @@ export async function claimOrbFrenzy(options: {
       nextValue: raw,
       expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
       conflictMessage: 'This Frenzy changed before your claim could be committed.',
+    },
+    {
+      key: claimersKey,
+      expectedValue: previousClaimersRaw,
+      nextValue: JSON.stringify(nextClaimers),
+      expiration: new Date(frenzyPostExpiresAt(createdAt) + FRENZY_POST_RECEIPT_RETENTION_MS),
+      conflictMessage: 'Frenzy claim activity changed. Please retry.',
     },
     ...ownerRewardWrites,
   ]);

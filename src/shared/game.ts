@@ -52,7 +52,11 @@ export type MasterySkillId =
   | 'celestialSurge'
   | 'pityAccelerant'
   | 'apexFortune'
-  | 'celestialVolley';
+  | 'celestialVolley'
+  | 'cooldownReclaimer'
+  | 'altarInsurance'
+  | 'constellationAtlas'
+  | 'celestialAlignment';
 
 export interface MasterySkillInfo {
   name: string;
@@ -134,7 +138,58 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
     maxLevel: 5,
     costMultiplier: 4,
   },
+  cooldownReclaimer: {
+    name: 'Cooldown Reclaimer',
+    desc: 'Recover 10% of cooldown shaved below 300ms as Time Energy per level. Spend 1,000ms to trigger an instant activation.',
+    maxLevel: 10,
+    costMultiplier: 2,
+  },
+  altarInsurance: {
+    name: 'Altar Insurance',
+    desc: 'Failed Coin Breakthroughs preserve 5% of the effective offering per level as credit toward your next attempt (up to 50%).',
+    maxLevel: 10,
+    costMultiplier: 3,
+  },
+  constellationAtlas: {
+    name: 'Constellation Atlas',
+    desc: 'Discover distinct rarity values to unlock up to 10 permanent +1% Luck constellation milestones.',
+    maxLevel: 10,
+    costMultiplier: 3,
+  },
+  celestialAlignment: {
+    name: 'Celestial Alignment',
+    desc: 'Unlock random Alignment events, averaging 3 per hour. Choose one 60-minute effect: Starseeker, Golden Orbit, or Clockwork.',
+    maxLevel: 1,
+    costMultiplier: 4,
+  },
 };
+
+export const TIME_ENERGY_INSTANT_ACTIVATION_COST_MS = 1_000;
+export const TIME_ENERGY_MAX_MS = 1_000_000_000;
+export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS = 20 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_DURATION_MS = 60 * 60 * 1_000;
+export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
+
+export const CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS = [5, 10, 20, 35, 50, 75, 100, 150, 225, 325] as const;
+
+/** Counts owned rarity keys, not consecutive rarity chains. */
+export function constellationAtlasDiscoveredRarities(collection: Record<string, number> | null | undefined): number {
+  return Object.entries(collection ?? {}).filter(([rarity, count]) => {
+    if (!(Number(count) > 0)) return false;
+    if (rarity.toLowerCase() === 'infinity') return true;
+    const value = Number(rarity);
+    return Number.isFinite(value) && value >= 2;
+  }).length;
+}
+
+export function constellationAtlasMilestonesUnlocked(
+  masteryRank: number,
+  collection: Record<string, number> | null | undefined,
+): number {
+  const rank = Math.max(0, Math.min(CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS.length, Math.floor(Number(masteryRank) || 0)));
+  const discovered = constellationAtlasDiscoveredRarities(collection);
+  return CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS.slice(0, rank).filter(threshold => discovered >= threshold).length;
+}
 
 export function masterySkillCost(id: MasterySkillId, currentLevel: number): number {
   if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(MASTERY_SKILLS, id)) {
@@ -1036,6 +1091,14 @@ export interface PlayerState {
   /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
   chainPatcherCooldownUntil?: number;
   lastRollAt: number | null;
+  /** Milliseconds of recovered cooldown available for instant activations. */
+  timeEnergy?: number;
+  /** Next independent random Alignment event timestamp. */
+  alignmentNextAt?: number;
+  /** Timestamp of an unclaimed Alignment prompt; zero means none is pending. */
+  alignmentPendingAt?: number;
+  alignmentActiveChoice?: CelestialAlignmentChoice | null;
+  alignmentActiveUntil?: number;
   lastSeenAt: number;
   offlineRolls: number;
   claimedAchievements: string[];
@@ -1096,6 +1159,8 @@ export interface PlayerState {
     altarLevel: number;
     luckSurgeUntil?: number; // timestamp
     altarPity?: number; // consecutive failed coin breakthrough attempts
+    /** Offering value carried forward by Altar Insurance after a failed breakthrough. */
+    altarInsuranceCredit?: number;
   };
   masteryPoints?: number;
   masterySkills?: Record<MasterySkillId, number>;
@@ -1860,6 +1925,11 @@ export function createInitialState(now = Date.now()): PlayerState {
     chainPatcherNextRarity: 0,
     chainPatcherCooldownUntil: 0,
     lastRollAt: null,
+    timeEnergy: 0,
+    alignmentNextAt: 0,
+    alignmentPendingAt: 0,
+    alignmentActiveChoice: null,
+    alignmentActiveUntil: 0,
     lastSeenAt: now,
     offlineRolls: 0,
     claimedAchievements: [],
@@ -1959,6 +2029,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       altarLevel: 0,
       luckSurgeUntil: 0,
       altarPity: 0,
+      altarInsuranceCredit: 0,
     },
     masteryPoints: 0,
     masterySkills: {
@@ -1974,6 +2045,10 @@ export function createInitialState(now = Date.now()): PlayerState {
       pityAccelerant: 0,
       apexFortune: 0,
       celestialVolley: 0,
+      cooldownReclaimer: 0,
+      altarInsurance: 0,
+      constellationAtlas: 0,
+      celestialAlignment: 0,
     },
     guildPerks: { luckRank: 0, speedRank: 0, vaultRank: 0 },
   };
@@ -2399,7 +2474,61 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
   const momentumSpeedMultiplier = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
     ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
     : 0);
-  return Math.max(300, Math.round(cd / momentumSpeedMultiplier));
+  cd = Math.round(cd / momentumSpeedMultiplier);
+  if (
+    isAuto &&
+    s.alignmentActiveChoice === 'clockwork' &&
+    (s.alignmentActiveUntil ?? 0) > Date.now()
+  ) {
+    cd = Math.max(300, Math.round(cd * 0.80));
+  }
+  return Math.max(300, cd);
+}
+
+/**
+ * Time Energy is generated only by cooldown that all existing speed effects
+ * would otherwise push beneath the 300ms activation floor.
+ */
+export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false): number {
+  const level = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.cooldownReclaimer ?? 0) || 0)));
+  if (level <= 0) return 0;
+
+  const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
+  const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
+  const masteryChronoReduction = (s.masterySkills?.chronoFlow ?? 0) * 120;
+  const steadyHandsReduction = (s.prestigeUpgrades?.steadyHands ?? 0) * 100;
+  const temporalCompressionReduction = (s.prestigeUpgrades?.temporalCompression ?? 0) * 75;
+  const levelReduction = getLevelBenefits(Math.max(1, s.level || 1)).cooldownReductionMs;
+  const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
+  const floor = Math.max(
+    800,
+    2000 - permReduction - guildSpeedReduction - masteryChronoReduction -
+      steadyHandsReduction - temporalCompressionReduction - levelReduction,
+  );
+  const directCooldownReduction =
+    permReduction + masteryChronoReduction + steadyHandsReduction + temporalCompressionReduction;
+  let theoretical = Math.max(floor, BASE_COOLDOWN_MS - speedLevel * 150 - directCooldownReduction);
+
+  if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
+    theoretical = Math.max(700, Math.round(theoretical * (1 - s.prestigeUpgrades.autoOverclock * 0.05)));
+  }
+  if (typeof s.turboRollUntil === 'number' && s.turboRollUntil > Date.now()) {
+    theoretical = Math.max(600, Math.round(theoretical * ((s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75)));
+  }
+  if (isPremiumBoosterActive(s, 'hyperdrive')) theoretical = Math.max(400, Math.round(theoretical * 0.25));
+  if (s.globalBoosters?.speed) theoretical = Math.round(theoretical * globalBoosterSpeedMultiplier(s.globalBoosters.speed));
+  if (s.guildCombo) theoretical = Math.round(theoretical * guildComboSpeedMultiplier(s.guildCombo));
+  if (s.dailyStreakCommunity?.speedMultiplier) theoretical = Math.round(theoretical * s.dailyStreakCommunity.speedMultiplier);
+
+  const momentum = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
+    ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
+    : 0);
+  theoretical = Math.round(theoretical / momentum);
+  if (isAuto && s.alignmentActiveChoice === 'clockwork' && (s.alignmentActiveUntil ?? 0) > Date.now()) {
+    theoretical = Math.round(theoretical * 0.80);
+  }
+
+  return Math.min(TIME_ENERGY_MAX_MS, Math.max(0, Math.floor((300 - theoretical) * level * 0.10)));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
@@ -2622,6 +2751,11 @@ export function luckMultiplier(s: PlayerState): number {
   const unspentCosmicDust = Math.max(0, Math.floor(Number(s.cosmicDust ?? 0) || 0));
   const cosmicReserveLevel = Math.max(0, Math.min(5, Math.floor(Number(s.prestigeUpgrades?.cosmicReserve ?? 0) || 0)));
   const cosmicReserveMultiplier = 1 + unspentCosmicDust * cosmicReserveLevel * 0.01;
+
+  additiveBonus += constellationAtlasMilestonesUnlocked(
+    s.masterySkills?.constellationAtlas ?? 0,
+    s.collection,
+  ) * 0.01;
 
   const baseLuck = 1 + additiveBonus;
   return Math.round(baseLuck * prestigeMultiplier * totalAltarMultiplier * cosmicReserveMultiplier * 100) / 100;

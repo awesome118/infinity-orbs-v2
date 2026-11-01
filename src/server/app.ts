@@ -57,6 +57,8 @@ import {
   setAutoRollEnabled,
   sacrificeToAltar,
   upgradeMasterySkill,
+  getCelestialAlignmentStatus,
+  chooseCelestialAlignment,
   getCollectionPage,
   processOfflineFullNotification,
   getNotificationState,
@@ -1425,7 +1427,7 @@ export function createApp() {
       if (!ticketId || !Number.isSafeInteger(ticketIndex)) {
         return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
       }
-      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true);
+      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
@@ -1552,6 +1554,27 @@ export function createApp() {
       res.json({ state });
     } catch (e) {
       badRequest(res, e, 'Mastery upgrade failed.');
+    }
+  });
+
+  app.get('/api/alignment/status', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await getCelestialAlignmentStatus());
+    } catch (e) {
+      badRequest(res, e, 'Celestial Alignment status failed.');
+    }
+  });
+
+  app.post('/api/alignment/choose', async (req, res) => {
+    try {
+      const choice = req.body?.choice;
+      if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) {
+        return res.status(400).json({ error: 'Choose a valid Alignment effect.' });
+      }
+      res.json(await chooseCelestialAlignment(choice));
+    } catch (e) {
+      badRequest(res, e, 'Celestial Alignment choice failed.');
     }
   });
 

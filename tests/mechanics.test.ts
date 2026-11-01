@@ -20,6 +20,9 @@ import {
   altarCoinFloor,
   calculateAltarMultipliers,
   cooldownMs,
+  cooldownReclaimerEnergyPerActivationMs,
+  constellationAtlasDiscoveredRarities,
+  constellationAtlasMilestonesUnlocked,
   critMultiplier,
   effectiveOfflineTickMs,
   upgradeCost,
@@ -773,4 +776,27 @@ test('repeatable Guild Boss Shard rewards are capped at three per clear', () => 
   assert.equal(createInitialGuildBoss(2).rewardShards, 2);
   assert.equal(createInitialGuildBoss(3).rewardShards, 3);
   assert.equal(createInitialGuildBoss(100).rewardShards, 3);
+});
+
+
+test('Constellation Atlas rewards breadth across distinct owned rarity values', () => {
+  const collection = { '2': 1, '3': 4, '7': 1, '10': 0, 'Infinity': 1 };
+  assert.equal(constellationAtlasDiscoveredRarities(collection), 4);
+  assert.equal(constellationAtlasMilestonesUnlocked(3, collection), 0);
+  assert.equal(constellationAtlasMilestonesUnlocked(4, collection), 0);
+  const broader = { ...collection, '12': 1, '14': 1 };
+  assert.equal(constellationAtlasMilestonesUnlocked(2, broader), 1);
+});
+
+test('Cooldown Reclaimer banks only theoretical cooldown below the live floor', () => {
+  const state = createInitialState(NOW);
+  state.masterySkills!.cooldownReclaimer = 1;
+  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 0);
+  state.upgrades.speed = 20;
+  state.masterySkills!.chronoFlow = 20;
+  state.prestigeUpgrades.permSpeed = 10;
+  state.prestigeUpgrades.steadyHands = 10;
+  state.prestigeUpgrades.temporalCompression = 20;
+  state.dailyStreakCommunity = { ...state.dailyStreakCommunity!, speedMultiplier: 0.05 };
+  assert.ok(cooldownReclaimerEnergyPerActivationMs(state) > 0);
 });
