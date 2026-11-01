@@ -12,6 +12,28 @@ export type UpgradeId =
   | 'offlineRate'
   | 'valueBonus';
 
+/**
+ * Minimum player levels for standard Coin upgrades.
+ */
+export const UPGRADE_UNLOCK_LEVELS: Record<UpgradeId, number> = {
+  speed: 1,
+  multi: 1,
+  luck: 1,
+  coinBonus: 1,
+  auto: 1,
+  xpBonus: 5,
+  shardChance: 10,
+  critChance: 15,
+  valueBonus: 20,
+  critPower: 25,
+  offlineRate: 30,
+  clusterRoll: 50,
+};
+
+export function upgradeUnlockLevel(id: UpgradeId): number {
+  return UPGRADE_UNLOCK_LEVELS[id];
+}
+
 export type MasterySkillId =
   | 'continuumLuck'
   | 'prosperity'

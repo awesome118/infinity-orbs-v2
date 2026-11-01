@@ -66,6 +66,7 @@ import {
   FRENZY_OWNER_SHARD_REWARD,
   rollsPerActivation,
   upgradeCost,
+  upgradeUnlockLevel,
   prestigeUpgradeCost,
   masterySkillCost,
   levelAdjustedXpReward,
@@ -834,7 +835,7 @@ function App() {
   const ensureRollTicket = useCallback(async () => {
     const requestSessionEpoch = authSessionEpochRef.current;
     const current = rollTicketRef.current;
-    if (current && current.nextIndex < 30 && current.expiresAt > Date.now()) {
+    if (current && current.nextIndex < 50 && current.expiresAt > Date.now()) {
       return current;
     }
 
@@ -1251,10 +1252,11 @@ function App() {
     };
   }, [refreshAdminStatus, splashEntered, Boolean(state)]);
 
+  // Warm a server-validated ticket while the player is still on the splash screen.
   useEffect(() => {
-    if (!splashEntered || !stateRef.current) return;
+    if (!stateRef.current || stateRef.current.gameBan?.active) return;
     void ensureRollTicket().catch(() => null);
-  }, [state?.stateRevision, ensureRollTicket, splashEntered]);
+  }, [state?.stateRevision, state?.username, ensureRollTicket]);
 
   // First pass loads the save for the splash; toggling splashEntered reruns
   // refreshAll to fetch the remaining panels once the player presses Play.
@@ -1760,6 +1762,7 @@ function App() {
     rollActionLockRef.current = true;
     let frenzySubmissionInFlight = false;
     setIsRolling(true);
+    if (!frenzyArmed) sound.playRollNormal();
 
     try {
       if (!isAutoRoll && frenzyArmed) {
@@ -1816,10 +1819,8 @@ function App() {
       rollTicketRef.current = {
         ...ticket,
         nextIndex: ticketIndex + 1,
-        rollsRemaining: Math.max(0, 30 - (ticketIndex + 1)),
+        rollsRemaining: Math.max(0, 50 - (ticketIndex + 1)),
       };
-      sound.playRollNormal();
-
       const res = await enqueueMutation(() => getJson<RollResponse>('/api/roll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1967,6 +1968,11 @@ function App() {
     if (!currentState) return;
 
     const level = currentState.upgrades[id] ?? 0;
+    const requiredPlayerLevel = upgradeUnlockLevel(id);
+    if (currentState.level < requiredPlayerLevel) {
+      showToast(`Unlocks at Level ${requiredPlayerLevel}.`, 'warn');
+      return;
+    }
     const cost = upgradeCost(id, level);
     const canBuy = id === 'auto'
       ? (currentState.manualRolls ?? 0) >= 3 && level === 0
@@ -2044,8 +2050,8 @@ function App() {
       upgrades: { ...currentState.upgrades },
     };
     const ids: UpgradeId[] = [
-      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      'speed', 'multi', 'luck', 'coinBonus', 'auto',
+      'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll',
     ];
     let purchases = 0;
 
@@ -2053,7 +2059,7 @@ function App() {
     while (changed && purchases < 5_000) {
       changed = false;
       for (const id of ids) {
-        if (id === 'auto' || purchases >= 5_000) continue;
+        if (id === 'auto' || purchases >= 5_000 || next.level < upgradeUnlockLevel(id)) continue;
         const level = next.upgrades[id] ?? 0;
         const cost = upgradeCost(id, level);
         if (!Number.isFinite(cost) || cost > next.coins) continue;

@@ -422,9 +422,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const nextLuckState: PlayerState = { ...state, upgrades: { ...state.upgrades, luck: luckLevel + 1 } };
   const nextMultiState: PlayerState = { ...state, upgrades: { ...state.upgrades, multi: multiLevel + 1 } };
   const quickUpgradeItems = [
-    { id: 'luck' as const, title: 'Luck', level: luckLevel, current: `${luckMultiplier(state).toFixed(2)}×`, next: `${luckMultiplier(nextLuckState).toFixed(2)}×`, cost: upgradeCost('luck', luckLevel) },
     { id: 'speed' as const, title: 'Roll speed', level: speedLevel, current: `${(cooldownMs(state) / 1000).toFixed(2)}s`, next: `${(cooldownMs(nextSpeedState) / 1000).toFixed(2)}s`, cost: upgradeCost('speed', speedLevel) },
     { id: 'multi' as const, title: 'Multi roll', level: multiLevel, current: `${rollsPerActivation(state)} orbs`, next: `${rollsPerActivation(nextMultiState)} orbs`, cost: upgradeCost('multi', multiLevel) },
+    { id: 'luck' as const, title: 'Luck', level: luckLevel, current: `${luckMultiplier(state).toFixed(2)}×`, next: `${luckMultiplier(nextLuckState).toFixed(2)}×`, cost: upgradeCost('luck', luckLevel) },
     { id: 'coinBonus' as const, title: 'Coin bonus', level: coinBonusLevel, current: `+${coinBonusLevel * 15}%`, next: `+${(coinBonusLevel + 1) * 15}%`, cost: upgradeCost('coinBonus', coinBonusLevel) },
   ];
   const quickAffordableCount = quickUpgradeItems.filter(item =>

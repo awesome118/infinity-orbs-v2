@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createInitialState, upgradeUnlockLevel } from '../src/shared/game.js';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
@@ -96,4 +97,59 @@ test('mobile content reserves space for the taller thumb navigation and preserve
   assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) 116px;'));
   assert.ok(css.includes('@media (max-width: 359px)'));
   assert.ok(css.includes('scroll-snap-type: x proximity;'));
+});
+
+
+test('standard Coin upgrades unlock in level order with only four starters at Level 1', () => {
+  const state = createInitialState();
+  const starters = ['speed', 'multi', 'luck', 'coinBonus'] as const;
+  assert.equal(state.level, 1);
+  assert.deepEqual(starters.map(upgradeUnlockLevel), [1, 1, 1, 1]);
+  assert.deepEqual(
+    ['xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll']
+      .map(id => upgradeUnlockLevel(id as Parameters<typeof upgradeUnlockLevel>[0])),
+    [5, 10, 15, 20, 25, 30, 50],
+  );
+  const server = read('src/server/game.ts');
+  assert.match(server, /s\.level < requiredPlayerLevel/);
+  assert.match(server, /s\.level < upgradeUnlockLevel\(id\)/);
+});
+
+test('mobile shop shows core upgrades before stats and uses a two-by-two starter grid', () => {
+  const upgrades = read('src/client/components/UpgradesSection.tsx');
+  const css = read('src/client/mobile-experience.css');
+  const core = upgrades.indexOf("title: 'Core upgrades'");
+  const early = upgrades.indexOf("title: 'Early unlocks'");
+  const stats = upgrades.indexOf('io-upgrade-stats-card');
+  assert.ok(core >= 0 && early > core);
+  assert.ok(stats > early);
+  assert.ok(css.includes('.io-ui .io-upgrade-primary-group .io-upgrade-card-grid'));
+  assert.ok(css.includes('grid-template-columns: repeat(2, minmax(0, 1fr)) !important;'));
+});
+
+test('50-use roll tickets warm before the first tap and remain server-consumed in order', () => {
+  const main = read('src/client/main.tsx');
+  const server = read('src/server/game.ts');
+  assert.match(server, /const ROLL_TICKET_COUNT = 50;/);
+  assert.match(main, /current\.nextIndex < 50/);
+  assert.match(main, /if \(!stateRef\.current \|\| stateRef\.current\.gameBan\?\.active\) return;\s*void ensureRollTicket\(\)/);
+  assert.doesNotMatch(main, /if \(!splashEntered \|\| !stateRef\.current\) return;\s*void ensureRollTicket/);
+});
+
+test('normal roll response does not wait for the combat-focus projection', () => {
+  const app = read('src/server/app.ts');
+  const route = app.slice(app.indexOf("app.post('/api/roll'"), app.indexOf("app.post('/api/auto-roll'"));
+  assert.match(route, /queueCombatOrbFocusSync\(rolledOrb\.rarity, rolledOrb\.name\)/);
+  assert.doesNotMatch(route, /await setCombatOrbFocus/);
+});
+
+test('gold replaces the brown upgrade accent and mobile dialogs become scrollable sheets', () => {
+  const polish = read('src/client/ui-polish.css');
+  const css = read('src/client/mobile-experience.css');
+  assert.ok(polish.includes('--io-upgrade-gold: #e9c45b;'));
+  assert.ok(polish.includes('background-color: #98742a !important;'));
+  assert.ok(polish.includes('background-color: #b28a31 !important;'));
+  assert.ok(css.includes('align-items: flex-end !important;'));
+  assert.ok(css.includes('max-height: min(84dvh, 720px) !important;'));
+  assert.ok(css.includes('overscroll-behavior: contain;'));
 });

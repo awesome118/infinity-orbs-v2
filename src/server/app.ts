@@ -94,6 +94,22 @@ import {
   reportGuildChatMessage,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
+
+const combatFocusSyncQueues = new Map<string, Promise<unknown>>();
+
+function queueCombatOrbFocusSync(rarity: number, name?: string): void {
+  const scope = String(context.username ?? 'anonymous').trim().toLowerCase() || 'anonymous';
+  const previous = combatFocusSyncQueues.get(scope) ?? Promise.resolve();
+  let next: Promise<unknown>;
+  next = previous
+    .catch(() => undefined)
+    .then(() => setCombatOrbFocus(rarity, name))
+    .catch(error => console.error('[Combat Orb Focus] Background sync failed.', error))
+    .finally(() => {
+      if (combatFocusSyncQueues.get(scope) === next) combatFocusSyncQueues.delete(scope);
+    });
+  combatFocusSyncQueues.set(scope, next);
+}
 import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest } from './server-monitor.js';
 import * as devvitServer from '@devvit/web/server';
@@ -1411,7 +1427,7 @@ export function createApp() {
       }
       const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
-      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync orb roll.', error));
+      if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
@@ -1426,7 +1442,7 @@ export function createApp() {
     try {
       const result = await claimOffline();
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
-      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync offline orb claim.', error));
+      if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
     } catch (e) { badRequest(res, e, 'Offline claim failed.'); }
   });
@@ -1602,7 +1618,7 @@ export function createApp() {
       const attemptId = typeof req.body?.attemptId === 'string' ? req.body.attemptId : undefined;
       const result = await claimOrbFrenzy({ attemptId });
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
-      if (rolledOrb) await setCombatOrbFocus(rolledOrb.rarity, rolledOrb.name).catch(error => console.error('[Combat Orb Focus] Could not sync Frenzy orb claim.', error));
+      if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
     } catch (e) { badRequest(res, e, 'Could not claim Orb Frenzy.'); }
   });

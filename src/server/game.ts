@@ -32,6 +32,7 @@ import {
   rollsPerActivation,
   luckMultiplier,
   upgradeCost,
+  upgradeUnlockLevel,
   prestigeUpgradeCost,
   calculatePrestigeDust,
   addCollectionValue,
@@ -338,7 +339,7 @@ const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
 const OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS = 7 * 24 * 60 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
 const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
-const ROLL_TICKET_COUNT = 30;
+const ROLL_TICKET_COUNT = 50;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
 const PLAYER_SPY_LOG_LIMIT = 500;
@@ -5880,6 +5881,10 @@ export async function buyUpgrade(id: UpgradeId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const level = s.upgrades[id] ?? 0;
+  const requiredPlayerLevel = upgradeUnlockLevel(id);
+  if (s.level < requiredPlayerLevel) {
+    throw new Error(`Unlocks at Level ${requiredPlayerLevel}.`);
+  }
 
   // Auto Roll is free and unlocks once the player has at least 3 manual rolls.
   if (id === 'auto') {
@@ -5935,6 +5940,11 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
 
     for (const id of ids) {
       const level = s.upgrades[id] ?? 0;
+      const requiredPlayerLevel = upgradeUnlockLevel(id);
+      if (s.level < requiredPlayerLevel) {
+        stoppedReason = `${id} unlocks at Level ${requiredPlayerLevel}.`;
+        break;
+      }
       if (id === 'auto') {
         if ((s.manualRolls ?? 0) < 3) {
           stoppedReason = `Auto Roll unlocks after 3 manual rolls (${s.manualRolls ?? 0}/3).`;
@@ -5986,14 +5996,14 @@ export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   const reserve = Math.max(0, Math.floor(Number.isFinite(reserveCoins) ? reserveCoins : 0));
   const spendableCoins = Math.max(0, s.coins - reserve);
   const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-    'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
+    'speed', 'multi', 'luck', 'coinBonus', 'auto',
+    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'
   ];
   let bestId: UpgradeId | null = null;
   let lowestCost = Infinity;
 
   for (const id of upgradeIds) {
-    if (id === 'auto') continue;
+    if (id === 'auto' || s.level < upgradeUnlockLevel(id)) continue;
     const lvl = s.upgrades[id] ?? 0;
     const cost = upgradeCost(id, lvl);
     if (cost <= spendableCoins && cost < lowestCost) {
@@ -6014,8 +6024,8 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-    'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
+    'speed', 'multi', 'luck', 'coinBonus', 'auto',
+    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'
   ];
 
   let totalSpent = 0;
@@ -6033,7 +6043,8 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
       if (upgradedCount >= MAX_PURCHASES_PER_REQUEST) break;
 
       const level = s.upgrades[id] ?? 0;
-      let cost = upgradeCost(id, level);
+      if (s.level < upgradeUnlockLevel(id)) continue;
+      const cost = upgradeCost(id, level);
 
       if (id === 'auto') continue;
 

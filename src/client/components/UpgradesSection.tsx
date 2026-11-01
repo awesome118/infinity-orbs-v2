@@ -23,6 +23,7 @@ import {
 import type { PlayerState, UpgradeId } from '../../shared/game.js';
 import {
   upgradeCost,
+  upgradeUnlockLevel,
   cooldownMs,
   rollsPerActivation,
   luckMultiplier,
@@ -189,16 +190,6 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       cost: upgradeCost('multi', state.upgrades.multi ?? 0),
     },
     {
-      id: 'clusterRoll',
-      title: 'Orb Array Matrix',
-      icon: <CircleDot className="w-5 h-5 text-cyan-400" />,
-      level: state.upgrades.clusterRoll ?? 0,
-      currentVal: `+${state.upgrades.clusterRoll ?? 0} Balls`,
-      nextVal: `+${(state.upgrades.clusterRoll ?? 0) + 1} Balls`,
-      desc: 'Secondary multi-roll engine: adds +1 additional ball per level.',
-      cost: upgradeCost('clusterRoll', state.upgrades.clusterRoll ?? 0),
-    },
-    {
       id: 'luck',
       title: 'Luck Multiplier',
       icon: <Clover className="w-5 h-5 text-emerald-400" />,
@@ -207,6 +198,16 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       nextVal: `${nextLuckMultiplier.toFixed(2)}×`,
       desc: '+5% Luck per level. Luck sources combine into one total before RNG diminishing returns.',
       cost: upgradeCost('luck', state.upgrades.luck ?? 0),
+    },
+    {
+      id: 'coinBonus',
+      title: 'Coin Bonus',
+      icon: <TrendingUp className="w-5 h-5 text-yellow-400" />,
+      level: state.upgrades.coinBonus ?? 0,
+      currentVal: `+${currentCoinBonusPct}%`,
+      nextVal: `+${currentCoinBonusPct + 15}%`,
+      desc: '+15% coins earned per level.',
+      cost: upgradeCost('coinBonus', state.upgrades.coinBonus ?? 0),
     },
     {
       id: 'auto',
@@ -221,14 +222,14 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       lockMsg: isAutoUnlocked ? undefined : `Unlocks after 3 manual rolls (${manualRolls}/3)`,
     },
     {
-      id: 'coinBonus',
-      title: 'Coin Bonus',
-      icon: <TrendingUp className="w-5 h-5 text-yellow-400" />,
-      level: state.upgrades.coinBonus ?? 0,
-      currentVal: `+${currentCoinBonusPct}%`,
-      nextVal: `+${currentCoinBonusPct + 15}%`,
-      desc: '+15% coins earned per level.',
-      cost: upgradeCost('coinBonus', state.upgrades.coinBonus ?? 0),
+      id: 'xpBonus',
+      title: 'XP Bonus',
+      icon: <Sparkles className="w-5 h-5 text-indigo-400" />,
+      level: state.upgrades.xpBonus ?? 0,
+      currentVal: `+${currentXpBonusPct}%`,
+      nextVal: `+${currentXpBonusPct + 20}%`,
+      desc: '+20% player XP per roll per level.',
+      cost: upgradeCost('xpBonus', state.upgrades.xpBonus ?? 0),
     },
     {
       id: 'shardChance',
@@ -241,16 +242,6 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       cost: upgradeCost('shardChance', state.upgrades.shardChance ?? 0),
     },
     {
-      id: 'xpBonus',
-      title: 'XP Bonus',
-      icon: <Sparkles className="w-5 h-5 text-indigo-400" />,
-      level: state.upgrades.xpBonus ?? 0,
-      currentVal: `+${currentXpBonusPct}%`,
-      nextVal: `+${currentXpBonusPct + 20}%`,
-      desc: '+20% player XP per roll per level.',
-      cost: upgradeCost('xpBonus', state.upgrades.xpBonus ?? 0),
-    },
-    {
       id: 'critChance',
       title: 'Critical Chance',
       icon: <Percent className="w-5 h-5 text-rose-400" />,
@@ -259,6 +250,16 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       nextVal: `${currentCritChancePct + 3}%`,
       desc: '+3% chance for a critical roll per level.',
       cost: upgradeCost('critChance', state.upgrades.critChance ?? 0),
+    },
+    {
+      id: 'valueBonus',
+      title: 'Value Multiplier',
+      icon: <Layers className="w-5 h-5 text-fuchsia-400" />,
+      level: state.upgrades.valueBonus ?? 0,
+      currentVal: `+${currentValueBonusPct}%`,
+      nextVal: `+${currentValueBonusPct + 10}%`,
+      desc: '+10% collection value from all rolls per level.',
+      cost: upgradeCost('valueBonus', state.upgrades.valueBonus ?? 0),
     },
     {
       id: 'critPower',
@@ -281,16 +282,25 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       cost: upgradeCost('offlineRate', state.upgrades.offlineRate ?? 0),
     },
     {
-      id: 'valueBonus',
-      title: 'Value Multiplier',
-      icon: <Layers className="w-5 h-5 text-fuchsia-400" />,
-      level: state.upgrades.valueBonus ?? 0,
-      currentVal: `+${currentValueBonusPct}%`,
-      nextVal: `+${currentValueBonusPct + 10}%`,
-      desc: '+10% collection value from all rolls per level.',
-      cost: upgradeCost('valueBonus', state.upgrades.valueBonus ?? 0),
-    },
+      id: 'clusterRoll',
+      title: 'Orb Array Matrix',
+      icon: <CircleDot className="w-5 h-5 text-cyan-400" />,
+      level: state.upgrades.clusterRoll ?? 0,
+      currentVal: `+${state.upgrades.clusterRoll ?? 0} Balls`,
+      nextVal: `+${(state.upgrades.clusterRoll ?? 0) + 1} Balls`,
+      desc: 'Secondary multi-roll engine: adds +1 additional ball per level.',
+      cost: upgradeCost('clusterRoll', state.upgrades.clusterRoll ?? 0),
+    }
   ];
+
+  for (const upgrade of upgradesData) {
+    const requiredLevel = upgradeUnlockLevel(upgrade.id);
+    if (!upgrade.locked && state.level < requiredLevel) {
+      upgrade.locked = true;
+      upgrade.lockMsg = `Unlocks at Level ${requiredLevel} · You are Level ${state.level}`;
+    }
+  }
+
 
   const affordableCount = upgradesData.filter(u => !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost).length;
   useEffect(() => {
@@ -312,11 +322,10 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const turboRemainingMs = Math.max(0, (state.turboRollUntil ?? 0) - turboNow);
   const isTurboActive = turboRemainingMs > 0;
   const turboRemainingLabel = Math.floor(turboRemainingMs / 60_000) + 'm ' + String(Math.floor((turboRemainingMs % 60_000) / 1000)).padStart(2, '0') + 's';
-  const upgradeGroups: { title: string; subtitle: string; ids: UpgradeId[] }[] = [
-    { title: 'Roll controls', subtitle: 'Change roll cadence and the number of Orbs each activation produces.', ids: ['speed', 'multi', 'clusterRoll', 'auto'] },
-    { title: 'Rarity and criticals', subtitle: 'Improve rarity odds and make critical rolls stronger.', ids: ['luck', 'critChance', 'critPower'] },
-    { title: 'Rewards and value', subtitle: 'Earn more Coins, Shards, XP and collection value.', ids: ['coinBonus', 'shardChance', 'xpBonus', 'valueBonus'] },
-    { title: 'Offline progress', subtitle: 'Improve the rate at which rolls accumulate while you are away.', ids: ['offlineRate'] },
+  const upgradeGroups: { title: string; subtitle: string; ids: UpgradeId[]; primary?: boolean }[] = [
+    { title: 'Core upgrades', subtitle: 'The four starter upgrades. All are available from Level 1.', ids: ['speed', 'multi', 'luck', 'coinBonus'], primary: true },
+    { title: 'Early unlocks', subtitle: 'Automation and extra reward systems unlock as you level up.', ids: ['auto', 'xpBonus', 'shardChance'] },
+    { title: 'Advanced systems', subtitle: 'Criticals, value and secondary roll engines arrive later.', ids: ['critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'] },
   ];
 
   return (
@@ -372,44 +381,6 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
           </div>
         </div>
 
-        {/* Live Active Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Roll Cooldown
-            </span>
-            <span className="text-sm font-black text-amber-300 font-mono">
-              {(currentCd / 1000).toFixed(1)}s
-            </span>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Orbs per roll
-            </span>
-            <span className="text-sm font-black text-purple-300 font-mono">
-              {currentMulti} Orbs / roll
-            </span>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Total Luck
-            </span>
-            <span className="text-sm font-black text-emerald-300 font-mono">
-              {currentLuckMultiplier.toFixed(2)}×
-            </span>
-          </div>
-
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
-              Crit Stats
-            </span>
-            <span className="text-sm font-black text-rose-300 font-mono">
-              {currentCritChancePct}% ({currentCritPower}×)
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* Related upgrades are grouped for easier comparison. */}
@@ -417,12 +388,12 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
         {upgradeGroups.map(group => {
           const groupUpgrades = upgradesData.filter(u => group.ids.includes(u.id));
           return (
-            <section key={group.title} className="rounded-2xl border border-slate-800 bg-slate-950/30 p-3 sm:p-4 space-y-3" aria-label={group.title}>
+            <section key={group.title} className={`rounded-2xl border border-slate-800 bg-slate-950/30 p-3 sm:p-4 space-y-3 ${group.primary ? "io-upgrade-primary-group" : ""}`} aria-label={group.title}>
               <header>
                 <h3 className="text-sm font-black uppercase tracking-wide text-slate-200">{group.title}</h3>
                 <p className="text-xs text-slate-500 mt-1">{group.subtitle}</p>
               </header>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 io-upgrade-card-grid">
         {groupUpgrades.map(u => {
           const maxLevel = standardUpgradeMaxLevels[u.id];
           const isAutoOwned = u.id === 'auto' && isAutoUnlocked;
@@ -433,7 +404,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
           return (
             <div
               key={u.id}
-              className={`bg-slate-900/90 border rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 shadow-md space-y-3 relative overflow-hidden ${
+              className={`io-upgrade-card bg-slate-900/90 border rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 shadow-md space-y-3 relative overflow-hidden ${
                 isUpgraded
                   ? 'border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_30px_rgba(251,191,36,0.35)] scale-[1.02] animate-upgrade-burst'
                   : isMaxed
@@ -535,6 +506,47 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             </section>
           );
         })}
+      </div>
+
+      <div className="io-upgrade-stats-card rounded-2xl border border-slate-800 bg-slate-950/30 p-3">
+        {/* Live Active Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+              Roll Cooldown
+            </span>
+            <span className="text-sm font-black text-amber-300 font-mono">
+              {(currentCd / 1000).toFixed(1)}s
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+              Orbs per roll
+            </span>
+            <span className="text-sm font-black text-purple-300 font-mono">
+              {currentMulti} Orbs / roll
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+              Total Luck
+            </span>
+            <span className="text-sm font-black text-emerald-300 font-mono">
+              {currentLuckMultiplier.toFixed(2)}×
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+              Crit Stats
+            </span>
+            <span className="text-sm font-black text-rose-300 font-mono">
+              {currentCritChancePct}% ({currentCritPower}×)
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Turbo Booster */}

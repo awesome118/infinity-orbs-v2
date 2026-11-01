@@ -946,7 +946,7 @@
   --paper: #e9eef8;
   --muted: #9aa7bb;
   --teal: #8fbaff;
-  --gold: #ddc08c;
+  --gold: #e9c45b;
   --io-bg: #0d121b;
   --io-surface: #151d2a;
   --io-surface-raised: #1d2838;
@@ -1455,21 +1455,25 @@ body {
   background-color: #3b5b88 !important;
 }
 
+/* Gold is the shared secondary upgrade/action accent. */
+.io-ui {
+  --gold: #e9c45b;
+  --io-upgrade-gold: #e9c45b;
+}
 .io-ui .app-main button[class*="from-fuchsia-"],
 .io-ui .app-main button[class*="from-pink-"],
 .io-ui .app-main button[class*="bg-fuchsia-"],
 .io-ui .app-main button[class*="bg-pink-"] {
-  border-color: rgba(221, 192, 140, .24);
-  color: #f1eadb;
-  background-color: #665743 !important;
+  border-color: rgba(238, 190, 70, .48);
+  color: #fff1c4;
+  background-color: #98742a !important;
 }
-
 .io-ui .app-main button[class*="from-amber-"],
 .io-ui .app-main button[class*="from-yellow-"],
 .io-ui .app-main button[class*="bg-amber-"] {
-  border-color: rgba(221, 192, 140, .3);
-  color: #f6ead1;
-  background-color: #765f3b !important;
+  border-color: rgba(255, 216, 112, .62);
+  color: #fff4ce;
+  background-color: #b28a31 !important;
 }
 
 .io-ui .app-main button[class*="from-rose-"],
