@@ -34,7 +34,6 @@ import {
   PRESTIGE_UPGRADES,
   prestigeUpgradeCost,
   SHARD_SYNTHESIS_COST,
-  MAX_COSMIC_DUST,
   getLevelBenefits,
   FEATURE_UNLOCK_LEVELS,
   MAX_PLAYER_LEVEL,
@@ -119,7 +118,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
       : 'Average';
 
   const hasForgeUpgrade = (state.prestigeUpgrades?.shardSynthesis ?? 0) > 0;
-  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST && state.cosmicDust < MAX_COSMIC_DUST;
+  const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST && state.cosmicDust < Number.MAX_SAFE_INTEGER;
 
   const upgradeKeys = Object.keys(PRESTIGE_UPGRADES) as PrestigeUpgradeId[];
   const filteredUpgrades = upgradeKeys.filter(id => {
@@ -485,7 +484,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Convert 100 Shards into 1 Cosmic Dust. Cosmic Dust is capped at {MAX_COSMIC_DUST}.
+                  Convert 100 Shards into 1 Cosmic Dust. There is no gameplay cap on your Dust balance.
                 </p>
               </div>
             </div>
@@ -505,7 +504,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>{state.cosmicDust >= MAX_COSMIC_DUST ? 'Cosmic Dust Cap Reached' : `Forge 1 Dust (${SHARD_SYNTHESIS_COST} Shards)`}</span>
+              <span>{`Forge 1 Dust (${SHARD_SYNTHESIS_COST} Shards)`}</span>
             </button>
           </div>
         )}
