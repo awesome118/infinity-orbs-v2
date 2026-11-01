@@ -1989,6 +1989,26 @@ function App() {
     combatMode,
   ]);
 
+  // Recalculate an already-running Auto Roll wait when an Alignment starts or expires.
+  // Clockwork must shorten the current wait immediately, not only the next server response.
+  useEffect(() => {
+    if (!state) return;
+    const lastRollAt = Number(state.lastRollAt ?? 0);
+    if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) return;
+    const activeChoice = alignmentStatus
+      ? alignmentStatus.activeChoice
+      : state.alignmentActiveChoice ?? null;
+    const activeUntil = alignmentStatus
+      ? alignmentStatus.activeUntil
+      : state.alignmentActiveUntil ?? 0;
+    const timingState: PlayerState = {
+      ...state,
+      alignmentActiveChoice: activeChoice,
+      alignmentActiveUntil: activeUntil,
+    };
+    setReadyAt(lastRollAt + cooldownMs(timingState, true));
+  }, [state, alignmentStatus]);
+
   // Auto roll watcher (paced steadily)
   useEffect(() => {
     if (!splashEntered || combatMode || !autoRoll || !state || state.upgrades.auto === 0) return;
@@ -2516,7 +2536,7 @@ function App() {
       alignmentConfirmationRef.current = confirmation;
       setAlignmentConfirmation(confirmation);
       setAlignmentConfirmationSeconds(60);
-      setAlignmentPromptVisible(true);
+      setAlignmentPromptVisible(false);
       const names: Record<CelestialAlignmentChoice, string> = {
         starseeker: 'Starseeker',
         goldenOrbit: 'Golden Orbit',
@@ -3431,7 +3451,7 @@ function App() {
         </div>
       )}
 
-      {alignmentPromptVisible && (alignmentConfirmation !== null || alignmentStatus?.pending) && (
+      {alignmentPromptVisible && alignmentConfirmation === null && alignmentStatus?.pending && (
         <div className="fixed inset-0 z-[90] io-modal-backdrop flex items-center justify-center p-4" data-testid="celestial-alignment-prompt">
           <section
             className="w-full max-w-2xl rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-5 sm:p-7 shadow-[0_0_70px_rgba(56,189,248,.2)]"
@@ -3439,46 +3459,10 @@ function App() {
             aria-modal="true"
             aria-labelledby="celestial-alignment-title"
           >
-            {alignmentConfirmation ? (
-              <div className="py-2 text-center" data-testid="celestial-alignment-confirmation">
-                <div className="text-[10px] font-black uppercase tracking-[.22em] text-emerald-300">Alignment activated</div>
-                <h2 id="celestial-alignment-title" className="mt-3 text-2xl sm:text-3xl font-black text-white">
-                  {alignmentConfirmation.choice === 'starseeker' ? 'Starseeker' : alignmentConfirmation.choice === 'goldenOrbit' ? 'Golden Orbit' : 'Clockwork'} is active
-                </h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  {alignmentConfirmation.choice === 'starseeker'
-                    ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
-                    : alignmentConfirmation.choice === 'goldenOrbit'
-                      ? 'All Coins earned are increased by 50%.'
-                      : 'Your Auto Roll cooldown is reduced by 20%, respecting the 300ms floor.'}
-                </p>
-                <p className="mt-2 text-xs text-slate-400">Your chosen effect remains active for 60 minutes.</p>
-                <div className="mt-6 flex items-center justify-between gap-4 text-[10px] font-black uppercase tracking-[.14em] text-cyan-200">
-                  <span>Confirmation closes in</span>
-                  <strong className="text-lg tabular-nums text-white">
-                    {String(Math.floor(alignmentConfirmationSeconds / 60)).padStart(2, '0')}:{String(alignmentConfirmationSeconds % 60).padStart(2, '0')}
-                  </strong>
-                </div>
-                <div
-                  className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800"
-                  role="progressbar"
-                  aria-label="Alignment confirmation time remaining"
-                  aria-valuemin={0}
-                  aria-valuemax={60}
-                  aria-valuenow={alignmentConfirmationSeconds}
-                >
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-[width] duration-200"
-                    style={{ width: `${(alignmentConfirmationSeconds / 60) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
-                <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
+            <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
                 disabled={alignmentChoiceBusy}
@@ -3513,10 +3497,46 @@ function App() {
                 <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-emerald-200">20% faster Auto Roll</span>
               </button>
             </div>
-                {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
-              </>
-            )}
+            {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
           </section>
+        </div>
+      )}
+
+      {alignmentConfirmation && (
+        <div className="pointer-events-none fixed right-4 top-4 z-[90] w-[calc(100vw-2rem)] max-w-sm" data-testid="celestial-alignment-confirmation" role="status" aria-live="polite">
+          <div className="pointer-events-auto rounded-2xl border border-emerald-400/30 bg-slate-950/95 p-4 shadow-[0_12px_50px_rgba(0,0,0,.4)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-emerald-300">Alignment activated</div>
+              <strong className="shrink-0 text-lg tabular-nums text-white">
+                {String(Math.floor(alignmentConfirmationSeconds / 60)).padStart(2, '0')}:{String(alignmentConfirmationSeconds % 60).padStart(2, '0')}
+              </strong>
+            </div>
+            <h2 className="mt-2 text-lg font-black text-white">
+              {alignmentConfirmation.choice === 'starseeker' ? 'Starseeker' : alignmentConfirmation.choice === 'goldenOrbit' ? 'Golden Orbit' : 'Clockwork'} is active
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              {alignmentConfirmation.choice === 'starseeker'
+                ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
+                : alignmentConfirmation.choice === 'goldenOrbit'
+                  ? 'All Coins earned are increased by 50%.'
+                  : `Auto Roll cooldown is now ${(cooldownMs(state ?? createInitialState(), true) / 1000).toFixed(2)}s.`}
+            </p>
+            <p className="mt-1 text-[10px] text-slate-400">The selected effect remains active for 60 minutes.</p>
+            <div
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800"
+              role="progressbar"
+              aria-label="Alignment confirmation time remaining"
+              aria-valuemin={0}
+              aria-valuemax={60}
+              aria-valuenow={alignmentConfirmationSeconds}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-[width] duration-200"
+                style={{ width: `${(alignmentConfirmationSeconds / 60) * 100}%` }}
+              />
+            </div>
+            <div className="mt-1 text-right text-[10px] text-slate-400">This notice closes automatically</div>
+          </div>
         </div>
       )}
 
