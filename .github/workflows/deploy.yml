@@ -200,6 +200,7 @@ jobs:
           npx devvit list installs r/infinity_orbs_dev
 
 # Dev-only deployment trigger: refreshed credentials; keep production installation in a separate workflow.
+# Explicit user-requested dev-only deployment of v2.1.50 on 2026-11-01; no production install.
 # Retry: restore the XP bar's tested accessible label while retaining the max-level announcement.
 # Explicit user request 2026-10-31: deploy current main release 2.1.31 to r/infinity_orbs_dev only.
 # Explicit user request 2026-10-31: deploy v2.1.31 after the mobile layout refinements.
