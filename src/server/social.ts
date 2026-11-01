@@ -2,6 +2,7 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import type {
   Guild,
   LeaderboardEntry,
@@ -742,9 +743,6 @@ async function applyGuildMigration(
   markerKey: string,
   migrate: (guilds: Guild[]) => void,
 ): Promise<void> {
-  // Once initialized, ordinary Guild reads should not queue behind the shared
-  // document lock just to re-check the marker. Recheck under the lock below
-  // when initialization is actually needed.
   const markerBeforeLock = await redis.get(markerKey);
   if (markerBeforeLock === '1') return;
   if (markerBeforeLock != null) {
@@ -756,6 +754,8 @@ async function applyGuildMigration(
     for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(GUILDS_KEY, markerKey);
       let transactionClosed = false;
+      let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+      let writeCommitted = false;
       try {
         const marker = await redis.get(markerKey);
         if (marker === '1') {
@@ -769,19 +769,28 @@ async function applyGuildMigration(
           throw new Error('Guild migration marker is corrupted; refusing to rerun a destructive migration.');
         }
 
-        const raw = await redis.get(GUILDS_KEY);
-        const guilds = parseGuildList(raw);
+        const storedRaw = await redis.get(GUILDS_KEY);
+        const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
+        const guilds = parseGuildList(decodedRaw);
         migrate(guilds);
+        writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
 
         await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        await txn.set(GUILDS_KEY, writePlan.storedValue);
         await txn.set(markerKey, '1');
         const committed = await txn.exec();
         transactionClosed = true;
-        if (committed !== null) return;
+        if (committed !== null) {
+          writeCommitted = true;
+          await retireRedisLargeValue(GUILDS_KEY, storedRaw);
+          return;
+        }
       } finally {
         if (!transactionClosed) {
           await txn.unwatch().catch(() => undefined);
+        }
+        if (writePlan && !writeCommitted) {
+          await discardRedisLargeValueWritePlan(writePlan);
         }
       }
     }
@@ -813,7 +822,6 @@ async function ensureGuildMigrations(): Promise<void> {
 }
 
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
-  // Finish one-time migrations before taking the ordinary mutation lease.
   await ensureGuildMigrations();
   return withGuildDataMutationLock(async () => {
     await ensureRedisStringKey(GUILDS_KEY, '[]');
@@ -821,18 +829,30 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
     for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(GUILDS_KEY);
       let transactionClosed = false;
+      let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+      let writeCommitted = false;
       try {
-        const raw = await redis.get(GUILDS_KEY);
-        const guilds: Guild[] = parseGuildList(raw);
+        const storedRaw = await redis.get(GUILDS_KEY);
+        const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
+        const guilds: Guild[] = parseGuildList(decodedRaw);
         const result = await mutator(guilds);
+        writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
+
         await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(guilds));
+        await txn.set(GUILDS_KEY, writePlan.storedValue);
         const committed = await txn.exec();
         transactionClosed = true;
-        if (committed !== null) return result;
+        if (committed !== null) {
+          writeCommitted = true;
+          await retireRedisLargeValue(GUILDS_KEY, storedRaw);
+          return result;
+        }
       } finally {
         if (!transactionClosed) {
           await txn.unwatch().catch(() => undefined);
+        }
+        if (writePlan && !writeCommitted) {
+          await discardRedisLargeValueWritePlan(writePlan);
         }
       }
     }
@@ -840,12 +860,12 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
   });
 }
 
-
 async function loadGuilds(): Promise<Guild[]> {
   await ensureGuildMigrations();
-  const raw = await redis.get(GUILDS_KEY);
-  const parsedSnapshot = parseStoredJson<unknown>(raw);
-  const rawGuilds = parseGuildListRaw(raw);
+  const storedRaw = await redis.get(GUILDS_KEY);
+  const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
+  const parsedSnapshot = parseStoredJson<unknown>(decodedRaw);
+  const rawGuilds = parseGuildListRaw(decodedRaw);
   const now = Date.now();
   const storedComboExpired = rawGuilds.some(g => {
     const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
@@ -855,107 +875,114 @@ async function loadGuilds(): Promise<Guild[]> {
     );
     return (
       (taskTierStuck && tier === 0) ||
-      // Older recovery code may have zeroed the Combo timer without resetting
-      // higher task tiers, so Tier 1 repair must not depend on endsAt surviving.
       (taskTierStuck && endsAt > 0 && endsAt <= now) ||
       (tier > 0 && endsAt > 0 && endsAt <= now)
     );
   });
   const guilds = normalizeGuilds(rawGuilds, now);
 
-  // Playtest recovery must not be an in-memory bandage. Once a valid JSON
-  // array has been safely normalized, persist the repaired snapshot with WATCH
-  // so later reads and mutations see the same clean Guild state. This is
-  // deliberately scoped to r/infinity_orbs_dev; production Guild data remains
-  // strict and is never silently rewritten by this recovery path.
   if (
     isGuildPlaytestRecoveryEnabled() &&
-    typeof raw === 'string' &&
+    typeof decodedRaw === 'string' &&
     Array.isArray(parsedSnapshot)
   ) {
     const recoveredRaw = JSON.stringify(guilds);
-    if (recoveredRaw !== raw) {
+    if (recoveredRaw !== decodedRaw) {
       try {
         await withGuildDataMutationLock(async () => {
           const txn = await redis.watch(GUILDS_KEY);
           let transactionClosed = false;
+          let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+          let writeCommitted = false;
           try {
-            const latestRaw = await redis.get(GUILDS_KEY);
-            if (latestRaw !== raw) {
+            const latestStoredRaw = await redis.get(GUILDS_KEY);
+            if (latestStoredRaw !== storedRaw) {
               await txn.unwatch();
               transactionClosed = true;
             } else {
+              writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, recoveredRaw);
               await txn.multi();
-              await txn.set(GUILDS_KEY, recoveredRaw);
-              // A conflicting write is not overwritten. The next read can recover
-              // the newer snapshot; recovery persistence must not block this read.
-              await txn.exec();
+              await txn.set(GUILDS_KEY, writePlan.storedValue);
+              const committed = await txn.exec();
               transactionClosed = true;
+              if (committed !== null) {
+                writeCommitted = true;
+                await retireRedisLargeValue(GUILDS_KEY, latestStoredRaw);
+              }
             }
           } finally {
             if (!transactionClosed) {
               await txn.unwatch().catch(() => undefined);
             }
+            if (writePlan && !writeCommitted) {
+              await discardRedisLargeValueWritePlan(writePlan);
+            }
           }
         });
       } catch (error) {
         console.error('[Guild Recovery] Could not persist the dev-only repaired snapshot:', error);
-        // Return the normalized in-memory snapshot even if best-effort repair
-        // persistence fails; strict production parsing is unaffected.
       }
     }
   }
 
   if (storedComboExpired) {
-    // Persist the expiry reset so a later read cannot resurrect the old task tiers.
     return withGuildDataMutationLock(async () => {
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const txn = await redis.watch(GUILDS_KEY);
-      let transactionClosed = false;
-      try {
-        const latestRaw = await redis.get(GUILDS_KEY);
-        // Validate the watched snapshot with the same parser as ordinary Guild
-        // reads. Filtering malformed rows here could silently delete Guild data.
-        const latestRawGuilds = parseGuildListRaw(latestRaw);
-        const latestNow = Date.now();
-        const latestExpired = latestRawGuilds.some(g => {
-          const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
-          const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
-          const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
-            Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
-          );
-          return (
-            (taskTierStuck && tier === 0) ||
-            (taskTierStuck && endsAt > 0 && endsAt <= latestNow) ||
-            (tier > 0 && endsAt > 0 && endsAt <= latestNow)
-          );
-        });
-        const latest = normalizeGuilds(latestRawGuilds, latestNow);
-        if (!latestExpired) {
-          await txn.unwatch();
-          transactionClosed = true;
-          return latest;
-        }
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const txn = await redis.watch(GUILDS_KEY);
+        let transactionClosed = false;
+        let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+        let writeCommitted = false;
+        try {
+          const latestStoredRaw = await redis.get(GUILDS_KEY);
+          const latestDecodedRaw = await readRedisLargeValue(GUILDS_KEY, latestStoredRaw);
+          const latestRawGuilds = parseGuildListRaw(latestDecodedRaw);
+          const latestNow = Date.now();
+          const latestExpired = latestRawGuilds.some(g => {
+            const tier = Math.max(0, Math.floor(Number(g.combo?.tier ?? 0) || 0));
+            const endsAt = Math.max(0, Math.floor(Number(g.combo?.endsAt ?? 0) || 0));
+            const taskTierStuck = Array.isArray(g.tasks) && g.tasks.some(task =>
+              Math.max(1, Math.floor(Number(task?.tier ?? 1) || 1)) > 1,
+            );
+            return (
+              (taskTierStuck && tier === 0) ||
+              (taskTierStuck && endsAt > 0 && endsAt <= latestNow) ||
+              (tier > 0 && endsAt > 0 && endsAt <= latestNow)
+            );
+          });
+          const latest = normalizeGuilds(latestRawGuilds, latestNow);
+          if (!latestExpired) {
+            await txn.unwatch();
+            transactionClosed = true;
+            return latest;
+          }
 
-        normalizeGuilds(latest, Date.now());
-        await txn.multi();
-        await txn.set(GUILDS_KEY, JSON.stringify(latest));
-        const committed = await txn.exec();
-        transactionClosed = true;
-        if (committed !== null) return latest;
-      } catch (error) {
-        // Malformed watched snapshots and other read failures must be surfaced;
-        // always release WATCH, then rethrow instead of silently continuing.
-        transactionClosed = true;
-        await txn.unwatch();
-        throw error;
-      } finally {
-        if (!transactionClosed) {
-          await txn.unwatch().catch(() => undefined);
+          normalizeGuilds(latest, Date.now());
+          writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(latest));
+          await txn.multi();
+          await txn.set(GUILDS_KEY, writePlan.storedValue);
+          const committed = await txn.exec();
+          transactionClosed = true;
+          if (committed !== null) {
+            writeCommitted = true;
+            await retireRedisLargeValue(GUILDS_KEY, latestStoredRaw);
+            return latest;
+          }
+        } catch (error) {
+          if (!transactionClosed) {
+            transactionClosed = true;
+            await txn.unwatch();
+          }
+          throw error;
+        } finally {
+          if (!transactionClosed) {
+            await txn.unwatch().catch(() => undefined);
+          }
+          if (writePlan && !writeCommitted) {
+            await discardRedisLargeValueWritePlan(writePlan);
+          }
         }
       }
-    }
-    throw new Error('Guild data changed while processing combo expiry. Please retry.');
+      throw new Error('Guild data changed while processing combo expiry. Please retry.');
     });
   }
 
@@ -1540,7 +1567,7 @@ export async function prepareGuildRollEffects(
   // They never withhold Coins or block the authoritative player reward.
   await ensureRedisStringKey(GUILDS_KEY, '[]');
   const persistedRaw = await redis.get(GUILDS_KEY);
-  const sourceRaw = pendingWrite ? pendingWrite.nextValue : persistedRaw;
+  const sourceRaw = pendingWrite ? pendingWrite.nextValue : await readRedisLargeValue(GUILDS_KEY, persistedRaw);
   const guilds = parseGuildList(sourceRaw);
   const guild = currentGuild(guilds);
   if (!guild) return pendingWrite ? { extraWrite: { key: GUILDS_KEY, ...pendingWrite } } : {};
