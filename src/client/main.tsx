@@ -168,7 +168,7 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const method = String(options?.method ?? 'GET').toUpperCase();
   const isRead = method === 'GET' || method === 'HEAD';
-  const maxAttempts = isRead ? 3 : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? 10 : 1;
+  const maxAttempts = isRead ? 3 : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? 30 : 1;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let receivedNonRetryableHttpError = false;
@@ -218,8 +218,8 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
         if ((retryableRead && attempt < maxAttempts - 1) || retryableQueuedMutation) {
           const serverDelay = Number(errorData.retryAfterMs);
           const delayMs = Number.isFinite(serverDelay) && serverDelay > 0
-            ? Math.min(1_500, serverDelay)
-            : Math.min(1_000, 140 * (attempt + 1));
+            ? Math.min(2_000, serverDelay)
+            : Math.min(2_000, 140 * (attempt + 1));
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
         }
