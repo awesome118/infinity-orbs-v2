@@ -2,6 +2,13 @@ import { context, redis, reddit } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
+import {
+  cleanupPreviousPlayerSave,
+  createPlayerSaveWritePlan,
+  discardPlayerSaveWritePlan,
+  readStoredPlayerSave,
+  serializePlayerStateForRedis,
+} from './player-save.js';
 import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import type {
   Guild,
@@ -2944,7 +2951,8 @@ export async function claimAchievement(_s: PlayerState, id: string) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(playerKey, generationKey);
-    const raw = await redis.get(playerKey);
+    const storedRaw = await redis.get(playerKey);
+    const raw = await readStoredPlayerSave(user(), storedRaw);
     const generationRaw = await redis.get(generationKey);
     const state = parseStoredJson<PlayerState>(raw);
     const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
@@ -2998,11 +3006,23 @@ export async function claimAchievement(_s: PlayerState, id: string) {
     state.lifetimeCoins = addCoinAmount(lifetimeCoins, rewardCoins);
     const rewardShards = grantFreeShards(state, achievement.rewardShards ?? 0);
 
-    await txn.multi();
-    await txn.set(playerKey, JSON.stringify(state));
-    const committed = await txn.exec();
-    if (committed !== null) {
-      return { state, rewardCoins, rewardShards };
+    let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      writePlan = await createPlayerSaveWritePlan(user(), serializePlayerStateForRedis(state));
+      await txn.multi();
+      await txn.set(playerKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      if (committed !== null) {
+        writeCommitted = true;
+        await cleanupPreviousPlayerSave(user(), storedRaw);
+        return { state, rewardCoins, rewardShards };
+      }
+    } finally {
+      if (!writeCommitted) {
+        await txn.unwatch().catch(() => undefined);
+        if (writePlan) await discardPlayerSaveWritePlan(writePlan);
+      }
     }
   }
 
