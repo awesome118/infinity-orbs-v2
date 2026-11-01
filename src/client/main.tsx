@@ -2062,16 +2062,83 @@ function App() {
     setReadyAt(lastRollAt + cooldownMs(timingState, true));
   }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
-  // Auto roll watcher (paced steadily)
+  // Auto Roll uses a single scheduled wake-up, not a state-captured polling
+  // interval. Every wake-up re-reads the latest save and recomputes the Auto
+  // cooldown so a stale render cannot strand or prematurely trigger the loop.
   useEffect(() => {
-    if (!splashEntered || combatMode || !autoRoll || !state || state.upgrades.auto === 0) return;
-    const interval = setInterval(() => {
-      if (Date.now() >= readyAt && !isRolling) {
-        void handleRoll(true);
+    if (
+      !splashEntered ||
+      combatMode ||
+      !autoRoll ||
+      !state ||
+      (state.upgrades.auto ?? 0) <= 0 ||
+      state.autoRollEnabled !== true
+    ) return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+    const schedule = (delayMs: number) => {
+      if (cancelled) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(tick, Math.max(50, Math.min(1_000, delayMs)));
+    };
+    const tick = () => {
+      timer = null;
+      if (cancelled) return;
+      const latest = stateRef.current;
+      if (
+        !latest ||
+        latest.autoRollEnabled !== true ||
+        (latest.upgrades.auto ?? 0) <= 0 ||
+        combatModeRef.current
+      ) return;
+      if (document.visibilityState === 'hidden') {
+        schedule(1_000);
+        return;
       }
-    }, 300);
-    return () => clearInterval(interval);
-  }, [autoRoll, state, readyAt, isRolling, handleRoll, splashEntered, combatMode]);
+      if (rollActionLockRef.current) {
+        schedule(100);
+        return;
+      }
+
+      const lastRollAt = Math.max(0, Number(latest.lastRollAt ?? 0) || 0);
+      const authoritativeReadyAt = lastRollAt > 0
+        ? lastRollAt + cooldownMs(latest, true)
+        : 0;
+      const nextReadyAt = Math.max(readyAt, authoritativeReadyAt);
+      const remaining = nextReadyAt - Date.now();
+      if (remaining > 0) {
+        schedule(remaining);
+        return;
+      }
+
+      void handleRoll(true).finally(() => {
+        if (!cancelled) schedule(150);
+      });
+    };
+    const onVisibilityChange = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+      tick();
+    };
+
+    tick();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [
+    autoRoll,
+    state?.autoRollEnabled,
+    state?.upgrades.auto,
+    state?.lastRollAt,
+    readyAt,
+    handleRoll,
+    splashEntered,
+    combatMode,
+  ]);
 
   // Standard upgrades are applied optimistically, queued for a short burst
   // window, and validated together by one authoritative server mutation.
