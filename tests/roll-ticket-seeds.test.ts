@@ -11,3 +11,29 @@ test('roll seed streams are deterministic', () => {
     assert.equal(a.nextRarity(), b.nextRarity());
   }
 });
+
+test('ticket seeds are retained, ordered, and replayed for the committed result', () => {
+  const { readFileSync } = require('node:fs');
+  const { resolve } = require('node:path');
+  const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  assert.match(game, /seeds: string\[\]/);
+  assert.match(game, /requestedSeed !== ticket\.seeds\[ticketIndex\]/);
+  assert.match(game, /createRollRandomSource\(ticketUse\.ticket\.seeds\[ticketUse\.index\]\)/);
+  assert.match(main, /setLastOrb\(prediction\.orb\)/);
+  assert.match(main, /ticketSeed,/);
+});
+
+test('Auto Roll uses the current saved cooldown and a self-rescheduling timer', () => {
+  const { readFileSync } = require('node:fs');
+  const { resolve } = require('node:path');
+  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
+  const start = main.indexOf('// Auto Roll uses a single scheduled wake-up');
+  const end = main.indexOf('// Standard upgrades are applied optimistically', start);
+  assert.ok(start >= 0 && end > start);
+  const effect = main.slice(start, end);
+  assert.match(effect, /stateRef\.current/);
+  assert.match(effect, /cooldownMs\(latest, true\)/);
+  assert.match(effect, /window\.setTimeout/);
+  assert.doesNotMatch(effect, /setInterval/);
+});
