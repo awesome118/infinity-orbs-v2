@@ -200,6 +200,7 @@ test('inline Frenzy claim activity stays compact inside the fixed, non-scrollabl
 
 test('inline main-game Reddit post fills the preview height and anchors the card footer at the bottom', () => {
   const styles = source('src/client/post-revamp.css');
+  const shellStyles = source('src/client/styles.css');
   assert.match(styles, /#root\.io-inline-post > \.io-public:not\(\.io-public-compact\)/);
   assert.match(styles, /#root\.io-inline-post \.io-public-frame\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*height:\s*100%/s);
   assert.match(styles, /#root\.io-inline-post \.io-launch-card\s*\{[^}]*flex:\s*1 1 auto[^}]*display:\s*flex[^}]*flex-direction:\s*column/s);
