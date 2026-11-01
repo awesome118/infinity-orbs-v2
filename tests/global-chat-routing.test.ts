@@ -302,7 +302,7 @@ test('Global Chat bounds external Reddit comments before persisting its single-k
   try {
     await baseRedis.set(gamePostKey, postId);
     await baseRedis.set(chatKey, JSON.stringify([]));
-    const longComment = '\\u0001'.repeat(10_000);
+    const longComment = String.fromCharCode(1).repeat(10_000);
     const message = await recordGlobalChatComment({
       postId,
       commentId: 'size' + suffix.replace(/[^a-z0-9]/gi, ''),
