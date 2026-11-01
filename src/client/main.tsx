@@ -53,7 +53,6 @@ import {
   formatNumber,
   cooldownMs,
   calculateCosmicDust,
-  MAX_COSMIC_DUST,
   calculateLevelFromXp,
   DEFAULT_POPUP_CONFIG,
   applyLevelProgress,
@@ -2794,7 +2793,7 @@ function App() {
 
       return {
         ...current,
-        cosmicDust: Math.min(MAX_COSMIC_DUST, (current.cosmicDust ?? 0) + dustEarned),
+        cosmicDust: (current.cosmicDust ?? 0) + dustEarned,
         prestigeCount: (current.prestigeCount ?? 0) + 1,
         masteryPoints: (current.masteryPoints ?? 0) + 3,
         collectionValue: 0,
