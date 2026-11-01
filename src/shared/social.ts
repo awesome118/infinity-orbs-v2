@@ -208,6 +208,23 @@ const GUILD_TASK_BASES: Record<ChallengeType, {
   },
 };
 
+export function countGuildTaskRareOrbs(
+  rarities: readonly number[],
+  weights: readonly number[],
+  minimumRarity = 100,
+): number {
+  const threshold = Number.isFinite(minimumRarity) ? Math.max(2, minimumRarity) : 100;
+  const count = Math.min(rarities.length, weights.length);
+  let total = 0;
+  for (let index = 0; index < count; index += 1) {
+    const rarity = Number(rarities[index]);
+    const weight = Number(weights[index]);
+    if (!Number.isFinite(rarity) || rarity < threshold || !Number.isFinite(weight) || weight <= 0) continue;
+    total = Math.min(Number.MAX_SAFE_INTEGER, total + Math.max(0, Math.floor(weight)));
+  }
+  return total;
+}
+
 export function createGuildTask(
   type: ChallengeType,
   tier = 1,
