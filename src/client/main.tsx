@@ -1354,7 +1354,7 @@ function App() {
   }, [splashEntered]);
 
   // Alignment appearances are independent server-timed events, not roll procs.
-  // Poll only while the game is visible; an unanswered event remains persisted.
+  // Poll only while the game is visible; unanswered offers expire after 60 seconds on the server.
   useEffect(() => {
     if (!splashEntered || ((state?.masterySkills?.celestialAlignment ?? 0) <= 0 && !isAdmin)) {
       setAlignmentStatus(null);
