@@ -35,10 +35,13 @@ test('normal player save stores Codex deltas outside the large player JSON', () 
   const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
   const save = game.slice(game.indexOf('export async function save('), game.indexOf('\nfunction serverRandom'));
   const load = game.slice(game.indexOf('export async function loadRaw('), game.indexOf('\nfunction applyXp'));
+  const payment = game.slice(game.indexOf('export async function grantPurchasedPack'), game.indexOf('export async function loadRaw'));
   assert.match(save, /pendingCodexRarityWrites/);
   assert.match(save, /txn\.hSet\(codexWriteKeys\[index\], codexWrites\[index\]\.fields\)/);
-  assert.match(save, /field !== 'collection'/);
+  assert.match(save, /serializePlayerStateForRedis\(nextState\)/);
   assert.match(load, /readCodexShards\(userId, generation\)/);
+  assert.match(game, /ensureCodexStorageVersion\(userId, generation, state\)/);
+  assert.equal((payment.match(/serializePlayerStateForRedis\(state\)/g) ?? []).length, 2);
   assert.match(load, /migrateLegacyCodex\(userId, generation, restoredCollection\)/);
   assert.match(game, /markCodexRarityWrite\(s, key\)/);
 });

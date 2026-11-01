@@ -197,3 +197,5 @@ jobs:
 # 2026-10-31: target the effective batch-cap branch rather than the representative-sample branch.
 
 # 2026-10-31: use a literal source-window check for effective roll caps.
+
+# Payment/refund paths retain the compact sharded Codex save format.

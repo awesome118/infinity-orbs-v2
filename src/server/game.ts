@@ -307,6 +307,21 @@ async function migrateLegacyCodex(userId: string, generation: number, collection
     await Promise.all(queued.slice(offset, offset + 4).map(write => redis.hSet(write.key, write.fields)));
   }
 }
+
+async function ensureCodexStorageVersion(userId: string, generation: number, state: PlayerState): Promise<void> {
+  if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) return;
+  const legacyCollection = isValidCollection(state.collection) ? state.collection : {};
+  await migrateLegacyCodex(userId, generation, legacyCollection);
+  state.collection = legacyCollection;
+  state.collectionStorageVersion = CODEX_STORAGE_VERSION;
+}
+
+function serializePlayerStateForRedis(state: PlayerState): string {
+  const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
+    ? Object.fromEntries(Object.entries(state).filter(([field]) => field !== 'collection'))
+    : state;
+  return JSON.stringify(persistedState);
+}
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
 const CCU_HOURLY_PREFIX = 'io:ccu:hour:';
@@ -2395,6 +2410,7 @@ return withPlayerMutationLockFor(userId, async () => {
       }
     }
 
+    await ensureCodexStorageVersion(userId, generation, state);
     await appendPaymentDebugLog('grant:state-selected', {
       userId,
       sku,
@@ -2492,7 +2508,7 @@ return withPlayerMutationLockFor(userId, async () => {
     });
 
     await txn.multi();
-    await txn.set(pkey, JSON.stringify(state));
+    await txn.set(pkey, serializePlayerStateForRedis(state));
     const committed = await txn.exec();
     if (committed !== null) {
       await appendPaymentDebugLog('grant:success', {
@@ -2540,6 +2556,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
         await txn.unwatch();
         throw new Error('The payment arrived for an invalidated player save. Please reconcile the purchase again.');
       }
+      await ensureCodexStorageVersion(userId, generation, state);
 
       state.paymentReceipts = state.paymentReceipts ?? {};
       const receipt = state.paymentReceipts[orderId];
@@ -2620,7 +2637,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
       };
 
       await txn.multi();
-      await txn.set(pkey, JSON.stringify(state));
+      await txn.set(pkey, serializePlayerStateForRedis(state));
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -3495,11 +3512,8 @@ export async function save(
     }
 
     const nextState = { ...s, saveGeneration: generation, stateRevision: expectedRevision + 1 };
-    const persistedState = nextState.collectionStorageVersion === CODEX_STORAGE_VERSION
-      ? Object.fromEntries(Object.entries(nextState).filter(([field]) => field !== 'collection'))
-      : nextState;
     await txn.multi();
-    await txn.set(playerKey, JSON.stringify(persistedState));
+    await txn.set(playerKey, serializePlayerStateForRedis(nextState));
     for (let index = 0; index < codexWrites.length; index += 1) {
       await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
     }
