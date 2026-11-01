@@ -15,6 +15,7 @@ export type ServerMonitorEvent = {
   status: number;
   durationMs: number;
   message: string;
+  details?: Record<string, unknown>;
 };
 
 type SecondBucket = {
@@ -43,6 +44,17 @@ const buckets: SecondBucket[] = Array.from({ length: BUCKET_COUNT }, () => ({
 const events: ServerMonitorEvent[] = [];
 let nextEventId = 1;
 let activeRequests = 0;
+
+const upgradeBatchCounters = {
+  serverAttempts: 0,
+  serverAccepted: 0,
+  serverPartial: 0,
+  serverRejected: 0,
+  clientRollbacks: 0,
+  serverDurationMsTotal: 0,
+  serverDurationSamples: 0,
+  lastFailureAt: 0,
+};
 
 function bucketFor(second: number): SecondBucket {
   const index = ((second % BUCKET_COUNT) + BUCKET_COUNT) % BUCKET_COUNT;
@@ -73,6 +85,98 @@ function normalizedActor(value: unknown): string {
   else if (username.toLowerCase().startsWith('u/')) username = username.slice(2);
   while (username.startsWith('/')) username = username.slice(1);
   return username ? 'u/' + username.slice(0, 100) : 'an unknown user';
+}
+
+/**
+ * Capture purchase outcomes without adding a Redis write to the hot path.
+ * The bounded event ring and counters live only for this server process.
+ */
+export function recordUpgradeBatchDiagnostic(input: {
+  stage: 'server-accepted' | 'server-partial' | 'server-rejected' | 'client-rollback';
+  username?: unknown;
+  requestId?: unknown;
+  upgradeIds?: unknown;
+  status?: unknown;
+  durationMs?: unknown;
+  errorCode?: unknown;
+  message?: unknown;
+  clientStateRevision?: unknown;
+  serverStateRevision?: unknown;
+  purchasedCount?: unknown;
+}): void {
+  const timestamp = Date.now();
+  const stage = input.stage;
+  const actor = normalizedActor(input.username);
+  const requestId = String(input.requestId ?? '').replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 80);
+  const upgradeIds = Array.isArray(input.upgradeIds)
+    ? input.upgradeIds.filter((id): id is string => typeof id === 'string').slice(0, 100).map(id => id.slice(0, 48))
+    : [];
+  const status = Math.max(0, Math.min(599, Math.floor(Number(input.status) || 0)));
+  const durationMs = Math.max(0, Math.min(120_000, Number(input.durationMs) || 0));
+  const errorCode = String(input.errorCode ?? '').replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 80);
+  const reason = String(input.message ?? '').replace(/\\s+/g, ' ').slice(0, 180);
+  const clientStateRevision = Number.isSafeInteger(input.clientStateRevision) ? Number(input.clientStateRevision) : null;
+  const serverStateRevision = Number.isSafeInteger(input.serverStateRevision) ? Number(input.serverStateRevision) : null;
+  const purchasedCount = Number.isSafeInteger(input.purchasedCount) ? Math.max(0, Number(input.purchasedCount)) : null;
+
+  if (stage === 'server-accepted' || stage === 'server-partial' || stage === 'server-rejected') {
+    upgradeBatchCounters.serverAttempts += 1;
+    upgradeBatchCounters.serverDurationMsTotal += durationMs;
+    upgradeBatchCounters.serverDurationSamples += 1;
+    if (stage === 'server-accepted') upgradeBatchCounters.serverAccepted += 1;
+    else if (stage === 'server-partial') {
+      upgradeBatchCounters.serverPartial += 1;
+      upgradeBatchCounters.lastFailureAt = timestamp;
+    } else {
+      upgradeBatchCounters.serverRejected += 1;
+      upgradeBatchCounters.lastFailureAt = timestamp;
+    }
+  } else {
+    upgradeBatchCounters.clientRollbacks += 1;
+    upgradeBatchCounters.lastFailureAt = timestamp;
+  }
+
+  const stageLabel = stage === 'server-accepted'
+    ? 'accepted'
+    : stage === 'server-partial'
+      ? 'partially accepted'
+      : stage === 'server-rejected'
+        ? 'rejected'
+        : 'client rolled back';
+  const severity: ServerMonitorEvent['severity'] = stage === 'server-accepted'
+    ? 'info'
+    : status >= 500 || status === 0
+      ? 'error'
+      : 'warn';
+  const detailParts = [
+    requestId ? 'ID ' + requestId : '',
+    errorCode ? 'code ' + errorCode : '',
+    reason ? 'reason ' + reason : '',
+  ].filter(Boolean);
+  pushEvent({
+    timestamp,
+    severity,
+    actor,
+    method: 'POST',
+    path: stage === 'client-rollback' ? '/api/diagnostics/upgrade-rollback' : '/api/upgrade/batch',
+    status,
+    durationMs,
+    message: 'Upgrade batch ' + stageLabel + ' · ' + actor +
+      ' · ' + upgradeIds.length + ' requested · HTTP ' + status + ' · ' + durationMs + ' ms' +
+      (purchasedCount === null ? '' : ' · ' + purchasedCount + ' purchased') +
+      (detailParts.length ? ' · ' + detailParts.join(' · ') : ''),
+    details: {
+      stage,
+      ...(requestId ? { requestId } : {}),
+      upgradeIds,
+      requestedCount: upgradeIds.length,
+      ...(purchasedCount === null ? {} : { purchasedCount }),
+      ...(errorCode ? { errorCode } : {}),
+      ...(reason ? { reason } : {}),
+      ...(clientStateRevision === null ? {} : { clientStateRevision }),
+      ...(serverStateRevision === null ? {} : { serverStateRevision }),
+    },
+  });
 }
 
 function humanizePath(path: string): string {
@@ -244,6 +348,17 @@ export function getServerMonitorSnapshot(now = Date.now()) {
       redisCommandsPerSecond: REDIS_COMMANDS_PER_SECOND_LIMIT,
       redisStorageBytes: REDIS_STORAGE_LIMIT_BYTES,
       httpRequestsPerSecond: null,
+    },
+    upgradeBatches: {
+      serverAttempts: upgradeBatchCounters.serverAttempts,
+      serverAccepted: upgradeBatchCounters.serverAccepted,
+      serverPartial: upgradeBatchCounters.serverPartial,
+      serverRejected: upgradeBatchCounters.serverRejected,
+      clientRollbacks: upgradeBatchCounters.clientRollbacks,
+      averageServerDurationMs: upgradeBatchCounters.serverDurationSamples > 0
+        ? upgradeBatchCounters.serverDurationMsTotal / upgradeBatchCounters.serverDurationSamples
+        : 0,
+      lastFailureAt: upgradeBatchCounters.lastFailureAt || null,
     },
     events: events.slice(-150),
   };
