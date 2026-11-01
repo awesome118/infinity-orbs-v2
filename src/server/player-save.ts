@@ -173,7 +173,9 @@ export async function createPlayerSaveWritePlan(
       written += 1;
     }
   } catch (error) {
-    await Promise.all(chunkKeys.slice(0, written).map(keyName => redis.del(keyName).catch(() => undefined)));
+    // A Set can commit even when its response is lost; delete every unique key,
+    // not only those whose client promise reported success.
+    await Promise.all(chunkKeys.map(keyName => redis.del(keyName).catch(() => undefined)));
     throw error;
   }
 
