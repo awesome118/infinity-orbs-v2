@@ -109,7 +109,7 @@ jobs:
           node --import tsx --test --test-name-pattern="Guild task set starts with one task of each type|Guild task difficulty and rewards scale upward by tier|Guild task difficulty is driven by tier alone and does not carry Guild XP|Guild task rewards remain capped|Guild tasks retain token rewards but do not model Titan or Guild XP rewards" tests/mechanics.test.ts
           node --import tsx --test --test-name-pattern="Guild parser preserves task/member data while removing legacy levels, XP, Titan, and tax|roll rewards commit atomically with Guild and community progress|corrupt optional Guild roll projections do not cancel normal or Frenzy player payouts|legacy Guild contribution advances each task once and rewards Tokens without XP or Titan" tests/audit-regressions.test.ts
           npm run type-check
-          node --import tsx --test --test-name-pattern="immersive startup shows save-loading progress and unlocks the radiant Play button only when ready|inline Frenzy claim activity stays compact inside the fixed, non-scrollable post preview|inline main-game Reddit post fits inside the fixed preview without clipping its contents" tests/post-revamp.test.ts
+          node --import tsx --test --test-name-pattern="immersive startup shows save-loading progress and unlocks the radiant Play button only when ready|inline Frenzy claim activity stays compact inside the fixed, non-scrollable post preview|inline main-game Reddit post fills the preview height and anchors the card footer at the bottom" tests/post-revamp.test.ts
           node --import tsx --test tests/roll-batching.test.ts tests/collection-persistence.test.ts
           node --import tsx --test tests/mobile-layout.test.ts
           # Keep the max, reset, and unlock debug presets in sync with the upgrade registry.
@@ -251,3 +251,5 @@ jobs:
 # Explicit user-requested dev-only main-game post spacing and full-height card alignment update v2.1.59 on 2026-11-01.
 
 # Test-only follow-up: correct the escaped selector patterns in the v2.1.59 main-post layout regression.
+
+# Ensure the v2.1.59 inline post full-height/footer regression is included in deployment preflight.
