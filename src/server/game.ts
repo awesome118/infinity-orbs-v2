@@ -283,7 +283,7 @@ async function withPlayerMutationLocksFor<T>(
 
 const key = () => `player:${currentUserId()}`;
 
-function markCodexRarityWrite(state: PlayerState, rarityKey: string): void {
+export function markCodexRarityWrite(state: PlayerState, rarityKey: string): void {
   const pending = pendingCodexRarityWrites.get(state) ?? new Set<string>();
   pending.add(rarityKey);
   pendingCodexRarityWrites.set(state, pending);
