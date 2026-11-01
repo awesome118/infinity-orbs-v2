@@ -475,10 +475,18 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
                         <div className="mt-3">
                           <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                            <span>Combo time</span>
-                            <span>{active ? `${durationProgress.toFixed(1)}% remaining` : 'Expired'}</span>
+                            <span>Time left / earned</span>
+                            <span>{active ? `${durationProgress.toFixed(1)}% of gained time left` : 'Expired'}</span>
                           </div>
-                          <div className="h-2.5 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-950">
+                          <div
+                            className="h-2.5 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-950"
+                            role="progressbar"
+                            aria-label="Guild combo time remaining relative to total time earned"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={active ? durationProgress : 0}
+                            aria-valuetext={active ? `${durationProgress.toFixed(1)}% of time earned remains` : 'Combo expired'}
+                          >
                             <div
                               className="h-full rounded-full bg-fuchsia-400 transition-all duration-1000"
                               style={{ width: `${active ? durationProgress : 0}%` }}
