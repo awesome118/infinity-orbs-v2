@@ -2001,7 +2001,7 @@ function App() {
       ) {
         const expectedTicketIndex = activeTicket.nextIndex;
         const expectedTicketId = activeTicket.ticketId;
-        void getJson<typeof activeTicket>('/api/roll-ticket')
+        void getJson<NonNullable<typeof activeTicket>>('/api/roll-ticket')
           .then(refreshedTicket => {
             const latestTicket = rollTicketRef.current;
             if (
