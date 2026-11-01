@@ -285,18 +285,18 @@ function Splash() {
           </div>
         </div>
 
-        <div className="io-post-conversion io-main-cta">
-          <div className="io-cta-caption"><span aria-hidden="true" /> {playedBefore === true ? 'YOUR NEXT RECORD IS ONE TAP AWAY' : playedBefore === false ? 'YOUR FIRST ORB IS ONE TAP AWAY' : 'YOUR NEXT ORB IS ONE TAP AWAY'}</div>
-          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" label={playedBefore === true ? 'Continue playing' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'} trackMainGameConversion />
-          <p className="io-cta-footnote">{playedBefore === true ? 'Your Codex and upgrades are saved on Reddit' : 'Free to play · No download · Your progress saves on Reddit'}</p>
-        </div>
-
         <div className="io-launch-footer">
           <span>Persistent Reddit save</span>
           <span>·</span>
           <span>Server-authoritative rolls</span>
           <span>·</span>
           <span>v{context.appVersion ?? 'unknown'}</span>
+        </div>
+
+        <div className="io-post-conversion io-main-cta">
+          <div className="io-cta-caption"><span aria-hidden="true" /> {playedBefore === true ? 'YOUR NEXT RECORD IS ONE TAP AWAY' : playedBefore === false ? 'YOUR FIRST ORB IS ONE TAP AWAY' : 'YOUR NEXT ORB IS ONE TAP AWAY'}</div>
+          <PlayGameButton className="io-public-button io-public-button-primary io-launch-button" label={playedBefore === true ? 'Continue playing' : playedBefore === false ? 'Play Infinity Orbs' : 'Open Infinity Orbs'} trackMainGameConversion />
+          <p className="io-cta-footnote">{playedBefore === true ? 'Your Codex and upgrades are saved on Reddit' : 'Free to play · No download · Your progress saves on Reddit'}</p>
         </div>
       </section>
     </PublicShell>

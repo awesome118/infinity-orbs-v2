@@ -3,7 +3,7 @@ name: Deploy Devvit
 # Explicit user-requested responsive, fullscreen and immediate-dispatch overhaul (2026-11-01): deploy v2.1.49 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.62.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.63.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.62]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.63]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           npm run preflight:guard
           node --import tsx --test tests/alignment-prompt-ui.test.ts
-          node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts
+          node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts tests/inline-main-post-cta-layout.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/combat-runes.test.ts
@@ -261,3 +261,5 @@ jobs:
 # Regression test source binding fix for bottom-flush main post v2.1.62.
 
 # Explicit dev-only rerun after admin Rune stat inspection receives the Rune rarity for Major Ability scaling; 2.1.62 on 2026-11-01.
+
+# Explicit dev-only layout update: bottom-anchor the main game Continue playing CTA and let the animated Infinity Orb stage grow into the available preview space; v2.1.63 on 2026-11-01.
