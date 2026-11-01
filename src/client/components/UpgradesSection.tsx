@@ -29,6 +29,10 @@ import {
   luckMultiplier,
   effectiveOfflineTickMs,
   critMultiplier,
+  orbFingersMultiplier,
+  criticalDividendMultiplier,
+  effectiveRollCritChance,
+  offlineFoundryMultiplier,
   formatNumber,
   formatRarity,
 } from '../../shared/game.js';
@@ -72,7 +76,13 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const reducedMotion = !allowMotionEffects();
   const fmt = (n: number) => formatNumber(n);
-  const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = { speed: 20, offlineRate: 8 };
+  const standardUpgradeMaxLevels: Partial<Record<UpgradeId, number>> = {
+    speed: 20,
+    offlineRate: 8,
+    offlineFoundry: 10,
+    orbFingers: 15,
+    criticalDividend: 20,
+  };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
     if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
@@ -156,6 +166,19 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   );
 
   const currentValueBonusPct = (state.upgrades.valueBonus ?? 0) * 10;
+  const nextOrbFingersState = {
+    ...state,
+    upgrades: { ...state.upgrades, orbFingers: (state.upgrades.orbFingers ?? 0) + 1 },
+  };
+  const currentOrbFingersPct = (orbFingersMultiplier(state) - 1) * 100;
+  const nextOrbFingersPct = (orbFingersMultiplier(nextOrbFingersState) - 1) * 100;
+  const critShareEstimate = effectiveRollCritChance(state);
+  const currentCriticalDividendPct = (criticalDividendMultiplier(state, critShareEstimate) - 1) * 100;
+  const nextCriticalDividendPct = (criticalDividendMultiplier({
+    ...state,
+    upgrades: { ...state.upgrades, criticalDividend: (state.upgrades.criticalDividend ?? 0) + 1 },
+  }, critShareEstimate) - 1) * 100;
+  const currentOfflineFoundryPct = (offlineFoundryMultiplier(state) - 1) * 100;
 
   const upgradesData: {
     id: UpgradeId;
@@ -282,6 +305,36 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       cost: upgradeCost('offlineRate', state.upgrades.offlineRate ?? 0),
     },
     {
+      id: 'offlineFoundry',
+      title: 'Offline Foundry',
+      icon: <Clock className="w-5 h-5 text-amber-400" />,
+      level: state.upgrades.offlineFoundry ?? 0,
+      currentVal: `+${currentOfflineFoundryPct.toFixed(0)}%`,
+      nextVal: `+${(currentOfflineFoundryPct + 10).toFixed(0)}%`,
+      desc: 'Adds +10% Coins to offline roll rewards per level. Capped at 10 levels; does not affect live rolls or Frenzy.',
+      cost: upgradeCost('offlineFoundry', state.upgrades.offlineFoundry ?? 0),
+    },
+    {
+      id: 'orbFingers',
+      title: 'Orb Fingers',
+      icon: <Layers className="w-5 h-5 text-amber-400" />,
+      level: state.upgrades.orbFingers ?? 0,
+      currentVal: `+${currentOrbFingersPct.toFixed(1)}% Coins`,
+      nextVal: `+${nextOrbFingersPct.toFixed(1)}% Coins`,
+      desc: 'Idle-game synergy: each level increases Coin rewards based on the combined levels of your other upgrades. The bonus grows logarithmically as you invest.',
+      cost: upgradeCost('orbFingers', state.upgrades.orbFingers ?? 0),
+    },
+    {
+      id: 'criticalDividend',
+      title: 'Critical Dividend',
+      icon: <Flame className="w-5 h-5 text-amber-400" />,
+      level: state.upgrades.criticalDividend ?? 0,
+      currentVal: `+${currentCriticalDividendPct.toFixed(1)}% Coins`,
+      nextVal: `+${nextCriticalDividendPct.toFixed(1)}% Coins`,
+      desc: 'Turns critical rolls into extra Coin income. Each level adds 2.5% Coin yield per 100% of your actual critical-roll rate.',
+      cost: upgradeCost('criticalDividend', state.upgrades.criticalDividend ?? 0),
+    },
+    {
       id: 'clusterRoll',
       title: 'Orb Array Matrix',
       icon: <CircleDot className="w-5 h-5 text-cyan-400" />,
@@ -325,7 +378,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const upgradeGroups: { title: string; subtitle: string; ids: UpgradeId[]; primary?: boolean }[] = [
     { title: 'Core upgrades', subtitle: 'The four starter upgrades. All are available from Level 1.', ids: ['speed', 'multi', 'luck', 'coinBonus'], primary: true },
     { title: 'Early unlocks', subtitle: 'Automation and extra reward systems unlock as you level up.', ids: ['auto', 'xpBonus', 'shardChance'] },
-    { title: 'Advanced systems', subtitle: 'Criticals, value and secondary roll engines arrive later.', ids: ['critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'] },
+    { title: 'Advanced systems', subtitle: 'Criticals, offline income, and upgrade synergies unlock as you progress.', ids: ['critChance', 'valueBonus', 'critPower', 'offlineRate', 'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'] },
   ];
 
   return (

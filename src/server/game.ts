@@ -45,6 +45,9 @@ import {
   createInitialWeeklyQuests,
   rollContinuum,
   coinsForRarity,
+  orbFingersMultiplier,
+  criticalDividendMultiplier,
+  offlineFoundryMultiplier,
   MAX_OFFLINE_ROLLS,
   OFFLINE_TICK_MS,
   calculateCosmicDust,
@@ -3939,6 +3942,7 @@ export async function applyRolls(
   let stellarDividendTriggered = false;
   let rarityLadderTriggered = false;
   let discoveryOracleTriggered = false;
+  let criticalRollsInBatch = 0;
   let previousBatchRarity = 0;
   let risingRarityChain = 0;
   const validCharge = (value: unknown) => Number.isFinite(Number(value)) ? Math.min(1_000_000, Math.max(0, Number(value))) : 0;
@@ -3964,6 +3968,7 @@ export async function applyRolls(
     const critCountInGroup = critEligible
       ? sampleBinomialCount(sampleWeight, effectiveCritChance, rng)
       : 0;
+    criticalRollsInBatch = Math.min(Number.MAX_SAFE_INTEGER, criticalRollsInBatch + critCountInGroup);
     const isCompressedGroup = sampleWeight > 1;
     let supernovaCountInGroup = 0;
     if (critCountInGroup > 0) {
@@ -4458,6 +4463,8 @@ export async function applyRolls(
   const coinBonusMul =
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    orbFingersMultiplier(s) *
+    criticalDividendMultiplier(s, criticalRollsInBatch / Math.max(1, rollCount)) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
     (1 + runeBonuses.coinGainPct / 100);
@@ -4479,6 +4486,11 @@ export async function applyRolls(
       Number.MAX_SAFE_INTEGER,
       shardsGained + sampleBinomialCount(rollCount, Math.min(1, 0.00025 * transLevel), rng),
     );
+  }
+
+  // Offline Foundry is a separate Coin bonus that never affects live rolls or Frenzy.
+  if (source === 'offline') {
+    coinsGained = normalizeCoinAmount(Math.round(coinsGained * offlineFoundryMultiplier(s)));
   }
 
   // Offline Fortune only modifies rewards generated from the offline vault.
@@ -5930,6 +5942,7 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
     const validIds: UpgradeId[] = [
       'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
       'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
+      'offlineFoundry', 'orbFingers', 'criticalDividend',
     ];
     if (!ids.every(id => validIds.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
 
@@ -5997,7 +6010,8 @@ export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   const spendableCoins = Math.max(0, s.coins - reserve);
   const upgradeIds: UpgradeId[] = [
     'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'
+    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
   ];
   let bestId: UpgradeId | null = null;
   let lowestCost = Infinity;
@@ -6025,7 +6039,8 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
   const s = await settleOffline(await loadRaw());
   const upgradeIds: UpgradeId[] = [
     'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll'
+    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
   ];
 
   let totalSpent = 0;

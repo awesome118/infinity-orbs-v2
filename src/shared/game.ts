@@ -10,7 +10,10 @@ export type UpgradeId =
   | 'critChance'
   | 'critPower'
   | 'offlineRate'
-  | 'valueBonus';
+  | 'valueBonus'
+  | 'offlineFoundry'
+  | 'orbFingers'
+  | 'criticalDividend';
 
 /**
  * Minimum player levels for standard Coin upgrades.
@@ -27,6 +30,9 @@ export const UPGRADE_UNLOCK_LEVELS: Record<UpgradeId, number> = {
   valueBonus: 20,
   critPower: 25,
   offlineRate: 30,
+  offlineFoundry: 35,
+  orbFingers: 40,
+  criticalDividend: 45,
   clusterRoll: 50,
 };
 
@@ -1870,6 +1876,9 @@ export function createInitialState(now = Date.now()): PlayerState {
       critPower: 0,
       offlineRate: 0,
       valueBonus: 0,
+      offlineFoundry: 0,
+      orbFingers: 0,
+      criticalDividend: 0,
     },
     prestigeCount: 0,
     prestigeUpgrades: {
@@ -2315,6 +2324,17 @@ export function critMultiplier(s: PlayerState): number {
     guildComboCritLuckBonus(s.guildCombo);
 }
 
+export function effectiveRollCritChance(s: PlayerState): number {
+  return Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+      (s.masterySkills?.critMastery ?? 0) * 0.03 +
+      (s.guildPerks?.critRank ?? 0) * 0.015 +
+      globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
+      guildComboCritChanceBonus(s.guildCombo),
+  );
+}
+
 export function cooldownMs(s: PlayerState, isAuto = false): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
@@ -2637,6 +2657,38 @@ export function coinsForRarity(rarity: number): number {
 }
 
 /**
+ * Cookie Clicker-style cross-upgrade synergy. Investment in other standard
+ * upgrades increases the Coin output of Orb Fingers, with logarithmic scaling.
+ * Auto Roll is excluded because it is an unlock rather than a spendable level.
+ */
+export function orbFingersMultiplier(s: PlayerState): number {
+  const level = Math.min(15, Math.max(0, Math.floor(Number(s.upgrades.orbFingers ?? 0) || 0)));
+  if (level <= 0) return 1;
+  const supportingLevels = Object.entries(s.upgrades ?? {}).reduce((total, [id, value]) => {
+    if (id === 'orbFingers' || id === 'auto') return total;
+    const numericLevel = Number(value);
+    return total + (Number.isFinite(numericLevel) ? Math.max(0, Math.floor(numericLevel)) : 0);
+  }, 0);
+  return 1 + level * Math.log2(1 + supportingLevels) * 0.01;
+}
+
+/**
+ * Converts the share of critical rolls into a Coin multiplier. The share is
+ * measured from the authoritative simulated batch, not estimated from UI odds.
+ */
+export function criticalDividendMultiplier(s: PlayerState, criticalShare: number): number {
+  const level = Math.min(20, Math.max(0, Math.floor(Number(s.upgrades.criticalDividend ?? 0) || 0)));
+  const share = Number.isFinite(criticalShare) ? Math.max(0, Math.min(1, criticalShare)) : 0;
+  return 1 + level * share * 0.025;
+}
+
+/** Offline-only Coin bonus. Never modifies live rolls or Frenzy payouts. */
+export function offlineFoundryMultiplier(s: PlayerState): number {
+  const level = Math.min(10, Math.max(0, Math.floor(Number(s.upgrades.offlineFoundry ?? 0) || 0)));
+  return 1 + level * 0.10;
+}
+
+/**
  * Sustainable upgrade costs
  */
 export function predictRollActivation(
@@ -2675,14 +2727,7 @@ export function predictRollActivation(
   const apexChance = Math.min(0.45, (s.masterySkills?.apexFortune ?? 0) * 0.03);
   const effectiveLuck = rollCount > 1 && rng() < apexChance ? baseLuck * 2 : baseLuck;
   const cm = critMultiplier(s);
-  const critChance = Math.min(
-    0.40,
-    (s.upgrades.critChance ?? 0) * 0.03 +
-    (s.masterySkills?.critMastery ?? 0) * 0.03 +
-    (s.guildPerks?.critRank ?? 0) * 0.015 +
-    globalBoosterCritChanceBonus(s.globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
-  );
+  const critChance = effectiveRollCritChance(s);
 
   const rarities: number[] = [];
   const batch: Orb[] = [];
@@ -2694,6 +2739,7 @@ export function predictRollActivation(
   let shardsGained = 0;
   let xpGained = 0;
   let uniqueGained = 0;
+  let criticalRollsInBatch = 0;
   const lifetimeRollsBeforeBatch = s.totalRolls;
 
   for (let i = 0; i < rollCount; i++) {
@@ -2702,6 +2748,7 @@ export function predictRollActivation(
     let effectiveCm = cm;
 
     if (isCrit) {
+      criticalRollsInBatch += 1;
       s.totalCrits = (s.totalCrits ?? 0) + 1;
       const supernovaLevel = s.prestigeUpgrades?.supernova ?? 0;
       if (supernovaLevel > 0 && rng() < supernovaLevel * 0.10) {
@@ -2805,6 +2852,8 @@ export function predictRollActivation(
     addCoinAmount(topCoins, extraCoins) *
     levelBenefits.coinsMultiplier *
     (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    orbFingersMultiplier(s) *
+    criticalDividendMultiplier(s, criticalRollsInBatch / Math.max(1, rollCount)) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10),
   ));
@@ -2876,6 +2925,9 @@ export function upgradeCost(id: UpgradeId, level: number): number {
   if (id === 'speed' && level >= 20) return Infinity;
   // The effective offline-rate benefit is capped at 60%, reached at level 8.
   if (id === 'offlineRate' && level >= 8) return Infinity;
+  if (id === 'offlineFoundry' && level >= 10) return Infinity;
+  if (id === 'orbFingers' && level >= 15) return Infinity;
+  if (id === 'criticalDividend' && level >= 20) return Infinity;
   const configs: Record<Exclude<UpgradeId, 'auto'>, { base: number; mult: number }> = {
     speed: { base: 45, mult: 1.65 },
     multi: { base: 120, mult: 1.75 },
@@ -2888,6 +2940,9 @@ export function upgradeCost(id: UpgradeId, level: number): number {
     critPower: { base: 120, mult: 1.78 },
     offlineRate: { base: 90, mult: 1.50 },
     valueBonus: { base: 80, mult: 1.50 },
+    offlineFoundry: { base: 1_200, mult: 1.75 },
+    orbFingers: { base: 2_500, mult: 1.85 },
+    criticalDividend: { base: 1_800, mult: 1.80 },
   };
   const { base, mult } = configs[id];
   // Unlimited repeatable upgrades have a modest price premium; capped speed upgrades keep their original curve.

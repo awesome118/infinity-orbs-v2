@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### Upgrade Synergies and Idle-Game Economy (2.1.33)
+
+- Add Orb Fingers, a logarithmic cross-upgrade Coin synergy inspired by classic idle-game production synergies.
+- Add Critical Dividend, which scales Coin rewards with the actual share of critical rolls in each server-processed batch.
+- Add Offline Foundry, a Coin bonus exclusive to offline-roll rewards.
+- Gate the new upgrades behind Levels 35, 40, and 45, with server-enforced level requirements and capped costs.
+
 ### A Guide You Can Find Again (2.1.27)
 
 - Add a short, level-aware guide to the More menu so players can review the basics and see their next unlock at any time.

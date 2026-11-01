@@ -2051,7 +2051,8 @@ function App() {
     };
     const ids: UpgradeId[] = [
       'speed', 'multi', 'luck', 'coinBonus', 'auto',
-      'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate', 'clusterRoll',
+      'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+      'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll',
     ];
     let purchases = 0;
 
