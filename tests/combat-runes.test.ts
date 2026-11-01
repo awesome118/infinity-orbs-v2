@@ -10,6 +10,7 @@ import {
   combatRuneRarityAtOrBelow,
   combatRuneBonuses,
   combatRuneMajorAbilityEffects,
+  combatRuneMajorAbilityMultiplier,
   combatRuneMajorAbilityStrengthPct,
   combatRuneMajorAbilitySummary,
   createCombatState,
