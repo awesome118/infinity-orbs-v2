@@ -755,7 +755,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <button
           type="button"
           aria-busy={busy}
-          onClick={() => void onOrbFrenzy()
+          onClick={() => void onOrbFrenzy()}
           disabled={busy || frenzyArmed || frenzyUsedToday}
           className={
             busy || frenzyArmed || frenzyUsedToday

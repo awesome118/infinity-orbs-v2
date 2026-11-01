@@ -2508,6 +2508,13 @@ export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = 
   const directCooldownReduction =
     permReduction + masteryChronoReduction + steadyHandsReduction + temporalCompressionReduction;
   let theoretical = Math.max(floor, BASE_COOLDOWN_MS - speedLevel * 150 - directCooldownReduction);
+  let wastedMs = 0;
+
+  const applyClampedSpeed = (multiplier: number) => {
+    const target = Math.round(theoretical * multiplier);
+    wastedMs += Math.max(0, 300 - target);
+    theoretical = Math.max(300, target);
+  };
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
     theoretical = Math.max(700, Math.round(theoretical * (1 - s.prestigeUpgrades.autoOverclock * 0.05)));
@@ -2515,20 +2522,22 @@ export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = 
   if (typeof s.turboRollUntil === 'number' && s.turboRollUntil > Date.now()) {
     theoretical = Math.max(600, Math.round(theoretical * ((s.prestigeUpgrades?.chronoOverdrive ?? 0) > 0 ? 0.65 : 0.75)));
   }
-  if (isPremiumBoosterActive(s, 'hyperdrive')) theoretical = Math.max(400, Math.round(theoretical * 0.25));
-  if (s.globalBoosters?.speed) theoretical = Math.round(theoretical * globalBoosterSpeedMultiplier(s.globalBoosters.speed));
-  if (s.guildCombo) theoretical = Math.round(theoretical * guildComboSpeedMultiplier(s.guildCombo));
-  if (s.dailyStreakCommunity?.speedMultiplier) theoretical = Math.round(theoretical * s.dailyStreakCommunity.speedMultiplier);
+  if (isPremiumBoosterActive(s, 'hyperdrive')) {
+    theoretical = Math.max(400, Math.round(theoretical * 0.25));
+  }
+  if (s.globalBoosters?.speed) applyClampedSpeed(globalBoosterSpeedMultiplier(s.globalBoosters.speed));
+  if (s.guildCombo) applyClampedSpeed(guildComboSpeedMultiplier(s.guildCombo));
+  if (s.dailyStreakCommunity?.speedMultiplier) applyClampedSpeed(s.dailyStreakCommunity.speedMultiplier);
 
   const momentum = 1 + ((s.prestigeUpgrades?.unbrokenMomentum ?? 0) > 0
     ? unbrokenMomentumSpeedBonus(s.longestRollingSessionMs)
     : 0);
-  theoretical = Math.round(theoretical / momentum);
+  applyClampedSpeed(1 / momentum);
   if (isAuto && s.alignmentActiveChoice === 'clockwork' && (s.alignmentActiveUntil ?? 0) > Date.now()) {
-    theoretical = Math.round(theoretical * 0.80);
+    applyClampedSpeed(0.80);
   }
 
-  return Math.min(TIME_ENERGY_MAX_MS, Math.max(0, Math.floor((300 - theoretical) * level * 0.10)));
+  return Math.min(TIME_ENERGY_MAX_MS, Math.max(0, Math.floor(wastedMs * level * 0.10)));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!

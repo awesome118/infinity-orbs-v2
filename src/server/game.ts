@@ -5657,7 +5657,7 @@ export async function roll(
 
     s.lastRollAt = now;
     s.lastSeenAt = now;
-    if (!usingTimeEnergy) {
+    if (!usingTimeEnergy && !usingFreeRoll) {
       const reclaimed = cooldownReclaimerEnergyPerActivationMs(s, isAuto) * activations;
       s.timeEnergy = Math.min(TIME_ENERGY_MAX_MS, Math.max(0, (s.timeEnergy ?? 0) + reclaimed));
     }
