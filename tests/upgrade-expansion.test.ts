@@ -95,9 +95,9 @@ test('Offline Foundry scales offline Coin payouts and remains capped at ten leve
 
 test('debug upgrade presets initialize, reset, and unlock every standard upgrade', () => {
   const debug = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
-  for (const id of ['offlineFoundry', 'orbFingers', 'criticalDividend']) {
-    assert.ok(debug.includes(id), 'missing debug support for ' + id);
+  for (const [id, level] of [['offlineFoundry', 10], ['orbFingers', 15], ['criticalDividend', 20]] as const) {
+    assert.equal(debug.split(`${id}: ${level}`).length - 1, 3,
+      `${id} should appear in the full max fixture, max preset, and unlock route`);
   }
-  assert.match(debug, /offlineFoundry: 10,\\s*orbFingers: 15,\\s*criticalDividend: 20/);
-  assert.match(debug, /offlineFoundry: 0,\\s*orbFingers: 0,\\s*criticalDividend: 0/);
+  assert.ok(debug.includes('offlineFoundry: 0, orbFingers: 0, criticalDividend: 0'));
 });
