@@ -769,7 +769,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-300 transition-[width] duration-200" style={{ width: `${timeEnergyProgressPct}%` }} />
             </div>
             <div className="text-[10px] text-slate-500 text-center">
-              Spending uses {formatNumber(timeEnergySpendMs)}ms at your current cooldown. Any partial remainder stays banked.
+              Spending uses {formatNumber(timeEnergySpendMs)}ms at your current cooldown. Any unspent energy stays banked.
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 name: Deploy Devvit
 
-# Explicit deployment request (2026-11-01): deploy v2.1.46 Celestial Alignment chooser and Clockwork fix to r/infinity_orbs_dev only.
+# Explicit follow-up deployment request (2026-11-01): deploy v2.1.46 final UI, Time Energy, and Guild fixes to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
 # The version-specific push marker is reserved for explicitly requested development deployments.

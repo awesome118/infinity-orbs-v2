@@ -88,5 +88,6 @@ test('Guild directory reads no longer depend on the retired Guild chat-moderatio
 test('Guild page is named in the main navigation', () => {
   const main = source('src/client/main.tsx');
   assert.match(main, /renderNavItem\('social', 'Guilds', Users\)/);
+  assert.match(main, /renderNavItem\('social', 'Guilds', Users, false, 'io-nav-mobile-only'\)/);
   assert.match(main, /social: 'Guilds'/);
 });

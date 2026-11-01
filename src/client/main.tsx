@@ -3575,7 +3575,7 @@ function App() {
                       </button>
                       <p className="io-nav-menu-title">More ways to play</p>
                       {renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady, 'io-nav-mobile-only')}
-                      {renderNavItem('social', 'Community', Users, false, 'io-nav-mobile-only')}
+                      {renderNavItem('social', 'Guilds', Users, false, 'io-nav-mobile-only')}
                       {renderNavItem('profile', 'Progress', Star, prestigeReady, 'io-nav-profile-mobile')}
                       {renderNavItem('boosters', 'Boosters', Dices)}
                       {renderNavItem('altar', 'Altar', Flame)}
