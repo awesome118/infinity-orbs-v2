@@ -339,9 +339,9 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
-  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number } | null>(null);
+  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
   const [alignmentConfirmationSeconds, setAlignmentConfirmationSeconds] = useState(60);
-  const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number } | null>(null);
+  const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
   const alignmentPendingSeenRef = useRef(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
@@ -2532,7 +2532,11 @@ function App() {
       });
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
-      const confirmation = { choice, closesAt: Date.now() + 60_000 };
+      const confirmation = {
+        choice,
+        closesAt: Date.now() + 60_000,
+        autoCooldownMs: choice === 'clockwork' ? cooldownMs(result.state, true) : null,
+      };
       alignmentConfirmationRef.current = confirmation;
       setAlignmentConfirmation(confirmation);
       setAlignmentConfirmationSeconds(60);
@@ -3519,7 +3523,7 @@ function App() {
                 ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
                 : alignmentConfirmation.choice === 'goldenOrbit'
                   ? 'All Coins earned are increased by 50%.'
-                  : `Auto Roll cooldown is now ${(cooldownMs(result.state, true) / 1000).toFixed(2)}s.`}
+                  : `Auto Roll cooldown is now ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s.`}
             </p>
             <p className="mt-1 text-[10px] text-slate-400">The selected effect remains active for 60 minutes.</p>
             <div
