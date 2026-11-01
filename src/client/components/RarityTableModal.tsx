@@ -6,6 +6,7 @@ import {
   CONTINUUM_EXPANSION_UNLOCK_RARITY,
 } from '../../shared/game.js';
 import type { ContinuumTierMilestone } from '../../shared/game.js';
+import { RarityOrbIcon } from './RarityOrbIcon.js';
 
 interface RarityTableModalProps {
   onClose: () => void;
@@ -30,7 +31,7 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
         aria-modal="true"
         aria-labelledby="io-rarity-title"
         aria-describedby="io-rarity-description"
-        className="bg-slate-900 border border-cyan-300/20 rounded-3xl p-4 sm:p-6 max-w-2xl w-full space-y-4 shadow-[0_0_70px_rgba(34,211,238,.12)] relative max-h-[85dvh] overflow-hidden flex flex-col"
+        className="io-rarity-modal bg-slate-900 border border-cyan-300/20 rounded-3xl p-4 sm:p-6 max-w-2xl w-full space-y-4 shadow-[0_0_70px_rgba(34,211,238,.12)] relative max-h-[85dvh] overflow-hidden flex flex-col"
       >
         <button
           type="button"
@@ -103,8 +104,8 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
               className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'}`}
               style={{ borderLeftColor: tier.color }}
             >
-              <div role="cell" aria-label={`${tier.tier} tier`} className="flex min-w-0 items-center gap-2">
-                <div aria-hidden="true" className="w-2.5 h-2.5 shrink-0 rounded-full" style={{ backgroundColor: tier.color }} />
+              <div role="cell" aria-label={`${tier.tier} tier`} className="io-rarity-tier-name-cell flex min-w-0 items-center gap-2">
+                <RarityOrbIcon rarity={tier.minRarity} unlocked={highestRarity >= tier.minRarity} compact />
                 <span className="font-bold text-white break-words" style={{ color: tier.color }}>{tier.tier}</span>
               </div>
 

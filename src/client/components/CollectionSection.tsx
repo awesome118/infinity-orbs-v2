@@ -20,6 +20,7 @@ import {
   chainPatcherShardCost,
 } from '../../shared/game.js';
 import { sound } from '../sound.js';
+import { RarityOrbIcon } from './RarityOrbIcon.js';
 
 interface CollectionSectionProps {
   state: PlayerState;
@@ -313,34 +314,35 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
       </section>
 
       <section className="io-codex-milestones mt-5 pt-4 border-t border-slate-800">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-            Continuum Tier Milestones
-          </span>
-          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-1.5 text-center">
-            {visibleTiers.map(milestone => {
-              const reached = (state.highestRarity || 0) >= milestone.minRarity;
-              return (
-                <div
-                  key={milestone.tier}
-                  className={`p-2 rounded-xl border text-xs flex flex-col items-center justify-center transition-all ${
-                    reached
-                      ? 'bg-slate-900 border-slate-700 shadow-sm'
-                      : 'bg-slate-950/40 border-slate-900 opacity-40'
-                  }`}
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+          Continuum Tier Milestones
+        </span>
+        <div className="io-codex-milestone-grid grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 text-center">
+          {visibleTiers.map(milestone => {
+            const reached = (state.highestRarity || 0) >= milestone.minRarity;
+            return (
+              <div
+                key={milestone.tier}
+                className={`io-codex-milestone-card flex flex-col items-center justify-center transition-all ${reached ? 'is-unlocked' : 'is-locked'}`}
+                style={{
+                  borderColor: reached ? `${milestone.color}70` : undefined,
+                  boxShadow: reached ? `0 0 20px ${milestone.color}18` : undefined,
+                }}
+              >
+                <RarityOrbIcon rarity={milestone.minRarity} unlocked={reached} />
+                <span
+                  className="io-codex-milestone-name font-extrabold"
+                  style={{ color: reached ? milestone.color : '#64748b' }}
                 >
-                  <span
-                    className="font-extrabold text-[11px]"
-                    style={{ color: reached ? milestone.color : '#64748b' }}
-                  >
-                    {milestone.tier}
-                  </span>
-                  <span className="text-[9px] font-mono text-slate-400 mt-0.5">
-                    1/{formatRarity(milestone.minRarity)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                  {milestone.tier}
+                </span>
+                <span className="io-codex-milestone-odds font-mono text-slate-400">
+                  1/{formatRarity(milestone.minRarity)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 p-3 rounded-2xl">

@@ -833,3 +833,158 @@
   .io-ui .io-main-orb, .io-ui .io-orbit-layer, .io-ui .reward-burst, .io-ui .roll-button { animation: none !important; transition-duration: .01ms !important; }
   .io-ui .io-page-shell *, .io-ui .io-combat-screen *, .io-ui .io-runes-page * { scroll-behavior: auto !important; }
 }
+
+
+/* Rarity tier orbs: the same canonical tier palette is used in Codex and the
+   rarity table. Discovered tiers get a vivid colored aura and a slow sheen. */
+.io-rarity-orb-icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: clamp(38px, 4.5vw, 64px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  isolation: isolate;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid color-mix(in srgb, var(--io-rarity-orb-color) 58%, white);
+  border-radius: 50%;
+  background: var(--io-rarity-orb-gradient);
+  box-shadow:
+    inset 0 2px 5px rgba(255,255,255,.34),
+    inset 0 -5px 10px rgba(0,0,0,.28),
+    0 3px 8px rgba(0,0,0,.32);
+  transition: filter .25s ease, box-shadow .25s ease, border-color .25s ease;
+}
+.io-rarity-orb-icon::before {
+  position: absolute;
+  z-index: -1;
+  top: 7%;
+  left: 12%;
+  width: 55%;
+  height: 42%;
+  content: "";
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 38% 28%, rgba(255,255,255,.84), rgba(255,255,255,.24) 35%, transparent 75%);
+  filter: blur(1px);
+  opacity: .82;
+}
+.io-rarity-orb-icon__glint {
+  position: absolute;
+  top: 16%;
+  left: 24%;
+  width: 19%;
+  height: 11%;
+  border-radius: 50%;
+  background: rgba(255,255,255,.9);
+  filter: blur(1px);
+  transform: rotate(-28deg);
+  opacity: .82;
+}
+.io-rarity-orb-icon__shine {
+  position: absolute;
+  inset: -35% auto -35% -90%;
+  width: 44%;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 8%, rgba(255,255,255,.1) 32%, rgba(255,255,255,.86) 50%, rgba(255,255,255,.12) 68%, transparent 92%);
+  transform: skewX(-18deg);
+  opacity: 0;
+}
+.io-rarity-orb-icon.is-unlocked {
+  border-color: var(--io-rarity-orb-color);
+  filter: saturate(1.35) brightness(1.12);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--io-rarity-orb-color) 28%, transparent),
+    0 0 14px color-mix(in srgb, var(--io-rarity-orb-color) 88%, transparent),
+    0 0 30px color-mix(in srgb, var(--io-rarity-orb-color) 58%, transparent),
+    inset 0 2px 7px rgba(255,255,255,.48),
+    inset 0 -5px 10px rgba(0,0,0,.22);
+  animation: io-rarity-orb-pulse 3.2s ease-in-out infinite;
+}
+.io-rarity-orb-icon.is-unlocked .io-rarity-orb-icon__shine {
+  opacity: .9;
+  animation: io-rarity-orb-sheen 4.8s ease-in-out infinite;
+}
+.io-rarity-orb-icon.is-locked {
+  filter: grayscale(.88) saturate(.38) brightness(.62);
+  opacity: .56;
+  box-shadow: inset 0 1px 5px rgba(255,255,255,.08), 0 2px 5px rgba(0,0,0,.24);
+}
+.io-rarity-orb-icon--compact {
+  width: clamp(26px, 2.4vw, 34px);
+  border-width: 1.5px;
+}
+.io-codex-milestone-grid {
+  align-items: stretch;
+}
+.io-page-codex .io-codex-milestone-card {
+  min-width: 0;
+  min-height: 112px;
+  gap: 5px;
+  padding: 9px 4px;
+  border: 1px solid rgba(148,163,184,.16);
+  border-radius: 14px;
+  background: linear-gradient(155deg, rgba(16,26,38,.94), rgba(3,10,22,.9));
+}
+.io-page-codex .io-codex-milestone-card.is-unlocked {
+  background:
+    radial-gradient(circle at 50% 22%, color-mix(in srgb, var(--io-tier-color, #94a3b8) 16%, transparent), transparent 56%),
+    linear-gradient(155deg, rgba(20,31,45,.96), rgba(4,11,22,.94));
+}
+.io-page-codex .io-codex-milestone-name {
+  font-size: clamp(9px, .8vw, 12px);
+  line-height: 1.15;
+}
+.io-page-codex .io-codex-milestone-odds {
+  font-size: clamp(8px, .68vw, 10px);
+  line-height: 1.2;
+}
+.io-rarity-modal .io-rarity-tier-name-cell {
+  min-height: 40px;
+}
+.io-rarity-modal .io-rarity-orb-icon--compact {
+  width: clamp(28px, 2.5vw, 36px);
+}
+@keyframes io-rarity-orb-pulse {
+  0%, 100% { transform: scale(1); filter: saturate(1.28) brightness(1.08); }
+  50% { transform: scale(1.065); filter: saturate(1.5) brightness(1.23); }
+}
+@keyframes io-rarity-orb-sheen {
+  0%, 18% { left: -90%; opacity: 0; }
+  35% { opacity: .9; }
+  58%, 100% { left: 145%; opacity: 0; }
+}
+
+/* The Reddit fullscreen surface and browser fullscreen both have more room.
+   Increase the orb itself, not only its surrounding tile. */
+:fullscreen .io-rarity-orb-icon,
+html:fullscreen .io-rarity-orb-icon {
+  width: clamp(62px, 6.2vw, 116px);
+}
+:fullscreen .io-rarity-modal .io-rarity-orb-icon--compact,
+html:fullscreen .io-rarity-modal .io-rarity-orb-icon--compact {
+  width: clamp(40px, 3.5vw, 56px);
+}
+:fullscreen .io-page-codex .io-codex-milestone-card {
+  min-height: 164px;
+  gap: 9px;
+  padding: 14px 6px;
+}
+:fullscreen .io-page-codex .io-codex-milestone-name {
+  font-size: clamp(12px, 1vw, 17px);
+}
+:fullscreen .io-page-codex .io-codex-milestone-odds {
+  font-size: clamp(10px, .8vw, 13px);
+}
+@media (display-mode: fullscreen) {
+  .io-rarity-orb-icon { width: clamp(62px, 6.2vw, 116px); }
+  .io-rarity-modal .io-rarity-orb-icon--compact { width: clamp(40px, 3.5vw, 56px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-rarity-orb-icon,
+  .io-rarity-orb-icon.is-unlocked,
+  .io-rarity-orb-icon.is-unlocked .io-rarity-orb-icon__shine {
+    animation: none !important;
+    transition: none !important;
+  }
+}
