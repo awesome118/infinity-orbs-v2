@@ -1996,7 +1996,7 @@ function App() {
         setLastBatch([prediction.orb]);
         setBatchSummary(null);
       }
-      const ticketSeed = ticket.seeds[ticketIndex];
+      const ticketSeed = ticket.seeds[ticketIndex - ticket.predictionStartIndex];
       if (!ticketSeed) throw new Error('Roll prediction seed is unavailable. Refresh the game.');
       rollTicketRef.current = {
         ...ticket,
@@ -2038,7 +2038,8 @@ function App() {
         activeTicket &&
         activeTicket.ticketId === ticket.ticketId &&
         activeTicket.nextIndex < 50 &&
-        activeTicket.predictions.filter(item => item.index >= activeTicket.nextIndex).length <= 2
+        activeTicket.seeds.length -
+          (activeTicket.nextIndex - activeTicket.predictionStartIndex) <= 2
       ) {
         const expectedTicketIndex = activeTicket.nextIndex;
         const expectedTicketId = activeTicket.ticketId;
