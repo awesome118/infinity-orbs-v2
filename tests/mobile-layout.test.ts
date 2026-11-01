@@ -25,7 +25,7 @@ test('mobile navigation keeps core tabs visible and routes secondary tabs throug
   assert.ok(main.includes("renderNavItem('upgrades', 'Upgrades', Zap)"));
   assert.ok(main.includes("renderNavItem('collection', 'Collection', BookOpen)"));
   assert.ok(main.includes("renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady, 'io-nav-mobile-only')"));
-  assert.ok(main.includes("renderNavItem('social', 'Community', Users, false, 'io-nav-mobile-only')"));
+  assert.ok(main.includes("renderNavItem('social', 'Guilds', Users, false, 'io-nav-mobile-only')"));
   assert.ok(css.includes('.io-ui .app-nav:not(.io-nav-combat) .io-nav-primary > .nav-tab:nth-child(n + 4)'));
   assert.ok(css.includes('.io-ui .io-nav-mobile-only { display: flex !important; }'));
   assert.ok(css.includes('.io-ui .io-nav-combat .io-nav-combat-list'));
