@@ -249,3 +249,5 @@ jobs:
 # Explicit user-requested dev-only deployment of Starseeker/Sonar updates and new Rune rarity tiers v2.1.58 on 2026-11-01; production remains separate.
 
 # Explicit user-requested dev-only main-game post spacing and full-height card alignment update v2.1.59 on 2026-11-01.
+
+# Test-only follow-up: correct the escaped selector patterns in the v2.1.59 main-post layout regression.
