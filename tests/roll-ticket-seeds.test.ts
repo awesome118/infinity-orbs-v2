@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRollRandomSource } from '../src/shared/roll-rng.js';
 
 test('roll seed streams are deterministic', () => {
@@ -13,8 +15,6 @@ test('roll seed streams are deterministic', () => {
 });
 
 test('ticket seeds are retained, ordered, and replayed for the committed result', () => {
-  const { readFileSync } = require('node:fs');
-  const { resolve } = require('node:path');
   const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
   const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   assert.match(game, /seeds: string\[\]/);
@@ -25,8 +25,6 @@ test('ticket seeds are retained, ordered, and replayed for the committed result'
 });
 
 test('Auto Roll uses the current saved cooldown and a self-rescheduling timer', () => {
-  const { readFileSync } = require('node:fs');
-  const { resolve } = require('node:path');
   const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
   const start = main.indexOf('// Auto Roll uses a single scheduled wake-up');
   const end = main.indexOf('// Standard upgrades are applied optimistically', start);
