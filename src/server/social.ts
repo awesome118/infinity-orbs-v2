@@ -20,7 +20,6 @@ import {
   CHALLENGE_POOL,
   challengeForWeek,
   COMMUNITY_WORLD_EVENT,
-  createInitialGuildBoss,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
@@ -28,7 +27,6 @@ import {
   createInitialState,
   createInitialDailyStreakCommunity,
   grantFreeShards,
-  normalizeCoinAmount,
   addCoinAmount,
   weekEndMs,
   weekKey,
@@ -188,8 +186,11 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
   // Invalid values fall back downward; finite values are floored and capped.
   guild.name = nonEmptyText(guild.name, 'Recovered Guild ' + (index + 1));
   guild.tag = nonEmptyText(guild.tag, 'REC' + (index + 1));
-  guild.level = clampInteger(guild.level, 1, Number.MAX_SAFE_INTEGER, 1);
-  guild.xp = clampInteger(guild.xp, 0, Number.MAX_SAFE_INTEGER, 0);
+  delete guild.level;
+  delete guild.xp;
+  delete guild.taxRate;
+  delete guild.boss;
+  delete guild.bossWeek;
   guild.tokens = clampInteger(guild.tokens, 0, Number.MAX_SAFE_INTEGER, 0);
   if (!Number.isSafeInteger(guild.createdAt) || Number(guild.createdAt) < 0) {
     guild.createdAt = Date.now();
@@ -228,7 +229,6 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     tokenYieldRank: 20,
     taskBountyRank: 20,
     comboRank: 10,
-    guildXpRank: 20,
   };
   if (guild.perks != null) {
     if (!isRecordValue(guild.perks)) {
@@ -262,11 +262,12 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     } else if (guild.tasks.length >= 3) {
       guild.tasks = guild.tasks.slice(0, 3).map((value: unknown, taskIndex: number) => {
         const task = isRecordValue(value) ? value : {};
+        delete task.guildXpReward;
         const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
           ? String(task.type) as GuildTask['type']
           : generatedFallbackTaskType(taskIndex);
         const tier = clampInteger(task.tier, 1, 70, 1);
-        const generated = createGuildTask(type, tier, guild.level);
+        const generated = createGuildTask(type, tier);
         const target = clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
         return {
           id: nonEmptyText(task.id, generated.id),
@@ -275,7 +276,6 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
           target,
           progress: clampInteger(task.progress, 0, Number.MAX_SAFE_INTEGER, 0),
           reward: clampInteger(task.reward, 1, Number.MAX_SAFE_INTEGER, generated.reward),
-          guildXpReward: clampInteger(task.guildXpReward, 1, Number.MAX_SAFE_INTEGER, generated.guildXpReward),
           label: nonEmptyText(task.label, generated.label),
         };
       });
@@ -308,49 +308,15 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     }
   }
 
-  // A malformed current-week boss is temporary encounter state. Drop only that
-  // encounter; normalizeGuilds() creates a fresh boss without changing the Guild.
-  if (guild.boss != null && guild.bossWeek === weekKey()) {
-    const boss = guild.boss;
-    const validBoss =
-      isRecordValue(boss) &&
-      typeof boss.id === 'string' && !!boss.id.trim() &&
-      typeof boss.name === 'string' && !!boss.name.trim() &&
-      Number.isSafeInteger(boss.tier) && Number(boss.tier) >= 1 &&
-      typeof boss.maxHp === 'number' && Number.isFinite(boss.maxHp) && boss.maxHp > 0 &&
-      typeof boss.currentHp === 'number' && Number.isFinite(boss.currentHp) &&
-      boss.currentHp >= 0 && boss.currentHp <= boss.maxHp &&
-      typeof boss.defeated === 'boolean' &&
-      isRecordValue(boss.contributors) &&
-      Object.values(boss.contributors).every(value =>
-        typeof value === 'number' && Number.isFinite(value) && value >= 0
-      );
-    if (!validBoss) {
-      delete guild.boss;
-      delete guild.bossWeek;
-    }
-  }
+
 }
 
 function validateGuildNestedState(guild: Record<string, unknown>): void {
   const invalid = (field = 'unknown nested field') =>
     new Error(`Guild data contains malformed nested state; refusing to replace it. Guild ${String(guild.id ?? 'unknown')} field: ${field}.`);
 
-  // Numeric fields are used directly in reward, level and tax arithmetic.
-  // Finite fractional values or numbers above the exact-integer range are not
-  // valid persisted economy state.
-  for (const [field, minimum] of [['level', 1], ['xp', 0], ['tokens', 0]] as const) {
-    const value = guild[field];
-    if (value == null) continue; // Legacy saves can omit core economy defaults.
-    // XP is a cumulative counter: old versions could exceed MAX_SAFE_INTEGER or
-    // leave a fractional remainder. It is safely floored/capped during normalization.
-    if (field === 'xp') {
-      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-        throw invalid('guild.xp');
-      }
-      continue;
-    }
-    if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid(`guild.${field}`);
+  if (guild.tokens != null && (!Number.isSafeInteger(guild.tokens) || Number(guild.tokens) < 0)) {
+    throw invalid('guild.tokens');
   }
   if (guild.createdAt != null &&
       (!Number.isSafeInteger(guild.createdAt) || Number(guild.createdAt) < 0)) {
@@ -401,7 +367,6 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       tokenYieldRank: 20,
       taskBountyRank: 20,
       comboRank: 10,
-      guildXpRank: 20,
     };
     for (const [rank, cap] of Object.entries(perkCaps)) {
       const value = guild.perks[rank];
@@ -434,7 +399,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
         if (!isRecordValue(task)) throw invalid('guild.tasks[] (expected object)');
         if (task.id != null && typeof task.id !== 'string') throw invalid('guild.tasks[].id');
         if (task.label != null && typeof task.label !== 'string') throw invalid('guild.tasks[].label');
-        for (const field of ['tier', 'target', 'progress', 'reward', 'guildXpReward']) {
+        for (const field of ['tier', 'target', 'progress', 'reward']) {
           const value = task[field];
           if (value == null) continue;
           const minimum = field === 'progress' ? 0 : 1;
@@ -461,29 +426,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
     }
   }
 
-  // A current-week boss is actively mutated during rolls. Its fields must be
-  // numeric and bounded before normalizeGuilds()/boss damage math can touch it.
-  if (guild.boss != null && guild.bossWeek === weekKey()) {
-    if (!isRecordValue(guild.boss)) throw invalid('guild.boss (expected object)');
-    const boss = guild.boss;
-    if (
-      typeof boss.id !== 'string' || !boss.id ||
-      typeof boss.name !== 'string' || !boss.name ||
-      // Older app versions could persist a valid boss tier above the current cap.
-      // normalizeGuilds() replaces those legacy bosses with a current capped boss.
-      !Number.isSafeInteger(boss.tier) || Number(boss.tier) < 1 ||
-      typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0 ||
-      typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) ||
-      boss.currentHp < 0 || boss.currentHp > boss.maxHp ||
-      typeof boss.defeated !== 'boolean' ||
-      !isRecordValue(boss.contributors) ||
-      !Object.values(boss.contributors).every(value =>
-        typeof value === 'number' && Number.isFinite(value) && value >= 0
-      )
-    ) {
-      throw invalid('guild.boss (id/name/tier/health/defeated/contributors)');
-    }
-  }
+
 }
 
 
@@ -520,8 +463,11 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   guild.id = nonEmptyString(guild.id, 'recovered-guild-' + (index + 1));
   guild.name = nonEmptyString(guild.name, 'Recovered Guild ' + (index + 1));
   guild.tag = nonEmptyString(guild.tag, 'REC' + (index + 1));
-  guild.level = clampInt(guild.level, 1, 1_000_000, 1);
-  guild.xp = clampInt(guild.xp, 0, Number.MAX_SAFE_INTEGER, 0);
+  delete guild.level;
+  delete guild.xp;
+  delete guild.taxRate;
+  delete guild.boss;
+  delete guild.bossWeek;
   guild.tokens = clampInt(guild.tokens, 0, Number.MAX_SAFE_INTEGER, 0);
   if (!isSafeGuildInteger(guild.createdAt, 0)) guild.createdAt = Date.now();
 
@@ -558,7 +504,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   const perkCaps: Record<string, number> = {
     luckRank: 10, speedRank: 10, vaultRank: 10, shardRank: 10,
     critRank: 10, coinRank: 10, memberCapacityRank: 40,
-    tokenYieldRank: 20, taskBountyRank: 20, comboRank: 10, guildXpRank: 20,
+    tokenYieldRank: 20, taskBountyRank: 20, comboRank: 10,
   };
   if (!isRecordValue(guild.perks)) {
     delete guild.perks;
@@ -581,6 +527,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
     guild.tasks = [];
   } else {
     guild.tasks = guild.tasks.filter(isRecordValue).map((task: Record<string, any>, taskIndex: number) => {
+      delete task.guildXpReward;
       const fallbackType = generatedFallbackTaskType(taskIndex);
       const type = ['rolls', 'value', 'rare'].includes(String(task.type)) ? task.type : fallbackType;
       const target = clampInt(task.target, 1, Number.MAX_SAFE_INTEGER, 1);
@@ -592,7 +539,6 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
         target,
         progress: Math.min(target, clampInt(task.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
         reward: clampInt(task.reward, 1, Number.MAX_SAFE_INTEGER, 1),
-        guildXpReward: clampInt(task.guildXpReward, 1, Number.MAX_SAFE_INTEGER, 1),
         label: nonEmptyString(task.label, 'Recovered task ' + (taskIndex + 1)),
       };
     });
@@ -612,20 +558,6 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
     delete guild.chat;
   }
 
-  const boss = guild.boss;
-  if (!isRecordValue(boss) ||
-      typeof boss.id !== 'string' || !boss.id.trim() ||
-      typeof boss.name !== 'string' || !boss.name.trim() ||
-      !isSafeGuildInteger(boss.tier, 1) || Number(boss.tier) > 10 ||
-      typeof boss.maxHp !== 'number' || !Number.isFinite(boss.maxHp) || boss.maxHp <= 0 ||
-      typeof boss.currentHp !== 'number' || !Number.isFinite(boss.currentHp) ||
-      boss.currentHp < 0 || boss.currentHp > boss.maxHp ||
-      typeof boss.defeated !== 'boolean' ||
-      !isRecordValue(boss.contributors) ||
-      !Object.values(boss.contributors).every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) {
-    delete guild.boss;
-    delete guild.bossWeek;
-  }
   return guild as unknown as Guild;
 }
 
@@ -707,8 +639,11 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     // Legacy persisted Guilds may predate one or more of these fields. The
     // parser rejects invalid present values, while normalization safely fills
     // omitted values before reward/tax arithmetic uses them.
-    g.level ??= 1;
-    g.xp = Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(g.xp ?? 0) || 0)));
+    delete (g as any).level;
+    delete (g as any).xp;
+    delete (g as any).taxRate;
+    delete (g as any).boss;
+    delete (g as any).bossWeek;
     g.tokens ??= 0;
     if (!g.perks) {
       g.perks = {
@@ -722,7 +657,6 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
         tokenYieldRank: 0,
         taskBountyRank: 0,
         comboRank: 0,
-        guildXpRank: 0,
       };
     } else {
       if (g.perks.memberCapacityRank == null) {
@@ -733,23 +667,13 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       g.perks.taskBountyRank = Math.max(legacyTaskBounty, currentTaskBounty);
       g.perks.tokenYieldRank = g.perks.taskBountyRank;
       g.perks.comboRank ??= 0;
-      g.perks.guildXpRank ??= 0;
     }
-    g.taxRate = Math.max(0, Math.min(10, Math.floor(Number(g.taxRate ?? 0) || 0)));
     for (const member of g.members) {
       if (member.role === 'owner') member.trusted = true;
       member.userId = member.userId || undefined;
     }
-    const existingBossTier = Number(g.boss?.tier);
-    const legacyBossTierAboveCap =
-      Number.isSafeInteger(existingBossTier) && existingBossTier > 10;
-    if (!g.boss || (g as any).bossWeek !== currentWeek || legacyBossTierAboveCap) {
-      // Repair legacy over-cap weekly bosses without discarding the Guild itself.
-      g.boss = createInitialGuildBoss(Math.max(1, Math.min(10, g.level || 1)));
-      (g as any).bossWeek = currentWeek;
-    }
     if (!Array.isArray(g.tasks) || g.tasks.length < 3) {
-      const generated = createInitialGuildTasks(g.level || 1);
+      const generated = createInitialGuildTasks();
       if (g.challenge) {
         generated[0] = {
           ...generated[0],
@@ -766,6 +690,7 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
       g.tasks = generated;
     } else {
       g.tasks = g.tasks.slice(0, 3).map((task, index) => {
+        delete (task as any).guildXpReward;
         const type: GuildTask['type'] =
           task.type === 'rolls' || task.type === 'value' || task.type === 'rare'
             ? task.type
@@ -773,7 +698,6 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
         const generated = createGuildTask(
           type,
           Math.max(1, Math.floor(Number(task.tier ?? 1) || 1)),
-          g.level || 1,
         );
         const target = Math.max(1, Math.floor(Number(task.target ?? generated.target) || generated.target));
         return {
@@ -785,14 +709,13 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
           target,
           progress: Math.max(0, Math.min(target, Math.floor(Number(task.progress ?? 0) || 0))),
           reward: Math.max(1, Math.floor(Number(task.reward ?? generated.reward) || generated.reward)),
-          guildXpReward: Math.max(1, Math.floor(Number(task.guildXpReward ?? generated.guildXpReward) || generated.guildXpReward)),
           label: String(task.label || generated.label),
         };
       });
     }
 
     while (g.tasks.length < 3) {
-      g.tasks.push(createGuildTask(generatedFallbackTaskType(g.tasks.length), 1, g.level || 1));
+      g.tasks.push(createGuildTask(generatedFallbackTaskType(g.tasks.length), 1));
     }
 
     g.taskCompletions = Math.max(0, Math.floor(Number(g.taskCompletions ?? 0) || 0));
@@ -806,7 +729,7 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     const comboExpired = hasEscalatedTasks && (comboTier === 0 || (comboEndsAt > 0 && comboEndsAt <= now)) ||
       (comboTier > 0 && comboEndsAt > 0 && comboEndsAt <= now);
     if (comboExpired) {
-      g.tasks = createInitialGuildTasks(g.level || 1);
+      g.tasks = createInitialGuildTasks();
     }
     g.combo = decayGuildComboState(g.combo, now);
 
@@ -821,18 +744,6 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     (g as any).challengeWeek = currentWeek;
   }
   return guilds;
-}
-
-function addGuildExperience(guild: Guild, requested: number): void {
-  // Guild XP is cumulative and can receive millions of reward writes over time.
-  // Keep it an exact safe integer forever, including when legacy data is near the limit.
-  const currentXp = Math.min(
-    Number.MAX_SAFE_INTEGER,
-    Math.max(0, Math.floor(Number(guild.xp) || 0)),
-  );
-  const earnedXp = Number.isFinite(requested) ? Math.max(0, Math.floor(requested)) : 0;
-  guild.xp = Math.min(Number.MAX_SAFE_INTEGER, currentXp + earnedXp);
-  guild.level = 1 + Math.floor(guild.xp / 500);
 }
 
 function generatedFallbackTaskType(index: number): GuildTask['type'] {
@@ -865,7 +776,7 @@ function isTrustedMember(guild: Guild, member: Guild['members'][number]): boolea
 
 function guildPerkMax(perk: GuildPerkId): number {
   if (perk === 'memberCapacityRank') return 40;
-  if (perk === 'tokenYieldRank' || perk === 'taskBountyRank' || perk === 'guildXpRank') return 20;
+  if (perk === 'tokenYieldRank' || perk === 'taskBountyRank') return 20;
   if (perk === 'comboRank') return 10;
   return 10;
 }
@@ -941,7 +852,7 @@ async function ensureGuildMigrations(): Promise<void> {
         tokenYieldRank: 0,
         taskBountyRank: 0,
         comboRank: 0,
-        guildXpRank: 0,
+
       };
     }
   });
@@ -1315,7 +1226,7 @@ export async function getPlayerGuildContext(
     tokenYieldRank: 0,
     taskBountyRank: 0,
     comboRank: 0,
-    guildXpRank: 0,
+
   };
   return {
     guildId: mine?.id ?? null,
@@ -1338,7 +1249,7 @@ export async function getPlayerGuildPerks(uname: string, uid?: string) {
     tokenYieldRank: 0,
     taskBountyRank: 0,
     comboRank: 0,
-    guildXpRank: 0,
+
   };
 }
 
@@ -1360,7 +1271,7 @@ export async function buyGuildPerk(perk: GuildPerkId) {
     if (!guild.perks) guild.perks = {
       luckRank: 0, speedRank: 0, vaultRank: 0, shardRank: 0,
       critRank: 0, coinRank: 0, memberCapacityRank: 0, tokenYieldRank: 0,
-      taskBountyRank: 0, comboRank: 0, guildXpRank: 0,
+      taskBountyRank: 0, comboRank: 0,
     };
 
     if (perk === 'tokenYieldRank') perk = 'taskBountyRank';
@@ -1392,8 +1303,7 @@ export async function buyGuildPerk(perk: GuildPerkId) {
       tokenYieldRank: 'Task Bounty',
       taskBountyRank: 'Task Bounty',
       comboRank: 'Combo Reserve',
-      guildXpRank: 'Guild Growth',
-    };
+      };
 
     if (!guild.chat) guild.chat = [];
     guild.chat.push({
@@ -1562,49 +1472,6 @@ export async function kickGuildMember(targetUsername: string) {
 }
 
 
-export async function setGuildTaxRate(rate: number) {
-  const safeRate = Math.max(0, Math.min(10, Math.floor(Number(rate) || 0)));
-  return updateGuilds(guilds => {
-    const guild = currentGuild(guilds);
-    if (!guild) throw new Error('You are not in a guild.');
-    const actor = guild.members.find(m => memberMatches(m));
-    if (!actor || !isTrustedMember(guild, actor)) {
-      throw new Error('You are not trusted to change the Guild Tax.');
-    }
-    guild.taxRate = safeRate;
-    if (!guild.chat) guild.chat = [];
-    guild.chat.push({
-      id: `msg-${Date.now()}-tax`,
-      username: 'System',
-      text: `Guild Tax set to ${safeRate}%.`,
-      timestamp: Date.now(),
-      isSystem: true,
-    });
-    if (guild.chat.length > 50) guild.chat.shift();
-    return guild;
-  });
-}
-
-export async function applyGuildTax(coinsEarned: number): Promise<{ taxedCoins: number; tokensEarned: number; xpEarned: number }> {
-  const safeCoins = normalizeCoinAmount(coinsEarned);
-  if (safeCoins < 100) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
-
-  return updateGuilds(guilds => {
-    const guild = currentGuild(guilds);
-    if (!guild) return { taxedCoins: 0, tokensEarned: 0, xpEarned: 0 };
-
-    const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
-    const taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * (rate / 100)));
-    if (taxedCoins <= 0) return { taxedCoins, tokensEarned: 0, xpEarned: 0 };
-
-    const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
-    const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
-    addGuildExperience(guild, xpEarned);
-    return { taxedCoins, tokensEarned: 0, xpEarned };
-  });
-}
-
-
 export async function createGuild(name: string, tag: string) {
   const cleanName = name.trim().slice(0, 32);
   const cleanTag = tag.trim().replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
@@ -1634,13 +1501,10 @@ export async function createGuild(name: string, tag: string) {
       id: `${now}-${createSecureId()}`,
       name: cleanName,
       tag: cleanTag,
-      level: 1,
-      xp: 0,
       tokens: 0,
       createdAt: now,
-      taxRate: 0,
       challenge: challengeForWeek(),
-      tasks: createInitialGuildTasks(1),
+      tasks: createInitialGuildTasks(),
       taskCompletions: 0,
       combo: createInitialGuildCombo(now),
       members: [{ username: username(), userId: user(), contribution: 0, role: 'owner', trusted: true, joinedAt: now }],
@@ -1662,7 +1526,7 @@ export async function createGuild(name: string, tag: string) {
         tokenYieldRank: 0,
         taskBountyRank: 0,
         comboRank: 0,
-        guildXpRank: 0,
+
       },
     };
     guilds.push(guild);
@@ -1762,13 +1626,11 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
     const safeValue = capSafeGuildCounter(value);
     if (safeValue <= 0) return;
     await updateGuilds(guilds => {
-      const guild = guilds.find(g => g.members.some(m => m.username === username()));
+      const guild = currentGuild(guilds);
       if (!guild) return;
-
-      const member = guild.members.find(m => m.username === username());
+      const member = guild.members.find(m => memberMatches(m));
       if (!member) return;
 
-      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
       const taskBountyMultiplier = 1 + Math.max(
         0,
         Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0),
@@ -1779,250 +1641,118 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       ) * 0.05;
 
       member.contribution = capSafeGuildCounter(member.contribution + safeValue);
-      addGuildExperience(guild, Math.max(1, Math.floor(Math.max(1, Math.floor(safeValue / 250)) * xpMultiplier)));
-
-      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) {
-        guild.tasks = createInitialGuildTasks(guild.level);
-      }
-
+      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
-      const taskProgressValue = safeValue;
       const taskProgressRolls = capSafeGuildCounter(rollCount);
       const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
-
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
-        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + taskProgressValue);
+        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + safeValue);
         else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
         else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
-
-        // Roll the same contribution across successive task tiers. The old
-        // one-pass logic clamped overflow below the next target, which made very
-        // large tasks appear stuck and forfeited rewards for skipped tiers.
         let completions = 0;
         while (task.progress >= task.target && completions < 1000) {
           completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
-          const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
-
           guild.tokens = capSafeGuildCounter((guild.tokens ?? 0) + reward);
-          addGuildExperience(guild, xpReward);
           guild.taskCompletions = capSafeGuildCounter((guild.taskCompletions ?? 0) + 1);
-          guild.combo = activateGuildComboStack(
-            guild.combo,
-            now,
-            GUILD_COMBO_MAX_TIER,
-            comboDurationMultiplier,
-          );
-
-          const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
-          // Keep the full contribution overflow. If it still clears the new
-          // target, the next loop completes that tier and awards its rewards too.
+          guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
+          const replacement = createGuildTask(task.type, completedTier + 1);
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
-
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
             id: `msg-${Date.now()}-task-${completedTier}`,
             username: 'System',
-            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens.`,
             timestamp: Date.now(),
             isSystem: true,
           });
           if (guild.chat.length > 50) guild.chat.shift();
         }
       }
-
       const firstTask = guild.tasks[0];
-      guild.challenge = {
-        type: firstTask.type,
-        target: firstTask.target,
-        progress: Math.min(firstTask.target, firstTask.progress),
-        reward: firstTask.reward,
-        label: firstTask.label,
-      };
-
-      if (guild.boss && !guild.boss.defeated) {
-        const damage = capSafeGuildCounter(safeValue + taskProgressRolls * 25);
-        guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
-        if (!guild.boss.contributors) guild.boss.contributors = {};
-        guild.boss.contributors[username()] = capSafeGuildCounter((guild.boss.contributors[username()] ?? 0) + damage);
-
-        if (guild.boss.currentHp <= 0) {
-          guild.boss.defeated = true;
-          const guildXpReward = Math.max(0, Math.floor(guild.boss.rewardGuildXp ?? 0));
-          addGuildExperience(guild, guildXpReward);
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-            id: `msg-${Date.now()}-boss`,
-            username: 'System',
-            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${guildXpReward.toLocaleString()} Guild XP.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          });
-          if (guild.chat.length > 50) guild.chat.shift();
-        }
-      }
+      guild.challenge = { type: firstTask.type, target: firstTask.target, progress: Math.min(firstTask.target, firstTask.progress), reward: firstTask.reward, label: firstTask.label };
     });
   } catch (err) {
     console.error('Error in guild contribution:', err);
   }
 }
+
 export async function prepareGuildRollEffects(
-  coinsEarned: number,
   value: number,
   rollCount: number,
   bestRarity?: number,
   pendingWrite?: { expectedValue: string | null; nextValue: string },
 ): Promise<{
-  taxedCoins: number;
   extraWrite?: { key: string; expectedValue: string | null; nextValue: string; conflictMessage?: string; optional?: boolean };
 }> {
-  // Callers load authoritative player/guild context before processing a roll.
+  // Guild tasks and member contribution are optional projections of a completed roll.
+  // They never withhold Coins or block the authoritative player reward.
   await ensureRedisStringKey(GUILDS_KEY, '[]');
-
   const persistedRaw = await redis.get(GUILDS_KEY);
   const sourceRaw = pendingWrite ? pendingWrite.nextValue : persistedRaw;
   const guilds = parseGuildList(sourceRaw);
   const guild = currentGuild(guilds);
-  if (!guild) {
-    return pendingWrite
-      ? { taxedCoins: 0, extraWrite: { key: GUILDS_KEY, ...pendingWrite } }
-      : { taxedCoins: 0 };
-  }
+  if (!guild) return pendingWrite ? { extraWrite: { key: GUILDS_KEY, ...pendingWrite } } : {};
 
-  const capInteger = (value: number) =>
-    Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
-  const safeCoins = normalizeCoinAmount(coinsEarned);
+  const capInteger = (value: number) => Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
   const safeValue = capInteger(value);
   const safeRolls = capInteger(rollCount);
-  let taxedCoins = 0;
-
-  if (safeCoins >= 100) {
-    const rate = Math.max(0, Math.min(10, Math.floor(Number(guild.taxRate ?? 0) || 0)));
-    taxedCoins = Math.min(safeCoins, Math.floor(safeCoins * (rate / 100)));
-    if (taxedCoins > 0) {
-      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
-      const xpEarned = Math.max(1, Math.floor((taxedCoins / 100) * xpMultiplier));
-      guild.xp = capInteger(guild.xp + xpEarned);
-      guild.level = 1 + Math.floor(guild.xp / 500);
-    }
-  }
-
   if (safeValue > 0) {
     const member = guild.members.find(candidate => memberMatches(candidate));
     if (member) {
-      const xpMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.guildXpRank ?? 0)) * 0.10;
-      const taskBountyMultiplier = 1 + Math.max(
-        0,
-        Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0),
-      ) * 0.05;
-      const comboDurationMultiplier = 1 + Math.max(
-        0,
-        Math.floor(guild.perks?.comboRank ?? 0),
-      ) * 0.05;
-
+      const taskBountyMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0)) * 0.05;
+      const comboDurationMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.comboRank ?? 0)) * 0.05;
       member.contribution = capInteger(member.contribution + safeValue);
-      guild.xp = capInteger(guild.xp + Math.max(1, Math.floor(Math.max(1, Math.floor(safeValue / 250)) * xpMultiplier)));
-      guild.level = 1 + Math.floor(guild.xp / 500);
-
-      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) {
-        guild.tasks = createInitialGuildTasks(guild.level);
-      }
+      if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
-      const taskProgressValue = safeValue;
-      const taskProgressRolls = safeRolls;
       const taskProgressRare = (bestRarity ?? 0) >= 100 ? 1 : 0;
-
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
-        if (task.type === 'value') task.progress = capInteger(task.progress + taskProgressValue);
-        else if (task.type === 'rolls') task.progress = capInteger(task.progress + taskProgressRolls);
+        if (task.type === 'value') task.progress = capInteger(task.progress + safeValue);
+        else if (task.type === 'rolls') task.progress = capInteger(task.progress + safeRolls);
         else if (task.type === 'rare') task.progress = capInteger(task.progress + taskProgressRare);
-
-        // A single Collection Value contribution can satisfy several successive
-        // tiers. Keep carrying every remaining point forward and pay every tier's
-        // Token/XP reward rather than clamping overflow below the next target.
         let completions = 0;
         while (task.progress >= task.target && completions < 1000) {
           completions += 1;
           const completedTier = Math.max(1, Math.floor(Number(task.tier) || 1));
           const overflow = Math.max(0, task.progress - task.target);
           const reward = Math.max(1, Math.floor(task.reward * taskBountyMultiplier));
-          const xpReward = Math.max(1, Math.floor(task.guildXpReward * xpMultiplier));
           guild.tokens = capInteger((guild.tokens ?? 0) + reward);
-          guild.xp = capInteger(guild.xp + xpReward);
-          guild.level = 1 + Math.floor(guild.xp / 500);
           guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
           guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
-
-          const replacement = createGuildTask(task.type, completedTier + 1, guild.level);
+          const replacement = createGuildTask(task.type, completedTier + 1);
           replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
-
           if (!guild.chat) guild.chat = [];
           guild.chat.push({
             id: `msg-${Date.now()}-task-${completedTier}`,
             username: 'System',
-            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens and +${xpReward.toLocaleString()} Guild XP.`,
+            text: `Guild Task completed! Tier ${completedTier} → Tier ${completedTier + 1}. +${reward.toLocaleString()} Guild Tokens.`,
             timestamp: Date.now(),
             isSystem: true,
           });
           if (guild.chat.length > 50) guild.chat.shift();
         }
       }
-
       const firstTask = guild.tasks[0];
-      guild.challenge = {
-        type: firstTask.type,
-        target: firstTask.target,
-        progress: Math.min(firstTask.target, firstTask.progress),
-        reward: firstTask.reward,
-        label: firstTask.label,
-      };
-      if (guild.boss && !guild.boss.defeated) {
-        const damage = Math.min(Number.MAX_SAFE_INTEGER, Math.round(safeValue + safeRolls * 25));
-        guild.boss.currentHp = Math.max(0, guild.boss.currentHp - damage);
-        if (!guild.boss.contributors) guild.boss.contributors = {};
-        guild.boss.contributors[username()] = capInteger((guild.boss.contributors[username()] ?? 0) + damage);
-        if (guild.boss.currentHp <= 0) {
-          guild.boss.defeated = true;
-          const guildXpReward = Math.max(0, Math.floor(guild.boss.rewardGuildXp ?? 0));
-          guild.xp = capInteger(guild.xp + guildXpReward);
-          guild.level = 1 + Math.floor(guild.xp / 500);
-          if (!guild.chat) guild.chat = [];
-          guild.chat.push({
-            id: `msg-${Date.now()}-boss`,
-            username: 'System',
-            text: `🏆 RAID BOSS SLAIN! ${guild.boss.name} was defeated! +${guildXpReward.toLocaleString()} Guild XP.`,
-            timestamp: Date.now(),
-            isSystem: true,
-          });
-          if (guild.chat.length > 50) guild.chat.shift();
-        }
-      }
+      guild.challenge = { type: firstTask.type, target: firstTask.target, progress: Math.min(firstTask.target, firstTask.progress), reward: firstTask.reward, label: firstTask.label };
     }
   }
-
   return {
-    taxedCoins,
     extraWrite: {
       key: GUILDS_KEY,
-      expectedValue: pendingWrite
-        ? pendingWrite.expectedValue
-        : persistedRaw == null ? null : String(persistedRaw),
+      expectedValue: pendingWrite ? pendingWrite.expectedValue : persistedRaw == null ? null : String(persistedRaw),
       nextValue: JSON.stringify(guilds),
-      conflictMessage: 'Guild data changed before the roll saved. Please retry.',
-      // Without withheld Guild tax, contribution/task progress is a projection.
-      // If another request updates Guild data first, save() can preserve the
-      // valid player roll and skip only this side write rather than rejecting it.
-      ...(taxedCoins === 0 && !pendingWrite ? { optional: true } : {}),
+      conflictMessage: 'Guild task progress changed before it saved. Your roll was still saved.',
+      ...(!pendingWrite ? { optional: true } : {}),
     },
   };
 }
