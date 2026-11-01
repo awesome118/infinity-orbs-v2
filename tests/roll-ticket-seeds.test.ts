@@ -47,3 +47,23 @@ test('roll ticket preview simulation runs outside the player mutation lock', () 
     'preview simulation must run after the player mutation lock is released');
   assert.match(ticketHandler, /Preview generation failed; continuing without instant preview/);
 });
+
+test('dev cooldown reset releases the player lock before issuing a ticket', () => {
+  const debug = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  const modal = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+  const routeStart = debug.indexOf("debugRouter.post('/reset-cooldown'");
+  const routeEnd = debug.indexOf("debugRouter.post('/unlock-upgrades'", routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = debug.slice(routeStart, routeEnd);
+  const lockRelease = route.indexOf('    });');
+  const ticketRequest = route.indexOf('const ticket = await getRollTicket()');
+  assert.ok(lockRelease >= 0 && ticketRequest > lockRelease,
+    'getRollTicket must not be called while the reset route holds the player lock');
+
+  const rollStart = modal.indexOf('const rollOnce = async');
+  const rollEnd = modal.indexOf('const rollDetail =', rollStart);
+  assert.ok(rollStart >= 0 && rollEnd > rollStart);
+  const rollOnce = modal.slice(rollStart, rollEnd);
+  assert.match(rollOnce, /ticketSeed/);
+  assert.match(rollOnce, /ticketIndex: ticket\\.nextIndex/);
+});
