@@ -3,7 +3,7 @@ name: Deploy Devvit
 # Explicit user-requested responsive, fullscreen and immediate-dispatch overhaul (2026-11-01): deploy v2.1.49 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.55.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.1.56.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -30,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.55]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.1.56]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -242,3 +242,5 @@ jobs:
 # Explicit user-requested dev-only deployment of rarity-colored, fullscreen-scaling milestone orb icons v2.1.54 on 2026-11-01.
 
 # Explicit user-requested dev-only deployment of Devvit expanded-view Codex sizing and shifting Epic row colors v2.1.55 on 2026-11-01.
+
+# Explicit user-requested dev-only deployment of 9-column fullscreen Codex and 3-Orb mobile roll display v2.1.56 on 2026-11-01.
