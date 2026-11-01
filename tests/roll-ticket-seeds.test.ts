@@ -35,3 +35,15 @@ test('Auto Roll uses the current saved cooldown and a self-rescheduling timer', 
   assert.match(effect, /window\.setTimeout/);
   assert.doesNotMatch(effect, /setInterval/);
 });
+test('roll ticket preview simulation runs outside the player mutation lock', () => {
+  const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = game.indexOf('export async function getRollTicket():');
+  const end = game.indexOf('async function loadRollTicketForUse(', start);
+  assert.ok(start >= 0 && end > start);
+  const ticketHandler = game.slice(start, end);
+  const lockCallbackEnd = ticketHandler.indexOf('  });');
+  const previewStart = ticketHandler.indexOf('await createRollTicketPreviews');
+  assert.ok(lockCallbackEnd >= 0 && previewStart > lockCallbackEnd,
+    'preview simulation must run after the player mutation lock is released');
+  assert.match(ticketHandler, /catch \(error\) \{\\s*console\\.error\(\['Roll Ticket'\]/);
+});
