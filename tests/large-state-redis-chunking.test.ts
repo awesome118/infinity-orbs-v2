@@ -47,3 +47,16 @@ test('the global game-ban registry reads legacy inline JSON and writes bounded c
   assert.match(game, /discardRedisLargeValueWritePlan\(writePlan\)/);
   assert.doesNotMatch(game, /txn\.set\(GAME_BANS_KEY, JSON\.stringify\(bans\)\)/);
 });
+
+
+test('player-list save projection accepts only validated Redis string values', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /const storedPlayerSave = saves\[index\];/);
+  assert.match(game, /playerSaveProjection\(typeof storedPlayerSave === 'string' \? storedPlayerSave : null\)/);
+});
+
+test('Alignment username normalization uses a valid escaped slash regex', () => {
+  const game = source('src/server/game.ts');
+  assert.ok(game.includes("replace(/^u\\//i, '')"));
+  assert.ok(!game.includes("replace(/^u\\\\//i, '')"));
+});
