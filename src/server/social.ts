@@ -2182,7 +2182,7 @@ export async function recordGlobalChatComment(input: {
   const userId = String(input.userId ?? '').trim();
   const message: GlobalChatMessage = {
     id,
-    username: String(input.username ?? '').trim().replace(/^u\\//i, '').slice(0, 80) || 'Redditor',
+    username: String(input.username ?? '').trim().replace(/^u\//i, '').slice(0, 80) || 'Redditor',
     text,
     timestamp: Number.isSafeInteger(Number(input.timestamp)) && Number(input.timestamp) >= 0
       ? Number(input.timestamp)
@@ -2233,13 +2233,13 @@ export async function recordGlobalChatComment(input: {
 }
 
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
-  const cleanUsername = String(targetUsername).trim().replace(/^u\\//i, '').toLowerCase();
+  const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
 
   await updateGuilds(guilds => {
     for (const guild of guilds) {
       guild.chat = (guild.chat ?? []).filter(message => {
         const messageUserId = String(message.userId ?? '').trim();
-        const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
         return messageUserId !== userId && messageUsername !== cleanUsername;
       });
     }
@@ -2257,7 +2257,7 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
       const messages = parseGlobalChatList(decodedRaw);
       const retained = messages.filter(message => {
         const messageUserId = String(message.userId ?? '').trim();
-        const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
         return messageUserId !== userId && messageUsername !== cleanUsername;
       });
 
