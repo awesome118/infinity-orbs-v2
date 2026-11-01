@@ -217,11 +217,18 @@ export async function cleanupPreviousPlayerSave(
   const previous = parsePlayerSaveManifest(previousRaw);
   if (!previous) return;
   const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
+  const ttlSeconds = Math.ceil(PLAYER_SAVE_RETIRED_CHUNK_TTL_MS / 1_000);
   for (let index = 0; index < previous.chunkCount; index += 1) {
     const keyName = playerSaveChunkKey(userId, previous.token, index);
     try {
-      const chunk = await redis.get(keyName);
-      if (typeof chunk === 'string') await redis.set(keyName, chunk, { expiration });
+      // Prefer changing expiry metadata over resending a legacy 64 KiB chunk
+      // through SET, which could itself exceed the platform request ceiling.
+      if (typeof redis.expire === 'function') {
+        await redis.expire(keyName, ttlSeconds);
+      } else {
+        const chunk = await redis.get(keyName);
+        if (typeof chunk === 'string') await redis.set(keyName, chunk, { expiration });
+      }
     } catch (error) {
       console.warn('[Player Save] Previous chunk could not be retired; it remains readable:', error);
     }
