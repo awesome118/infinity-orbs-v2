@@ -105,6 +105,13 @@ test('admin sweep isolates force-roll results from multi-roll, critical, and cac
   assert.match(deterministicStep, /await seedSingleBallForceRoll\(0\)/);
   assert.match(deterministicStep, /rarity:\s*12345,\s*randomValue:\s*0\.999999/);
 
+  const persistenceStart = runner.indexOf('"API · Force-roll persists collection entry"');
+  const persistenceEnd = runner.indexOf('\n      await step(', persistenceStart + 1);
+  assert.ok(persistenceStart >= 0 && persistenceEnd > persistenceStart);
+  const persistenceStep = runner.slice(persistenceStart, persistenceEnd);
+  assert.match(persistenceStep, /await seedSingleBallForceRoll\(0\)/);
+  assert.match(persistenceStep, /rarity:\s*777,\s*randomValue:\s*0\.999999/);
+
   const shareStart = runner.indexOf('"API · Share records eligibility in a fresh leaderboard snapshot"');
   const shareEnd = runner.indexOf('\n      await step(', shareStart + 1);
   assert.ok(shareStart >= 0 && shareEnd > shareStart);
