@@ -1975,19 +1975,19 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
 }
 .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-grid {
   display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)) !important;
+  grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
   align-items: stretch;
-  gap: clamp(12px, 1.15vw, 20px) !important;
+  gap: clamp(6px, .7vw, 12px) !important;
 }
 .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
   min-width: 0;
-  min-height: clamp(188px, 22vh, 264px) !important;
-  padding: clamp(14px, 1.35vw, 22px) !important;
-  gap: clamp(10px, 1.1vh, 16px) !important;
+  min-height: clamp(148px, 18vh, 220px) !important;
+  padding: clamp(8px, .9vw, 16px) clamp(4px, .5vw, 9px) !important;
+  gap: clamp(7px, .8vh, 12px) !important;
   border-radius: 18px;
 }
 .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card .io-rarity-orb-icon {
-  width: clamp(84px, 6.5vw, 116px) !important;
+  width: clamp(48px, 5vw, 88px) !important;
   flex: 0 0 auto;
 }
 .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-name {
@@ -2089,16 +2089,16 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
     padding-inline: clamp(10px, 3vw, 18px) !important;
   }
   .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
   }
   .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
-    min-height: 164px !important;
-    padding: 12px 8px !important;
-    gap: 9px !important;
+    min-height: 142px !important;
+    padding: 10px 4px !important;
+    gap: 7px !important;
   }
   .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card .io-rarity-orb-icon {
-    width: clamp(68px, 18vw, 88px) !important;
+    width: clamp(46px, 13.5vw, 64px) !important;
   }
   .io-ui.io-expanded-view .io-rarity-modal {
     width: calc(100vw - 16px) !important;
@@ -2111,7 +2111,7 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
 }
 @media (max-width: 420px) {
   .io-ui.io-expanded-view .io-page-codex .io-codex-milestone-card {
-    min-height: 154px !important;
+    min-height: 136px !important;
   }
 }
 @media (prefers-reduced-motion: reduce) {

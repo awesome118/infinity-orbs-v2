@@ -540,7 +540,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         {/* Orbiting Satellite Orbs Container (Concentric with central orb) */}
-        {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} />}
+        {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} primaryOrb={displayOrb} />}
 
         {/* Celestial Sonar Radar Pulse Wave on Rare Drops */}
         {sonarPinging && (

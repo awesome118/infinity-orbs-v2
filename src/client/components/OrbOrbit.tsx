@@ -1,14 +1,46 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Orb } from '../../shared/game.js';
 import { getOrbInfo } from '../../shared/game.js';
 
 interface Props {
   orbs: Orb[];
   radius?: number;
+  primaryOrb?: Orb | null;
 }
 
-export function OrbOrbit({ orbs, radius = 152 }: Props) {
-  if (orbs.length <= 1) return null;
+function isMobileViewport(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 760px)').matches;
+}
+
+export function OrbOrbit({ orbs, radius = 152, primaryOrb }: Props) {
+  const [isMobile, setIsMobile] = useState(isMobileViewport);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(max-width: 760px)');
+    const syncViewport = (event?: MediaQueryListEvent) => setIsMobile(event?.matches ?? media.matches);
+    syncViewport();
+    media.addEventListener?.('change', syncViewport);
+    return () => media.removeEventListener?.('change', syncViewport);
+  }, []);
+
+  // The large centerpiece already displays the best Orb from this batch. Remove
+  // one matching batch entry before previewing companions to avoid duplicating it.
+  const primaryIndex = primaryOrb
+    ? orbs.findIndex(orb =>
+        orb.rarity === primaryOrb.rarity &&
+        (orb.isInfinity === true) === (primaryOrb.isInfinity === true) &&
+        orb.name === primaryOrb.name
+      )
+    : -1;
+  const mobileBatchOrbs = primaryIndex >= 0
+    ? orbs.filter((_orb, index) => index !== primaryIndex)
+    : orbs;
+  const visibleOrbs = isMobile ? mobileBatchOrbs.slice(0, 2) : orbs.slice(0, 8);
+
+  if (visibleOrbs.length === 0) return null;
 
   return (
     <div aria-hidden="true" className="io-orbit-layer absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -17,12 +49,12 @@ export function OrbOrbit({ orbs, radius = 152 }: Props) {
         style={{ width: radius * 2, height: radius * 2 }}
       />
       <div className="relative w-0 h-0 animate-orbit-ring">
-        {orbs.slice(0, 8).map((orb, index) => {
-          const angle = (index / Math.min(orbs.length, 8)) * Math.PI * 2 - Math.PI / 2;
+        {visibleOrbs.map((orb, index) => {
+          const angle = (index / visibleOrbs.length) * Math.PI * 2 - Math.PI / 2;
           const info = getOrbInfo(orb.rarity, orb.isInfinity);
           return (
             <div
-              key={`${orb.rarity}:${orb.isInfinity ? 1 : 0}:${index}`}
+              key={orb.rarity + ':' + (orb.isInfinity ? 1 : 0) + ':' + index}
               className="io-orbit-satellite absolute -translate-x-1/2 -translate-y-1/2"
               style={{
                 left: Math.cos(angle) * radius,
