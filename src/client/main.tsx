@@ -345,6 +345,7 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentPromptNow, setAlignmentPromptNow] = useState(() => Date.now());
+  const [alignmentChoiceDeadlineAt, setAlignmentChoiceDeadlineAt] = useState(0);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
@@ -1361,6 +1362,7 @@ function App() {
       setAlignmentPromptVisible(false);
       alignmentDismissedPendingAtRef.current = 0;
       alignmentPendingSeenRef.current = 0;
+      setAlignmentChoiceDeadlineAt(0);
       return;
     }
     let cancelled = false;
@@ -1388,6 +1390,7 @@ function App() {
         setAlignmentStatus(status);
         if (status.pending) {
           setAlignmentPromptVisible(true);
+          setAlignmentChoiceDeadlineAt(status.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS);
           const pendingKey = status.pendingAt || -1;
           if (alignmentPendingSeenRef.current !== pendingKey) {
             alignmentPendingSeenRef.current = pendingKey;
@@ -1399,6 +1402,7 @@ function App() {
           // Never hide the chooser until the choice has actually committed.
           if (!alignmentChoiceBusy && !alignmentChoiceError) {
             setAlignmentPromptVisible(false);
+            setAlignmentChoiceDeadlineAt(0);
           }
         }
       } catch {
@@ -1420,28 +1424,27 @@ function App() {
     };
   }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin, alignmentChoiceBusy, alignmentChoiceError]);
 
-  // The chooser is a 60-second offer. Its expiry is enforced by the server;
-  // this local clock only keeps the modal responsive between status polls.
+  // Keep the 60-second deadline independently of status polling. A status read may
+  // return pending=false while a queued selection is still resolving; that must not
+  // stop the local timer or leave an expired chooser mounted.
   useEffect(() => {
-    const pendingAt = Number(alignmentStatus?.pendingAt ?? 0);
-    if (!alignmentPromptVisible || !alignmentStatus?.pending || pendingAt <= 0) return;
+    if (!alignmentPromptVisible || alignmentChoiceDeadlineAt <= 0) return;
+    const pendingAt = alignmentChoiceDeadlineAt - CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
     const tick = () => {
       const now = Date.now();
       setAlignmentPromptNow(now);
-      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
-        alignmentDismissedPendingAtRef.current = Math.max(
-          alignmentDismissedPendingAtRef.current,
-          pendingAt,
-        );
+      if (now >= alignmentChoiceDeadlineAt) {
+        alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, pendingAt);
         alignmentPendingSeenRef.current = 0;
         setAlignmentChoiceError(null);
         setAlignmentPromptVisible(false);
+        setAlignmentChoiceDeadlineAt(0);
       }
     };
     tick();
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt, alignmentChoiceBusy]);
+  }, [alignmentPromptVisible, alignmentChoiceDeadlineAt]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
@@ -2510,11 +2513,14 @@ function App() {
 
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
-    const currentPendingAt = Number(alignmentStatus?.pendingAt ?? 0);
+    const currentPendingAt = alignmentChoiceDeadlineAt > 0
+      ? alignmentChoiceDeadlineAt - CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS
+      : Number(alignmentStatus?.pendingAt ?? 0);
     if (currentPendingAt > 0 && Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
       setAlignmentPromptVisible(false);
       setAlignmentChoiceError(null);
+      setAlignmentChoiceDeadlineAt(0);
       return;
     }
     // The chooser can be visible before the first status poll has populated its timestamp.
@@ -2563,6 +2569,7 @@ function App() {
         sound.playSonarPing(sound.sonarThreshold);
       }
       setAlignmentPromptVisible(false);
+      setAlignmentChoiceDeadlineAt(0);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
       const expired = currentPendingAt > 0 &&
@@ -2571,6 +2578,7 @@ function App() {
         alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
         setAlignmentChoiceError(null);
         setAlignmentPromptVisible(false);
+        setAlignmentChoiceDeadlineAt(0);
       } else {
         setAlignmentChoiceError(message);
         setAlignmentPromptVisible(true);
@@ -2581,10 +2589,8 @@ function App() {
     }
   };
 
-  const alignmentPromptSecondsLeft = alignmentStatus?.pendingAt
-    ? Math.max(0, Math.ceil((
-      alignmentStatus.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS - alignmentPromptNow
-    ) / 1_000))
+  const alignmentPromptSecondsLeft = alignmentChoiceDeadlineAt > 0
+    ? Math.max(0, Math.ceil((alignmentChoiceDeadlineAt - alignmentPromptNow) / 1_000))
     : 0;
   const alignmentPromptCountdown =
     String(Math.floor(alignmentPromptSecondsLeft / 60)).padStart(2, '0') +

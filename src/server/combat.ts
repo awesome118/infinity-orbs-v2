@@ -1,4 +1,5 @@
 import { context, redis } from './devvit-mock.js';
+import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import { loadRaw } from './game.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
@@ -481,15 +482,37 @@ function snapshot(s:CombatState):CombatSnapshot { return {state:s,enemy:enemySna
 async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
   for(let i=0;i<MAX_CAS_ATTEMPTS;i++){
-    const txn=await redis.watch(key);let closed=false;
-    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
-    finally { if(!closed)await txn.unwatch().catch(()=>undefined); }
+    const txn=await redis.watch(key);
+    let closed=false;
+    let writePlan:Awaited<ReturnType<typeof createRedisLargeValueWritePlan>>|null=null;
+    let previousRaw:string|null|undefined;
+    try {
+      previousRaw=await redis.get(key);
+      const s=normalizeState(await readRedisLargeValue(key,previousRaw));
+      const result=fn(s);
+      writePlan=await createRedisLargeValueWritePlan(key,JSON.stringify(s));
+      await txn.multi();
+      await txn.set(key,writePlan.storedValue);
+      const commit=await txn.exec();
+      closed=true;
+      if(commit!==null){
+        writePlan=null;
+        await retireRedisLargeValue(key,previousRaw).catch(error=>console.warn('[Combat Save] Previous chunks could not be retired:',error));
+        return result;
+      }
+      await discardRedisLargeValueWritePlan(writePlan);
+      writePlan=null;
+    } finally {
+      if(!closed) await txn.unwatch().catch(()=>undefined);
+      if(writePlan) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
 /** Read the shared Combat Marks wallet for the global HUD without creating/writing combat state. */
 export async function getCombatMarksBalance():Promise<number>{
-  return normalizeState(await redis.get(combatKey())).combatMarks;
+  const key=combatKey();
+  return normalizeState(await readRedisLargeValue(key,await redis.get(key))).combatMarks;
 }
 export async function getCombatSnapshot():Promise<CombatSnapshot>{
   let coreProgression:{level?:unknown;highestRarity?:unknown;autoScrapLevel?:unknown;autoScrapSettings?:unknown}|null=null;
@@ -500,7 +523,8 @@ export async function getCombatSnapshot():Promise<CombatSnapshot>{
     // Core-game progress is a bonus, not a prerequisite for loading combat.
     console.error('[Combat] Could not refresh core-game attunement; retaining saved values.',error);
   }
-  const current=normalizeState(await redis.get(combatKey()));
+  const key=combatKey();
+  const current=normalizeState(await readRedisLargeValue(key,await redis.get(key)));
   const nextCoreLevel=coreProgression?finiteInt(coreProgression.level,current.coreLevel,1,1_000_000):current.coreLevel;
   const nextCoreHighestRarity=coreProgression?finiteInt(coreProgression.highestRarity,current.coreHighestRarity,2,Number.MAX_VALUE):current.coreHighestRarity;
   const nextAutoScrapUnlocked=coreProgression?Number(coreProgression.autoScrapLevel)>0:current.autoScrapUnlocked;
@@ -541,7 +565,9 @@ export async function getCombatSnapshotForUser(
 ): Promise<CombatSnapshot & { saveExists: boolean; persistedSave: unknown }> {
   const userId = String(userIdValue ?? '').trim();
   if (!userId || userId.length > 256) throw new Error('A valid player ID is required.');
-  const raw = await redis.get('infinity-orbs:combat:' + userId);
+  const saveKey = 'infinity-orbs:combat:' + userId;
+  const storedRaw = await redis.get(saveKey);
+  const raw = await readRedisLargeValue(saveKey, storedRaw);
   let persistedSave: unknown = null;
   if (typeof raw === 'string' && raw.trim()) {
     try {
@@ -577,7 +603,7 @@ export async function getCombatSnapshotForUser(
 
   const stats = synchronizeCombatStats(state);
   const enemy = enemySnapshot(state);
-  return { state, enemy, stats, saveExists: raw != null, persistedSave };
+  return { state, enemy, stats, saveExists: storedRaw != null, persistedSave };
 }
 
 function grantXp(s:CombatState,amount:number,actions:CombatAction[]):void {
@@ -631,7 +657,8 @@ function chooseGuidedSkillId(s:CombatState,enemy:CombatEnemy):CombatSkillId|null
 export async function hasCompletedCombatTutorial():Promise<boolean>{
   // Share the same fail-closed save validation as all combat reads. A damaged
   // save must not masquerade as an unseen tutorial and then be overwritten.
-  return normalizeState(await redis.get(combatKey())).combatTutorialSeen;
+  const key=combatKey();
+  return normalizeState(await readRedisLargeValue(key,await redis.get(key))).combatTutorialSeen;
 }
 export async function markCombatTutorialSeen():Promise<void>{
   await mutate(s=>{s.combatTutorialSeen=true;return undefined;});

@@ -37,6 +37,7 @@ import {
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
+  CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
   normalizeCelestialAlignmentInstances,
@@ -6893,7 +6894,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
     // Pending choices are short-lived offers, not persistent windows. Expire
     // them on the server as well as in the client so stale tabs cannot claim one.
     const pendingAt = Math.max(0, Math.floor(Number(s.alignmentPendingAt ?? 0) || 0));
-    if (pendingAt > 0 && now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+    if (pendingAt > 0 && now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS + CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS) {
       s.alignmentPendingAt = 0;
       s.alignmentPendingForced = false;
       s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
@@ -6934,8 +6935,11 @@ export async function getCelestialAlignmentStatus(): Promise<{
     if (changed) await save(s);
     return {
       unlocked: true,
-      pending: (s.alignmentPendingAt ?? 0) > 0,
-      pendingAt: s.alignmentPendingAt ?? 0,
+      pending: (s.alignmentPendingAt ?? 0) > 0 &&
+        now < Number(s.alignmentPendingAt) + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
+      pendingAt: (s.alignmentPendingAt ?? 0) > 0 &&
+        now < Number(s.alignmentPendingAt) + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS
+        ? Number(s.alignmentPendingAt) : 0,
       activeChoice: latest?.choice ?? null,
       activeUntil: latest?.expiresAt ?? 0,
       activeInstances,
@@ -6959,7 +6963,7 @@ export async function chooseCelestialAlignment(
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
-    if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+    if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS + CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS) {
       throw new Error('The Alignment choice window expired. The next event will arrive later.');
     }
 

@@ -175,13 +175,15 @@ export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs:
   if (!Number.isFinite(energy) || !Number.isFinite(cooldown) || energy <= 0 || cooldown <= 0) return 0;
   return Math.min(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, Math.floor(Math.max(0, energy) / Math.max(1, cooldown)));
 }
-export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 90 * 60 * 1_000;
-export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 180 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 3 * 60 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 5 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
   (CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS + CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS) / 2;
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
+/** Gives a choice already admitted to the action queue time to commit. */
+export const CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS = 30 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
 const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
