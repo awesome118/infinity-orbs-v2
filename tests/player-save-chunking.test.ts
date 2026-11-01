@@ -91,6 +91,21 @@ test('transient Redis and lock contention is normalized into one retryable queue
   assert.match(combat, /error\.code==='PLAYER_MUTATION_QUEUED'/);
 });
 
+test('Global Chat and the legacy leaderboard use chunk manifests for potentially oversized SET values', () => {
+  const social = source('src/server/social.ts');
+
+  assert.match(social, /readRedisLargeValue\(GLOBAL_CHAT_KEY/);
+  assert.match(social, /createRedisLargeValueWritePlan\(\s*GLOBAL_CHAT_KEY/);
+  assert.match(social, /retireRedisLargeValue\(GLOBAL_CHAT_KEY/);
+  assert.doesNotMatch(social, /txn\.set\(GLOBAL_CHAT_KEY, JSON\.stringify/);
+
+  assert.match(social, /readRedisLargeValue\(leaderboardKey/);
+  assert.match(social, /createRedisLargeValueWritePlan\(\s*leaderboardKey/);
+  assert.match(social, /retireRedisLargeValue\(leaderboardKey/);
+  assert.doesNotMatch(social, /txn\.set\(leaderboardKey, JSON\.stringify/);
+  assert.match(social, /readRedisLargeValue\(key\('leaderboard'\)/);
+});
+
 test('unbounded shared Guild JSON is stored through an atomic chunk manifest', () => {
   const large = source('src/server/redis-large-values.ts');
   const social = source('src/server/social.ts');
