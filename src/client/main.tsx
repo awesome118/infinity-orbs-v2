@@ -63,6 +63,7 @@ import {
   canShowDailyFrenzyPrompt,
   frenzyCooldownRemaining,
   FRENZY_PROMPT_DELAY_MS,
+  CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS,
   FRENZY_OWNER_SHARD_REWARD,
   rollsPerActivation,
   upgradeCost,
@@ -102,6 +103,13 @@ import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
+
+function formatAlignmentPromptCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1_000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
 
 function optimisticShardSpend(
   state: PlayerState,
@@ -345,8 +353,25 @@ function App() {
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
+  const [alignmentPromptNow, setAlignmentPromptNow] = useState(() => Date.now());
   const alignmentDismissedPendingAtRef = useRef(0);
   const alignmentPendingSeenRef = useRef(0);
+  useEffect(() => {
+    const pendingAt = Number(alignmentStatus?.pendingAt ?? 0);
+    if (!alignmentPromptVisible || !alignmentStatus?.pending || pendingAt <= 0) return;
+    const updateCountdown = () => {
+      const now = Date.now();
+      setAlignmentPromptNow(now);
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS) {
+        alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, pendingAt);
+        alignmentPendingSeenRef.current = 0;
+        setAlignmentPromptVisible(false);
+      }
+    };
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 1_000);
+    return () => window.clearInterval(interval);
+  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt]);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [moreNavOpen, setMoreNavOpen] = useState(false);
   useEffect(() => {
@@ -3438,6 +3463,10 @@ function App() {
             <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-400/25 bg-cyan-500/5 px-4 py-3" data-testid="celestial-alignment-duration" aria-label="Each selected effect lasts two hours and stacks independently">
               <span className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">Effect duration</span>
               <strong className="font-mono text-xl tabular-nums text-white">2 hours</strong>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-500/5 px-4 py-3" data-testid="celestial-alignment-choice-countdown" aria-label="This choice window closes after sixty seconds">
+              <span className="text-[10px] font-black uppercase tracking-[.16em] text-amber-300">Time to choose</span>
+              <strong className="font-mono text-xl tabular-nums text-amber-100">{formatAlignmentPromptCountdown((alignmentStatus?.pendingAt ?? 0) + CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS - alignmentPromptNow)}</strong>
             </div>
             {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             {alignmentChoiceBusy && (
