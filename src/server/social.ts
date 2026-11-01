@@ -2011,6 +2011,9 @@ function normalizeRedditPostId(value: unknown): string {
   return /^t3_/i.test(id) ? id : 't3_' + id;
 }
 const GLOBAL_CHAT_MAX_MESSAGES = 100;
+// Keep this single-key JSON projection below RedisAPI/Set's request ceiling,
+// even when external Reddit comments contain characters JSON expands to \\uXXXX.
+const GLOBAL_CHAT_MAX_TEXT_CHARS = 2_000;
 const CHAT_REPORTS_KEY = key('chat-reports:v1');
 const CHAT_REPORT_RESERVATION_PREFIX = key('chat-report-reservation:v1:');
 const CHAT_COOLDOWN_PREFIX = key('chat-cooldown:v1:');
@@ -2184,8 +2187,9 @@ export async function recordGlobalChatComment(input: {
   const bareId = rawId.replace(/^t1_/i, '');
   if (!/^[a-z0-9]+$/i.test(bareId)) return null;
   const id = 't1_' + bareId;
-  const text = String(input.text ?? '').trim();
-  if (!text || text.length > 10_000) return null;
+  const incomingText = String(input.text ?? '').trim();
+  if (!incomingText || incomingText.length > 10_000) return null;
+  const text = incomingText.slice(0, GLOBAL_CHAT_MAX_TEXT_CHARS);
   const userId = String(input.userId ?? '').trim();
   const message: GlobalChatMessage = {
     id,
@@ -2204,7 +2208,9 @@ export async function recordGlobalChatComment(input: {
     let closed = false;
     try {
       const raw = await redis.get(GLOBAL_CHAT_KEY);
-      const messages = parseGlobalChatList(raw).filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()));
+      const messages = parseGlobalChatList(raw)
+        .filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()))
+        .map(item => ({ ...item, text: item.text.slice(0, GLOBAL_CHAT_MAX_TEXT_CHARS) }));
       const previous = messages.find(item => item.id === id);
       if (previous) {
         await txn.unwatch();
@@ -2243,11 +2249,13 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
     const raw = await redis.get(GLOBAL_CHAT_KEY);
     const messages = parseGlobalChatList(raw);
-    const retained = messages.filter(message => {
-      const messageUserId = String(message.userId ?? '').trim();
-      const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
-      return messageUserId !== userId && messageUsername !== cleanUsername;
-    });
+    const retained = messages
+      .filter(message => {
+        const messageUserId = String(message.userId ?? '').trim();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+        return messageUserId !== userId && messageUsername !== cleanUsername;
+      })
+      .map(message => ({ ...message, text: message.text.slice(0, GLOBAL_CHAT_MAX_TEXT_CHARS) }));
 
     await txn.multi();
     await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));

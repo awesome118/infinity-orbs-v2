@@ -6,7 +6,7 @@ import {
   redis as originalRedis,
   reddit as originalReddit,
 } from '../src/server/devvit-mock.js';
-import { getGlobalChatStatus, postGlobalChatMessage, registerCurrentPostAsGlobalChatDestination, resolveGlobalChatCommentAuthor } from '../src/server/social.js';
+import { getGlobalChatStatus, postGlobalChatMessage, recordGlobalChatComment, registerCurrentPostAsGlobalChatDestination, resolveGlobalChatCommentAuthor } from '../src/server/social.js';
 
 test('no unregistered ordinary post can become Global Chat destination via launcher=main', async () => {
   const baseContext = originalContext;
@@ -281,6 +281,49 @@ test('trusted admin repairs stale Frenzy destination only from a valid main Game
   }
 });
 
+
+
+test('Global Chat bounds external Reddit comments before persisting its single-key history', async () => {
+  const baseContext = originalContext;
+  const baseRedis = originalRedis;
+  const baseReddit = originalReddit;
+  const suffix = Date.now().toString(36);
+  const postId = 't3_chat-size-bound-' + suffix;
+  const chatKey = 'io:global-chat:v1';
+  const gamePostKey = 'io:global-game-post-id';
+  const previousChat = await baseRedis.get(chatKey);
+  const previousPost = await baseRedis.get(gamePostKey);
+
+  configureDevvitRuntime({
+    redis: baseRedis,
+    context: { ...baseContext, postId, userId: 'chat-size-test-' + suffix, username: 'ChatSizeTest' },
+    reddit: baseReddit,
+  });
+  try {
+    await baseRedis.set(gamePostKey, postId);
+    await baseRedis.set(chatKey, JSON.stringify([]));
+    const longComment = '\\u0001'.repeat(10_000);
+    const message = await recordGlobalChatComment({
+      postId,
+      commentId: 'size' + suffix.replace(/[^a-z0-9]/gi, ''),
+      text: longComment,
+      username: 'LongCommenter',
+    });
+    assert.ok(message);
+    assert.equal(message.text.length, 2_000);
+    const stored = await baseRedis.get(chatKey);
+    assert.ok(typeof stored === 'string');
+    assert.ok(stored.length < 100_000, 'worst-case escaped text must remain bounded');
+    const parsed = JSON.parse(String(stored));
+    assert.equal(parsed[0].text.length, 2_000);
+  } finally {
+    await baseRedis.del(chatKey);
+    await baseRedis.del(gamePostKey);
+    if (previousChat != null) await baseRedis.set(chatKey, previousChat);
+    if (previousPost != null) await baseRedis.set(gamePostKey, previousPost);
+    configureDevvitRuntime({ redis: baseRedis, context: baseContext, reddit: baseReddit });
+  }
+});
 
 test('Global Chat comment trigger prefers the actual comment author over mismatched app trigger metadata', () => {
   const resolved = resolveGlobalChatCommentAuthor({
