@@ -37,6 +37,8 @@ import {
   getOnlinePlayers,
   getPlayerActivityStats,
   getRollTicket,
+  getCelestialAlignmentChoiceStats,
+  forceCelestialAlignmentPromptForCurrentUser,
 } from './game.js';
 import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
@@ -422,6 +424,23 @@ debugRouter.post('/popups/config', async (req, res) => {
     res.json({ ok: true, config, stats: await getPopupStats() });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to update popup settings.' });
+  }
+});
+
+debugRouter.get('/alignment/stats', async (_req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ...(await getCelestialAlignmentChoiceStats()), generatedAt: Date.now() });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load Alignment choice statistics.' });
+  }
+});
+
+debugRouter.post('/alignment/force', async (_req, res) => {
+  try {
+    res.json(await forceCelestialAlignmentPromptForCurrentUser());
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not queue the Alignment chooser.' });
   }
 });
 

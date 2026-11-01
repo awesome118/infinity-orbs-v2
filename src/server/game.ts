@@ -2848,6 +2848,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     timeEnergy: Math.min(TIME_ENERGY_MAX_MS, finiteNonNegativeInteger(parsed.timeEnergy, base.timeEnergy ?? 0)),
     alignmentNextAt: finiteNonNegativeInteger(parsed.alignmentNextAt, base.alignmentNextAt ?? 0),
     alignmentPendingAt: finiteNonNegativeInteger(parsed.alignmentPendingAt, base.alignmentPendingAt ?? 0),
+    alignmentPendingForced: parsed.alignmentPendingForced === true,
     alignmentActiveUntil: finiteNonNegativeInteger(parsed.alignmentActiveUntil, base.alignmentActiveUntil ?? 0),
     alignmentActiveChoice: ['starseeker', 'goldenOrbit', 'clockwork'].includes(String(parsed.alignmentActiveChoice))
       ? parsed.alignmentActiveChoice as CelestialAlignmentChoice
@@ -6464,6 +6465,7 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   s.masterySkills[skillId] = currentLevel + 1;
   if (skillId === 'celestialAlignment' && currentLevel === 0) {
     s.alignmentPendingAt = 0;
+    s.alignmentPendingForced = false;
     s.alignmentNextAt = nextCelestialAlignmentAt(Date.now());
   }
   await save(s);
@@ -6477,6 +6479,66 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   return s;
 
   });}
+
+const CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY = 'io:celestial-alignment:choice-stats:v1';
+const CELESTIAL_ALIGNMENT_CHOICES = ['starseeker', 'goldenOrbit', 'clockwork'] as const;
+type CelestialAlignmentChoiceStatsRecord = {
+  total: number;
+  choices: Record<CelestialAlignmentChoice, number>;
+  recent: Array<{ username: string; choice: CelestialAlignmentChoice; chosenAt: number; adminTest: boolean }>;
+};
+
+function parseCelestialAlignmentChoiceStats(raw: string | null): CelestialAlignmentChoiceStatsRecord {
+  const empty: CelestialAlignmentChoiceStatsRecord = {
+    total: 0,
+    choices: { starseeker: 0, goldenOrbit: 0, clockwork: 0 },
+    recent: [],
+  };
+  if (!raw) return empty;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const sourceChoices = parsed.choices && typeof parsed.choices === 'object' ? parsed.choices as Record<string, unknown> : {};
+    const choices = {
+      starseeker: finiteNonNegativeInteger(sourceChoices.starseeker, 0),
+      goldenOrbit: finiteNonNegativeInteger(sourceChoices.goldenOrbit, 0),
+      clockwork: finiteNonNegativeInteger(sourceChoices.clockwork, 0),
+    };
+    const total = choices.starseeker + choices.goldenOrbit + choices.clockwork;
+    const recent = Array.isArray(parsed.recent)
+      ? parsed.recent.filter((entry): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry) &&
+          typeof (entry as Record<string, unknown>).username === 'string' &&
+          CELESTIAL_ALIGNMENT_CHOICES.includes((entry as Record<string, unknown>).choice as CelestialAlignmentChoice) &&
+          Number.isSafeInteger((entry as Record<string, unknown>).chosenAt) &&
+          Number((entry as Record<string, unknown>).chosenAt) > 0,
+        ).slice(0, 25).map(entry => ({
+          username: String(entry.username).replace(/^u\//i, '').slice(0, 32) || 'Redditor',
+          choice: entry.choice as CelestialAlignmentChoice,
+          chosenAt: Number(entry.chosenAt),
+          adminTest: entry.adminTest === true,
+        }))
+      : [];
+    return { total, choices, recent };
+  } catch {
+    return empty;
+  }
+}
+
+export async function getCelestialAlignmentChoiceStats(): Promise<CelestialAlignmentChoiceStatsRecord> {
+  return parseCelestialAlignmentChoiceStats(await redis.get(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY));
+}
+
+export async function forceCelestialAlignmentPromptForCurrentUser(): Promise<{ queued: true; username: string; pendingAt: number }> {
+  return withPlayerMutationLock(async () => {
+    const s = await loadRaw();
+    const pendingAt = Date.now();
+    s.alignmentPendingAt = pendingAt;
+    s.alignmentPendingForced = true;
+    s.alignmentNextAt = 0;
+    await save(s);
+    return { queued: true, username: String(s.username ?? context.username ?? 'admin').replace(/^u\//i, ''), pendingAt };
+  });
+}
 
 function nextCelestialAlignmentAt(now: number): number {
   const sample = Math.max(Number.EPSILON, Math.min(1 - Number.EPSILON, serverRandom()));
@@ -6494,7 +6556,9 @@ export async function getCelestialAlignmentStatus(): Promise<{
 }> {
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
-    if ((s.masterySkills?.celestialAlignment ?? 0) <= 0) {
+    const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
+    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
+    if (!hasMastery && !forcedPending) {
       return { unlocked: false, pending: false, pendingAt: 0, activeChoice: null, activeUntil: 0, nextAt: 0 };
     }
     const now = Date.now();
@@ -6510,6 +6574,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
     }
     if (!(s.alignmentPendingAt ?? 0) && (s.alignmentNextAt ?? 0) > 0 && (s.alignmentNextAt ?? 0) <= now) {
       s.alignmentPendingAt = now;
+      s.alignmentPendingForced = false;
       s.alignmentNextAt = 0;
       changed = true;
     }
@@ -6533,17 +6598,34 @@ export async function chooseCelestialAlignment(
       throw new Error('Choose a valid Celestial Alignment effect.');
     }
     const s = await loadRaw();
-    if ((s.masterySkills?.celestialAlignment ?? 0) <= 0) {
-      throw new Error('Celestial Alignment Mastery is required.');
-    }
+    const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
+    const wasAdminTest = s.alignmentPendingForced === true;
+    if (!hasMastery && !wasAdminTest) throw new Error('Celestial Alignment Mastery is required.');
     if (!(s.alignmentPendingAt ?? 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
     const activeUntil = now + CELESTIAL_ALIGNMENT_DURATION_MS;
     s.alignmentPendingAt = 0;
+    s.alignmentPendingForced = false;
     s.alignmentActiveChoice = choice;
     s.alignmentActiveUntil = activeUntil;
-    s.alignmentNextAt = nextCelestialAlignmentAt(now);
-    await save(s);
+    s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+    const previousStatsRaw = await redis.get(CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY);
+    const previousStats = parseCelestialAlignmentChoiceStats(previousStatsRaw);
+    const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
+    const nextStats: CelestialAlignmentChoiceStatsRecord = {
+      total: previousStats.total + 1,
+      choices: { ...previousStats.choices, [choice]: previousStats.choices[choice] + 1 },
+      recent: [
+        { username, choice, chosenAt: now, adminTest: wasAdminTest },
+        ...previousStats.recent.filter(entry => !(entry.username.toLowerCase() === username.toLowerCase() && entry.chosenAt === now)),
+      ].slice(0, 25),
+    };
+    await save(s, {
+      key: CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY,
+      expectedValue: previousStatsRaw,
+      nextValue: JSON.stringify(nextStats),
+      conflictMessage: 'Alignment choice statistics changed during your selection. Please choose again.',
+    });
     return { state: s, activeChoice: choice, activeUntil, nextAt: s.alignmentNextAt };
   });
 }

@@ -1097,6 +1097,8 @@ export interface PlayerState {
   alignmentNextAt?: number;
   /** Timestamp of an unclaimed Alignment prompt; zero means none is pending. */
   alignmentPendingAt?: number;
+  /** True only for a prompt explicitly queued by the admin test console. */
+  alignmentPendingForced?: boolean;
   alignmentActiveChoice?: CelestialAlignmentChoice | null;
   alignmentActiveUntil?: number;
   lastSeenAt: number;
@@ -1928,6 +1930,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     timeEnergy: 0,
     alignmentNextAt: 0,
     alignmentPendingAt: 0,
+    alignmentPendingForced: false,
     alignmentActiveChoice: null,
     alignmentActiveUntil: 0,
     lastSeenAt: now,

@@ -1344,7 +1344,7 @@ function App() {
   // Alignment appearances are independent server-timed events, not roll procs.
   // Poll only while the game is visible; an unanswered event remains persisted.
   useEffect(() => {
-    if (!splashEntered || (state?.masterySkills?.celestialAlignment ?? 0) <= 0) {
+    if (!splashEntered || ((state?.masterySkills?.celestialAlignment ?? 0) <= 0 && !isAdmin)) {
       setAlignmentStatus(null);
       setAlignmentPromptVisible(false);
       alignmentPendingSeenRef.current = 0;
@@ -1394,7 +1394,7 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [splashEntered, state?.masterySkills?.celestialAlignment]);
+  }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
