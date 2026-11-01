@@ -158,7 +158,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   celestialAlignment: {
     name: 'Celestial Alignment',
-    desc: 'Unlock a Celestial Alignment event every 45–90 minutes. Choose a 2-hour effect; each activation stacks independently with earlier activations.',
+    desc: 'Unlock a Celestial Alignment event every 90–180 minutes. Choose within 60 seconds; each 2-hour effect stacks independently with earlier activations.',
     maxLevel: 1,
     costMultiplier: 4,
   },
@@ -175,10 +175,11 @@ export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs:
   if (!Number.isFinite(energy) || !Number.isFinite(cooldown) || energy <= 0 || cooldown <= 0) return 0;
   return Math.min(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, Math.floor(Math.max(0, energy) / Math.max(1, cooldown)));
 }
-export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 45 * 60 * 1_000;
-export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 90 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 90 * 60 * 1_000;
+export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 180 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
   (CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS + CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS) / 2;
+export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
@@ -1145,6 +1146,8 @@ export interface PlayerState {
   alignmentNextAt?: number;
   /** Timestamp of an unclaimed Alignment prompt; zero means none is pending. */
   alignmentPendingAt?: number;
+  /** Server-authoritative expiry timestamp for the 60-second choice popup. */
+  alignmentPendingExpiresAt?: number;
   /** True only for a prompt explicitly queued by the admin test console. */
   alignmentPendingForced?: boolean;
   alignmentActiveInstances?: CelestialAlignmentInstance[];
@@ -1979,6 +1982,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     timeEnergy: 0,
     alignmentNextAt: 0,
     alignmentPendingAt: 0,
+    alignmentPendingExpiresAt: 0,
     alignmentPendingForced: false,
     alignmentActiveInstances: [],
     alignmentActiveChoice: null,

@@ -34,6 +34,7 @@ import {
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
@@ -330,7 +331,7 @@ async function ensureCodexStorageVersion(userId: string, generation: number, sta
   state.collectionStorageVersion = CODEX_STORAGE_VERSION;
 }
 
-function serializePlayerStateForRedis(state: PlayerState): string {
+export function serializePlayerStateForRedis(state: PlayerState): string {
   const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
     ? Object.fromEntries(Object.entries(state).filter(([field]) => field !== 'collection'))
     : state;
@@ -353,7 +354,7 @@ type PlayerSaveManifest = {
     totalRolls?: number; highestRarity?: number; coins?: number; shards?: number;
   };
 };
-type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
+export type PlayerSaveWritePlan = { storedValue: string; chunkKeys: string[] };
 
 function playerSaveChecksum(value: string): string {
   let hash = 0x811c9dc5;
@@ -383,7 +384,7 @@ function parsePlayerSaveManifest(raw: string | null | undefined): PlayerSaveMani
 function playerSaveChunkKey(userId: string, token: string, index: number): string {
   return PLAYER_SAVE_CHUNK_PREFIX + userId + ':' + token + ':' + index;
 }
-async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
+export async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
   if (storedValue == null) return null;
   const manifest = parsePlayerSaveManifest(storedValue);
   if (!manifest) return storedValue;
@@ -402,7 +403,7 @@ async function readStoredPlayerSave(userId: string, storedValue: string | null |
   }
   return joined;
 }
-async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
+export async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
   if (serialized.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
   if (serialized.length > PLAYER_SAVE_MAX_CHARS) {
     throw new Error('Player save exceeds the supported 8 MiB logical size. No changes were written.');
@@ -447,11 +448,11 @@ async function createPlayerSaveWritePlan(userId: string, serialized: string): Pr
   };
   return { storedValue: JSON.stringify(manifest), chunkKeys };
 }
-async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
+export async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
   for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
 }
 const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
-async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
+export async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
   const previous = parsePlayerSaveManifest(previousRaw);
   if (!previous) return;
   const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
@@ -6826,6 +6827,7 @@ export async function forceCelestialAlignmentPromptForCurrentUser(): Promise<{ q
     const s = await loadRaw();
     const pendingAt = Date.now();
     s.alignmentPendingAt = pendingAt;
+    s.alignmentPendingExpiresAt = pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
     s.alignmentPendingForced = true;
     s.alignmentNextAt = 0;
     await save(s);
@@ -6841,17 +6843,34 @@ function nextCelestialAlignmentAt(now: number): number {
 }
 
 export async function getCelestialAlignmentStatus(): Promise<{
-  unlocked: boolean; pending: boolean; pendingAt: number;
+  unlocked: boolean; pending: boolean; pendingAt: number; pendingExpiresAt: number;
   activeChoice: CelestialAlignmentChoice | null; activeUntil: number;
   activeInstances: CelestialAlignmentInstance[]; nextAt: number;
 }> {
   return withPlayerMutationLock(async () => {
     const s = await loadRaw();
     const hasMastery = (s.masterySkills?.celestialAlignment ?? 0) > 0;
-    const forcedPending = s.alignmentPendingForced === true && (s.alignmentPendingAt ?? 0) > 0;
     const now = Date.now();
+    let changed = false;
+    let pendingAt = Math.max(0, Math.floor(Number(s.alignmentPendingAt ?? 0)) || 0);
+    let pendingExpiresAt = Math.max(0, Math.floor(Number(s.alignmentPendingExpiresAt ?? 0)) || 0);
+    if (pendingAt > 0 && pendingExpiresAt <= 0) {
+      pendingExpiresAt = pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
+      s.alignmentPendingExpiresAt = pendingExpiresAt;
+      changed = true;
+    }
+    if (pendingAt > 0 && pendingExpiresAt <= now) {
+      pendingAt = 0;
+      pendingExpiresAt = 0;
+      s.alignmentPendingAt = 0;
+      s.alignmentPendingExpiresAt = 0;
+      s.alignmentPendingForced = false;
+      s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
+      changed = true;
+    }
+    const forcedPending = s.alignmentPendingForced === true && pendingAt > 0;
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
-    let changed = activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
+    changed = changed || activeInstances.length !== (s.alignmentActiveInstances ?? []).length;
     if (changed) s.alignmentActiveInstances = activeInstances;
     const latest = activeInstances[activeInstances.length - 1] ?? null;
 
@@ -6863,7 +6882,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
       }
       if (changed) await save(s);
       return {
-        unlocked: false, pending: false, pendingAt: 0,
+        unlocked: false, pending: false, pendingAt: 0, pendingExpiresAt: 0,
         activeChoice: latest?.choice ?? null, activeUntil: latest?.expiresAt ?? 0,
         activeInstances, nextAt: 0,
       };
@@ -6880,6 +6899,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
     }
     if (!(s.alignmentPendingAt ?? 0) && (s.alignmentNextAt ?? 0) > 0 && (s.alignmentNextAt ?? 0) <= now) {
       s.alignmentPendingAt = now;
+      s.alignmentPendingExpiresAt = now + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
       s.alignmentPendingForced = false;
       s.alignmentNextAt = 0;
       changed = true;
@@ -6889,6 +6909,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
       unlocked: true,
       pending: (s.alignmentPendingAt ?? 0) > 0,
       pendingAt: s.alignmentPendingAt ?? 0,
+      pendingExpiresAt: s.alignmentPendingExpiresAt ?? 0,
       activeChoice: latest?.choice ?? null,
       activeUntil: latest?.expiresAt ?? 0,
       activeInstances,
@@ -6910,8 +6931,10 @@ export async function chooseCelestialAlignment(
     const wasAdminTest = s.alignmentPendingForced === true;
     if (!hasMastery && !wasAdminTest) throw new Error('Celestial Alignment Mastery is required.');
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
-    if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
+    const pendingExpiresAt = Number(s.alignmentPendingExpiresAt ?? 0) || pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
     const now = Date.now();
+    if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
+    if (pendingExpiresAt <= now) throw new Error('The 60-second Alignment choice window expired.');
 
     const activeInstances = activeCelestialAlignmentInstances(s.alignmentActiveInstances, now);
     const instance: CelestialAlignmentInstance = {
@@ -6923,6 +6946,7 @@ export async function chooseCelestialAlignment(
     s.alignmentActiveChoice = instance.choice;
     s.alignmentActiveUntil = instance.expiresAt;
     s.alignmentPendingAt = 0;
+    s.alignmentPendingExpiresAt = 0;
     s.alignmentPendingForced = false;
     s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
     const username = String(context.username ?? s.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor';

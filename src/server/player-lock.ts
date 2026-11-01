@@ -204,7 +204,8 @@ export function createPlayerMutationLockRuntime(
         await new Promise(resolve => setTimeout(resolve, retryDelayMs));
       }
 
-      throw new Error('Player state is busy. Please retry.');
+      // No mutation callback has run yet, so admission can be retried safely.
+      throw new Error('PLAYER_MUTATION_QUEUED');
     } finally {
       release();
 
