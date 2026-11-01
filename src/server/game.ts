@@ -1,4 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
+import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
 import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
@@ -1020,19 +1021,6 @@ function saveGenerationKeyFor(userId: string): string {
   return SAVE_GENERATION_KEY_PREFIX + userId;
 }
 
-export interface GameBanRecord {
-  userId: string;
-  username: string;
-  bannedAt: number;
-  bannedUntil: number | null;
-  reason: string;
-  bannedBy: string;
-}
-
-export interface GameBanStatus extends GameBanRecord {
-  active: true;
-}
-
 function parseStoredJson<T>(raw: unknown): T | null {
   if (raw == null) return null;
   if (typeof raw === 'object') return raw as T;
@@ -1094,40 +1082,6 @@ async function ensureRedisStringKey(keyName: string, fallback: string): Promise<
   }
 }
 
-function parseGameBanRegistry(raw: unknown): Record<string, GameBanRecord> {
-  if (raw == null) return Object.create(null) as Record<string, GameBanRecord>;
-  const parsed = parseStoredJson<unknown>(raw);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Game ban list could not be read safely. No changes were applied.');
-  }
-
-  const bans = Object.create(null) as Record<string, GameBanRecord>;
-  for (const [keyName, value] of Object.entries(parsed)) {
-    if (
-      !keyName ||
-      !value || typeof value !== 'object' || Array.isArray(value) ||
-      typeof (value as any).userId !== 'string' ||
-      (value as any).userId.trim() !== keyName ||
-      typeof (value as any).username !== 'string' ||
-      !(value as any).username.trim() ||
-      !Number.isSafeInteger((value as any).bannedAt) ||
-      Number((value as any).bannedAt) < 0 ||
-      !(
-        (value as any).bannedUntil === null ||
-        (
-          Number.isSafeInteger((value as any).bannedUntil) &&
-          Number((value as any).bannedUntil) > Number((value as any).bannedAt)
-        )
-      ) ||
-      typeof (value as any).reason !== 'string' ||
-      typeof (value as any).bannedBy !== 'string'
-    ) {
-      throw new Error('Game ban list contains a malformed record. No changes were applied.');
-    }
-    bans[keyName] = value as GameBanRecord;
-  }
-  return bans;
-}
 
 async function readGameBans(): Promise<Record<string, GameBanRecord>> {
   return parseGameBanRegistry(await redis.get(GAME_BANS_KEY));
@@ -1167,16 +1121,11 @@ async function mutateGameBans<T>(
 
 export async function getGameBanStatus(userId = context.userId ?? ''): Promise<GameBanStatus | null> {
   if (!userId) return null;
-  const now = Date.now();
-  return mutateGameBans(bans => {
-    const ban = bans[userId];
-    if (!ban) return { changed: false, result: null };
-    if (ban.bannedUntil !== null && ban.bannedUntil <= now) {
-      delete bans[userId];
-      return { changed: true, result: null };
-    }
-    return { changed: false, result: { ...ban, active: true } };
-  });
+  // Ban verification is on the hot path for every gameplay request. Keep it a
+  // single Redis read; a WATCH/MULTI transaction is only needed when an admin
+  // actually changes or lists the registry.
+  const raw = await redis.get(GAME_BANS_KEY);
+  return parseGameBanStatus(raw, userId);
 }
 
 export async function listGameBans(): Promise<GameBanRecord[]> {
