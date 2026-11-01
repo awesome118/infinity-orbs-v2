@@ -53,6 +53,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
     shardsSacrificed: 0,
     altarLevel: 0,
     luckSurgeUntil: 0,
+    altarInsuranceCredit: 0,
   };
 
   const {
@@ -72,20 +73,25 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
   const currentTotalCoins = sacrifices.coinsSacrificed ?? 0;
   const altarPity = sacrifices.altarPity ?? 0;
   const currentCoinFloor = altarCoinFloor(altarLevel);
-  const selectedCoinChance = altarCoinDevotionChancePercent(selectedCoinOffer, altarPity, altarLevel);
-  const coinOfferMeetsFloor = selectedCoinOffer === 0 || selectedCoinOffer >= currentCoinFloor;
+  const insuranceLevel = Math.max(0, Math.min(10, Math.floor(Number(state.masterySkills?.altarInsurance ?? 0) || 0)));
+  const insuranceCredit = insuranceLevel > 0 ? Math.max(0, Number(sacrifices.altarInsuranceCredit ?? 0) || 0) : 0;
+  const effectiveSelectedCoinOffer = selectedCoinOffer + insuranceCredit;
+  const selectedCoinChance = effectiveSelectedCoinOffer >= currentCoinFloor && effectiveSelectedCoinOffer > 0
+    ? altarCoinDevotionChancePercent(effectiveSelectedCoinOffer, altarPity, altarLevel)
+    : 0;
+  const coinOfferMeetsFloor = selectedCoinOffer === 0 || effectiveSelectedCoinOffer >= currentCoinFloor;
   const canSubmitOffering =
     selectedCoinOffer <= state.coins &&
     selectedShardOffer <= (state.shards ?? 0) &&
     (selectedCoinOffer <= 0 || coinOfferMeetsFloor) &&
-    (selectedCoinOffer > 0 || selectedShardOffer > 0);
+    (selectedCoinOffer > 0 || selectedShardOffer > 0 || insuranceCredit >= currentCoinFloor);
 
   const handleSacrificeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       busy || sacrificing || sacrificeLockRef.current ||
-      (selectedCoinOffer <= 0 && selectedShardOffer <= 0) ||
-      (selectedCoinOffer > 0 && selectedCoinOffer < currentCoinFloor) ||
+      (selectedCoinOffer <= 0 && selectedShardOffer <= 0 && insuranceCredit < currentCoinFloor) ||
+      (selectedCoinOffer > 0 && effectiveSelectedCoinOffer < currentCoinFloor) ||
       selectedCoinOffer > state.coins ||
       selectedShardOffer > (state.shards ?? 0)
     ) return;
@@ -290,7 +296,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 <span>Coin Sacrifice</span>
               </label>
               <span className="font-mono text-slate-400">
-                Offering: {fmt(selectedCoinOffer)}
+                Offering: {fmt(effectiveSelectedCoinOffer)}
               </span>
             </div>
 
@@ -327,8 +333,19 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
                 </button>
               ))}
             </div>
+            {insuranceLevel > 0 && (
+              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wide text-emerald-300">Altar Insurance credit</span>
+                  <strong className="text-xs font-mono text-white">{fmt(insuranceCredit)} Coins</strong>
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                  A failed breakthrough preserves {insuranceLevel * 5}% of its effective Coin offering for your next attempt.
+                </p>
+              </div>
+            )}
             <p className="text-[10px] text-slate-500">
-              Current minimum coin offering: {currentCoinFloor.toLocaleString()}. Pity compounds by 1.35× per failed coin attempt.
+              Minimum effective offering: {currentCoinFloor.toLocaleString()} Coins. Pity compounds by 1.35× per failed coin attempt.
             </p>
           </div>
 
@@ -395,7 +412,7 @@ export const AltarSection: React.FC<AltarSectionProps> = ({
           <span>
             {sacrificing
               ? 'Offering...'
-              : `Make Offering (${fmt(selectedCoinOffer)} Coins, ${selectedShardOffer} Shards)`}
+              : `Make Offering (${fmt(selectedCoinOffer)} Coins + ${fmt(insuranceCredit)} credit, ${selectedShardOffer} Shards)`}
           </span>
         </button>
       </form>

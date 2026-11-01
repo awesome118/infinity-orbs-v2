@@ -13,7 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, MasterySkillId } from '../../shared/game.js';
-import { formatNumber, formatRarity, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent, aftershockCriticalLuckBonus } from '../../shared/game.js';
+import { formatNumber, formatRarity, MASTERY_SKILLS, masterySkillCost, bestCodexChain, codexDevotionLuckPercent, aftershockCriticalLuckBonus, constellationAtlasDiscoveredRarities, constellationAtlasMilestonesUnlocked, CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS } from '../../shared/game.js';
 import { sound } from '../sound.js';
 
 interface MasterySectionProps {
@@ -131,9 +131,9 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
   const filteredSkills = masterySkillsList.filter(([id]) => {
     if (activeBranch === 'all') return true;
     if (activeBranch === 'fortune' && (id === 'continuumLuck' || id === 'pityAccelerant' || id === 'apexFortune')) return true;
-    if (activeBranch === 'temporal' && (id === 'chronoFlow')) return true;
-    if (activeBranch === 'alchemy' && (id === 'prosperity' || id === 'shardAttunement' || id === 'infiniteVault')) return true;
-    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley' || id === 'aftershock')) return true;
+    if (activeBranch === 'temporal' && (id === 'chronoFlow' || id === 'cooldownReclaimer')) return true;
+    if (activeBranch === 'alchemy' && (id === 'prosperity' || id === 'shardAttunement' || id === 'infiniteVault' || id === 'altarInsurance')) return true;
+    if (activeBranch === 'cosmos' && (id === 'critMastery' || id === 'celestialSurge' || id === 'cosmicAttunement' || id === 'celestialVolley' || id === 'aftershock' || id === 'constellationAtlas' || id === 'celestialAlignment')) return true;
     return false;
   });
 
@@ -225,6 +225,14 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
               ? codexDevotionLuckPercent(Math.min(skill.maxLevel, currentLevel + 1), codexChain.length)
               : 0;
             const isAftershock = skillId === 'aftershock';
+            const isConstellationAtlas = skillId === 'constellationAtlas';
+            const atlasDiscovered = isConstellationAtlas ? constellationAtlasDiscoveredRarities(state.collection) : 0;
+            const atlasMilestones = isConstellationAtlas
+              ? constellationAtlasMilestonesUnlocked(currentLevel, state.collection)
+              : 0;
+            const nextAtlasThreshold = isConstellationAtlas && currentLevel > 0
+              ? CONSTELLATION_ATLAS_MILESTONE_THRESHOLDS.slice(0, currentLevel).find(threshold => threshold > atlasDiscovered)
+              : undefined;
             const aftershockRecord = Math.max(0, state.aftershockRecord ?? 0);
             const aftershockBonus = aftershockCriticalLuckBonus(aftershockRecord);
             const isMax = currentLevel >= skill.maxLevel;
@@ -301,6 +309,26 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                           <div className="text-sm font-black text-cyan-200">+{nextCodexLuckPercent.toFixed(2)}% Luck</div>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {isConstellationAtlas && (
+                    <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-3 py-2 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] uppercase tracking-wide font-black text-indigo-300">Distinct rarities discovered</span>
+                        <span className="text-sm font-black font-mono text-white">{formatNumber(atlasDiscovered)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] text-slate-500">Permanent Luck milestones</span>
+                        <span className="text-sm font-black text-emerald-300">+{atlasMilestones}%</span>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-slate-500">
+                        {currentLevel <= 0
+                          ? 'Purchase this skill to begin unlocking collection milestones.'
+                          : nextAtlasThreshold
+                            ? `Next constellation: ${nextAtlasThreshold} distinct rarities (${Math.max(0, nextAtlasThreshold - atlasDiscovered)} more).`
+                            : 'All milestones available at your current Mastery rank are unlocked.'}
+                      </p>
                     </div>
                   )}
 

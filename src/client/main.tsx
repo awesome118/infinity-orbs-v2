@@ -28,6 +28,7 @@ import type {
   UpgradeId,
   PrestigeUpgradeId,
   MasterySkillId,
+  CelestialAlignmentChoice,
   AutomationId,
   GlobalBoosterId,
   GlobalBoosterSnapshot,
@@ -328,6 +329,17 @@ function App() {
   } | null>(null);
 
   const [readyAt, setReadyAt] = useState<number>(0);
+  const [alignmentStatus, setAlignmentStatus] = useState<{
+    unlocked: boolean;
+    pending: boolean;
+    pendingAt: number;
+    activeChoice: CelestialAlignmentChoice | null;
+    activeUntil: number;
+    nextAt: number;
+  } | null>(null);
+  const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
+  const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
+  const alignmentPendingSeenRef = useRef(0);
   const [tab, setTab] = useState<ActiveTab>('roll');
   const [moreNavOpen, setMoreNavOpen] = useState(false);
   useEffect(() => {
@@ -1329,6 +1341,61 @@ function App() {
     };
   }, [splashEntered]);
 
+  // Alignment appearances are independent server-timed events, not roll procs.
+  // Poll only while the game is visible; an unanswered event remains persisted.
+  useEffect(() => {
+    if (!splashEntered || (state?.masterySkills?.celestialAlignment ?? 0) <= 0) {
+      setAlignmentStatus(null);
+      setAlignmentPromptVisible(false);
+      alignmentPendingSeenRef.current = 0;
+      return;
+    }
+    let cancelled = false;
+    let inFlight = false;
+    const refreshAlignment = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const status = await getJson<{
+          unlocked: boolean;
+          pending: boolean;
+          pendingAt: number;
+          activeChoice: CelestialAlignmentChoice | null;
+          activeUntil: number;
+          nextAt: number;
+        }>('/api/alignment/status', { cache: 'no-store' });
+        if (cancelled) return;
+        setAlignmentStatus(status);
+        if (status.pending) {
+          setAlignmentPromptVisible(true);
+          const pendingKey = status.pendingAt || -1;
+          if (alignmentPendingSeenRef.current !== pendingKey) {
+            alignmentPendingSeenRef.current = pendingKey;
+            sound.playAlignmentPrompt();
+          }
+        } else {
+          alignmentPendingSeenRef.current = 0;
+          setAlignmentPromptVisible(false);
+        }
+      } catch {
+        // A failed status read is retried on the next visible poll.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshAlignment();
+    };
+    void refreshAlignment();
+    const interval = window.setInterval(() => void refreshAlignment(), 5_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered, state?.masterySkills?.celestialAlignment]);
+
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     if (!splashEntered) return;
@@ -1751,8 +1818,8 @@ function App() {
   }, [applyPlayerState, beginOptimisticState, tab, splashEntered]);
 
   // Roll action
-  const handleRoll = useCallback(async (isAutoRoll = false) => {
-    if (combatModeRef.current) return;
+  const handleRoll = useCallback(async (isAutoRoll = false, useTimeEnergy = false) => {
+    if (combatModeRef.current || (useTimeEnergy && (isAutoRoll || frenzyArmed))) return;
     if (isAutoRoll && !splashEntered) return;
     if (rollActionLockRef.current) return;
     const currentState = stateRef.current;
@@ -1765,7 +1832,7 @@ function App() {
     if (!frenzyArmed) sound.playRollNormal();
 
     try {
-      if (!isAutoRoll && frenzyArmed) {
+      if (!isAutoRoll && !useTimeEnergy && frenzyArmed) {
         frenzySubmissionInFlight = true;
         // Consume the armed state immediately so a failed request cannot
         // leave the UI stuck in a dead "RELEASE FRENZY" state.
@@ -1828,9 +1895,10 @@ function App() {
           auto: isAutoRoll,
           ticketId: ticket.ticketId,
           ticketIndex,
-          useAllFreeRolls: !isAutoRoll &&
+          useAllFreeRolls: !isAutoRoll && !useTimeEnergy &&
             Math.max(0, Math.floor(Number(currentState.chainPatcherNextRarity ?? 0) || 0)) < 2 &&
             (currentState.freeRolls ?? 0) > 0,
+          useTimeEnergy,
         }),
       }));
 
@@ -2378,6 +2446,44 @@ function App() {
     }
   };
 
+  const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
+    if (alignmentChoiceBusy) return;
+    setAlignmentChoiceBusy(true);
+    try {
+      const result = await getJson<{
+        state: PlayerState;
+        activeChoice: CelestialAlignmentChoice;
+        activeUntil: number;
+        nextAt: number;
+      }>('/api/alignment/choose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ choice }),
+      });
+      applyPlayerState(result.state);
+      setAlignmentStatus({
+        unlocked: true,
+        pending: false,
+        pendingAt: 0,
+        activeChoice: result.activeChoice,
+        activeUntil: result.activeUntil,
+        nextAt: result.nextAt,
+      });
+      alignmentPendingSeenRef.current = 0;
+      setAlignmentPromptVisible(false);
+      const names: Record<CelestialAlignmentChoice, string> = {
+        starseeker: 'Starseeker',
+        goldenOrbit: 'Golden Orbit',
+        clockwork: 'Clockwork',
+      };
+      showToast(`${names[choice]} aligned for 60 minutes.`, 'success');
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : 'Could not activate this Alignment.', 'warn');
+    } finally {
+      setAlignmentChoiceBusy(false);
+    }
+  };
+
   // Altar Sacrifice
   const handleSacrifice = async (coins: number, shards: number): Promise<PlayerState> => {
     setBusy(true);
@@ -2389,6 +2495,7 @@ function App() {
         altarLevel: 0,
         luckSurgeUntil: 0,
         altarPity: 0,
+        altarInsuranceCredit: 0,
       };
       return {
         ...current,
@@ -2408,6 +2515,7 @@ function App() {
         luckSurgeExtended: boolean;
         altarBreakthroughChance: number;
         altarPity: number;
+        altarInsuranceCredit: number;
       }>('/api/altar/sacrifice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2463,6 +2571,10 @@ function App() {
           pityAccelerant: current.masterySkills?.pityAccelerant ?? 0,
           apexFortune: current.masterySkills?.apexFortune ?? 0,
           celestialVolley: current.masterySkills?.celestialVolley ?? 0,
+          cooldownReclaimer: current.masterySkills?.cooldownReclaimer ?? 0,
+          altarInsurance: current.masterySkills?.altarInsurance ?? 0,
+          constellationAtlas: current.masterySkills?.constellationAtlas ?? 0,
+          celestialAlignment: current.masterySkills?.celestialAlignment ?? 0,
           [skillId]: currentLevel + 1,
         },
       };
@@ -3273,6 +3385,57 @@ function App() {
         </div>
       )}
 
+      {alignmentPromptVisible && alignmentStatus?.pending && (
+        <div className="fixed inset-0 z-[90] io-modal-backdrop flex items-center justify-center p-4" data-testid="celestial-alignment-prompt">
+          <section
+            className="w-full max-w-2xl rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-5 sm:p-7 shadow-[0_0_70px_rgba(56,189,248,.2)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="celestial-alignment-title"
+          >
+            <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
+            <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                disabled={alignmentChoiceBusy}
+                onClick={() => void handleChooseCelestialAlignment('starseeker')}
+                className="rounded-2xl border border-cyan-400/35 bg-cyan-500/10 p-4 text-left hover:bg-cyan-500/20 hover:border-cyan-300/70 transition-colors disabled:opacity-50"
+              >
+                <div className="text-xs font-black uppercase tracking-wider text-cyan-300">Discovery</div>
+                <strong className="mt-2 block text-lg text-white">Starseeker</strong>
+                <p className="mt-2 text-xs leading-relaxed text-slate-300">Raises your complete Luck multiplier to the power of 1.05, including Rune Luck.</p>
+                <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-cyan-200">Total Luck ^1.05</span>
+              </button>
+              <button
+                type="button"
+                disabled={alignmentChoiceBusy}
+                onClick={() => void handleChooseCelestialAlignment('goldenOrbit')}
+                className="rounded-2xl border border-amber-400/35 bg-amber-500/10 p-4 text-left hover:bg-amber-500/20 hover:border-amber-300/70 transition-colors disabled:opacity-50"
+              >
+                <div className="text-xs font-black uppercase tracking-wider text-amber-300">Economy</div>
+                <strong className="mt-2 block text-lg text-white">Golden Orbit</strong>
+                <p className="mt-2 text-xs leading-relaxed text-slate-300">Increases all Coins earned by 50% for the duration.</p>
+                <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-amber-200">+50% Coins</span>
+              </button>
+              <button
+                type="button"
+                disabled={alignmentChoiceBusy}
+                onClick={() => void handleChooseCelestialAlignment('clockwork')}
+                className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4 text-left hover:bg-emerald-500/20 hover:border-emerald-300/70 transition-colors disabled:opacity-50"
+              >
+                <div className="text-xs font-black uppercase tracking-wider text-emerald-300">Automation</div>
+                <strong className="mt-2 block text-lg text-white">Clockwork</strong>
+                <p className="mt-2 text-xs leading-relaxed text-slate-300">Reduces your Auto Roll cooldown by 20%, respecting the 300ms floor.</p>
+                <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-emerald-200">20% faster Auto Roll</span>
+              </button>
+            </div>
+            {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
+          </section>
+        </div>
+      )}
+
       {showNotificationPrompt && (notificationPromptPreview || !notificationsEnabled) && (
         <div className="fixed inset-0 z-[70] io-modal-backdrop io-notification-backdrop flex items-center justify-center p-4" data-testid="notification-prompt-backdrop">
           <section
@@ -3483,6 +3646,7 @@ function App() {
             onOpenUpgrades={() => changeTab('upgrades')}
             onToggleAutoRoll={handleToggleAutoRoll}
             onRoll={handleRoll}
+            onUseTimeEnergy={() => handleRoll(false, true)}
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
             onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}

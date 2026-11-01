@@ -5,6 +5,7 @@ class SoundFX {
   public enabled = true;
   public sonarMode = false;
   public sonarThreshold = 100;
+  public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
   constructor() {
@@ -12,6 +13,7 @@ class SoundFX {
       const saved = localStorage.getItem('orbs_sound_enabled');
       this.enabled = saved !== null ? saved === 'true' : true;
       this.sonarMode = localStorage.getItem('orbs_sonar_mode') === 'true';
+      this.alignmentSoundEnabled = localStorage.getItem('io_alignment_sound') !== 'false';
       const savedThreshold = localStorage.getItem('orbs_sonar_threshold');
       if (savedThreshold) {
         this.sonarThreshold = Math.max(10, parseInt(savedThreshold, 10) || 100);
@@ -20,6 +22,7 @@ class SoundFX {
       this.enabled = true;
       this.sonarMode = false;
       this.sonarThreshold = 100;
+      this.alignmentSoundEnabled = true;
     }
   }
 
@@ -173,6 +176,23 @@ class SoundFX {
     });
   }
 
+  public setAlignmentSoundEnabled(enabled: boolean): void {
+    this.alignmentSoundEnabled = Boolean(enabled);
+    try { localStorage.setItem('io_alignment_sound', String(this.alignmentSoundEnabled)); } catch { /* Session setting remains active. */ }
+  }
+
+  /** This alert bypasses Silent Sonar; only its dedicated switch or global mute can silence it. */
+  public playAlignmentPrompt(): void {
+    if (!this.alignmentSoundEnabled) return;
+    this.withAudio((ctx, now) => {
+      this.filteredNoise(ctx, now, 1.15, 0.018, 1_350, 13, 'lowpass');
+      this.tone(ctx, 523.25, now, 0.72, 0.07, 'sine', 392);
+      this.tone(ctx, 783.99, now + 0.18, 0.95, 0.075, 'sine', 659.25);
+      this.tone(ctx, 1_046.5, now + 0.43, 1.18, 0.065, 'triangle', 880);
+      this.tone(ctx, 1_568, now + 0.82, 0.8, 0.024, 'sine');
+    }, true);
+  }
+
   /** A rarity-scaled sonar mark, retained while Silent Sonar mode is active. */
   public playSonarPing(rarity: number) {
     this.withAudio((ctx, now) => {
@@ -223,10 +243,13 @@ class SoundFX {
 
   public playNewBestFanfare() {
     this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.26, 0.09, 180, 47, 'lowpass');
-      this.tone(ctx, 82, now, 0.5, 0.12, 'sine', 42);
+      this.filteredNoise(ctx, now, 0.85, 0.075, 180, 47, 'lowpass');
+      this.tone(ctx, 82, now, 1.05, 0.12, 'sine', 42);
       [261.63, 329.63, 392, 523.25, 659.25, 783.99, 1_046.5, 1_318.51].forEach((frequency, index) => {
-        this.tone(ctx, frequency, now + index * 0.075, 0.72, 0.072, index % 2 ? 'triangle' : 'sine');
+        this.tone(ctx, frequency, now + index * 0.52, 0.82, 0.072, index % 2 ? 'triangle' : 'sine');
+      });
+      [523.25, 659.25, 783.99, 1_046.5].forEach((frequency, index) => {
+        this.tone(ctx, frequency, now + 4.02 + index * 0.12, 0.82, 0.042, 'sine');
       });
     }, true);
   }

@@ -37,11 +37,57 @@ interface FrenzyInfo {
   canClaim: boolean;
   selfClaimTest: boolean;
   postId: string;
+  claimCount?: number;
+  recentClaimers?: Array<{ username: string; claimedAt: number }>;
   baseOrbCount: number;
   multiRolls: number;
   rewardOrbCount: number;
   frenzyVolleyBonus: boolean;
   inGame?: boolean;
+}
+
+function FrenzyClaimActivity({
+  count,
+  players,
+}: {
+  count: number;
+  players: Array<{ username: string; claimedAt: number }>;
+}) {
+  const newest = players[0] ? `${players[0].username}:${players[0].claimedAt}` : '';
+  const previousNewestRef = useRef('');
+  const [enteringKey, setEnteringKey] = useState('');
+  useEffect(() => {
+    if (previousNewestRef.current && newest && newest !== previousNewestRef.current) {
+      setEnteringKey(newest);
+    }
+    previousNewestRef.current = newest;
+  }, [newest]);
+
+  return (
+    <section className="io-frenzy-claim-activity" aria-label="Frenzy claim activity" aria-live="polite">
+      <div className="io-frenzy-claim-activity-head">
+        <div>
+          <strong>{formatNumber(count)} {count === 1 ? 'player has' : 'players have'} claimed this Frenzy</strong>
+          <span>Live claim activity</span>
+        </div>
+        <Users className="w-4 h-4" aria-hidden="true" />
+      </div>
+      <div className="io-frenzy-claimers">
+        {players.length > 0 ? players.slice(0, 5).map((player, index) => {
+          const key = `${player.username}:${player.claimedAt}`;
+          return (
+            <div key={key} className={`io-frenzy-claimer${key === enteringKey ? ' is-entering' : ''}`}>
+              <span className="io-frenzy-claimer-rank">{index + 1}</span>
+              <strong>u/{player.username}</strong>
+              {index === 0 && <span className="io-frenzy-claimer-latest">LATEST</span>}
+            </div>
+          );
+        }) : (
+          <div className="io-frenzy-claimers-empty">No claims yet. Be the first to claim this Frenzy.</div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function PublicBrand() {
@@ -155,6 +201,41 @@ function FrenzyPost() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  // Poll only while the embedded post is visible; catch up immediately on return.
+  useEffect(() => {
+    if (!info?.postId) return;
+    let active = true;
+    let inFlight = false;
+    const refreshClaims = async () => {
+      if (!active || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const response = await fetchWithTimeout('/api/frenzy/info', { cache: 'no-store' }, 6_000);
+        if (!response.ok) return;
+        const fresh = await response.json() as FrenzyInfo;
+        if (active && fresh.postId === info.postId) {
+          setInfo(fresh);
+          setClaimed(Boolean(fresh.claimedToday));
+        }
+      } catch {
+        // A missed activity poll is harmless; the next interval refreshes it.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshClaims();
+    };
+    void refreshClaims();
+    const interval = window.setInterval(() => void refreshClaims(), 3_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [info?.postId]);
 
   useEffect(() => {
     let active = true;
@@ -368,6 +449,8 @@ function FrenzyPost() {
               </div>
             </div>
 
+            <FrenzyClaimActivity count={info.claimCount ?? 0} players={info.recentClaimers ?? []} />
+
             <div className="io-frenzy-cooldown-panel is-active" role="status">
               <div className="io-frenzy-cooldown-icon"><Zap className="w-4 h-4" /></div>
               <div className="io-frenzy-cooldown-copy">
@@ -496,6 +579,8 @@ function FrenzyPost() {
               </div>
             )}
           </div>
+
+          <FrenzyClaimActivity count={info.claimCount ?? 0} players={info.recentClaimers ?? []} />
 
           <div className="io-frenzy-meta" style={{ borderColor: orb.color + '22' }}>
             <span>{orb.tier}</span>

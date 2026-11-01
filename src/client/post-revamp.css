@@ -1430,3 +1430,65 @@
   }
   .io-splash-cta.is-ready { transition-duration: .01ms; }
 }
+
+
+/* Live Frenzy claim activity and the newly-arrived player row. */
+.io-frenzy-claim-activity {
+  width: 100%;
+  margin: 14px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(71, 133, 180, .24);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(8, 23, 39, .88), rgba(10, 18, 31, .82));
+  text-align: left;
+}
+.io-frenzy-claim-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #a5d9f7;
+}
+.io-frenzy-claim-activity-head > div { display: grid; gap: 2px; }
+.io-frenzy-claim-activity-head strong { color: #e6f5ff; font-size: 12px; font-weight: 850; }
+.io-frenzy-claim-activity-head span { color: #7895ac; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.io-frenzy-claimers { display: grid; gap: 5px; margin-top: 10px; }
+.io-frenzy-claimer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid rgba(72, 111, 147, .12);
+  border-radius: 9px;
+  background: rgba(3, 12, 23, .58);
+  color: #c5d5e3;
+}
+.io-frenzy-claimer.is-entering {
+  border-color: rgba(91, 197, 255, .48);
+  background: rgba(29, 105, 153, .18);
+  animation: io-frenzy-claimer-slide-in .48s cubic-bezier(.2, .85, .25, 1) both;
+}
+.io-frenzy-claimer-rank {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: rgba(71, 133, 180, .16);
+  color: #82b8d7;
+  font-size: 9px;
+  font-weight: 900;
+}
+.io-frenzy-claimer strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 800; }
+.io-frenzy-claimer-latest { margin-left: auto; color: #71d1ff; font-size: 8px; font-weight: 950; letter-spacing: .13em; }
+.io-frenzy-claimers-empty { padding: 10px 5px; color: #7d91a4; font-size: 11px; }
+@keyframes io-frenzy-claimer-slide-in {
+  from { opacity: 0; transform: translate3d(18px, -5px, 0) scale(.985); filter: blur(3px); }
+  70% { opacity: 1; transform: translate3d(-2px, 0, 0) scale(1.005); filter: blur(0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-frenzy-claimer.is-entering { animation: none !important; }
+}
