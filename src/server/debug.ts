@@ -48,6 +48,7 @@ import {
   readStoredPlayerSave,
   serializePlayerStateForRedis,
 } from './player-save.js';
+import { serializeBoundedLeaderboard } from './redis-bounds.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
@@ -832,7 +833,7 @@ async function removeLeaderboardEntry(username: string): Promise<void> {
     }
 
     await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(next));
+    await txn.set(leaderboardKey, serializeBoundedLeaderboard(next));
     if (await txn.exec() !== null) return;
   }
 
