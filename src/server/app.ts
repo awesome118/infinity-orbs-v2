@@ -372,9 +372,15 @@ export function createApp() {
     if (!req.path.startsWith('/api')) return next();
     const originalJson = res.json.bind(res);
     res.json = ((body: any) => {
-      // Route-specific catches may not use badRequest(). Normalize the exact
-      // pre-handler lock sentinel here so every endpoint gets the same retry code.
-      if (body && typeof body === 'object' && body.error === 'PLAYER_MUTATION_QUEUED') {
+      const errorText = body && typeof body === 'object'
+        ? String(body.error ?? body.message ?? '')
+        : '';
+      const retryableContention =
+        body?.code === 'PLAYER_STATE_CONFLICT' ||
+        body?.code === 'PLAYER_MUTATION_QUEUED' ||
+        body?.error === 'PLAYER_MUTATION_QUEUED' ||
+        (res.statusCode === 503 && /busy|still finishing|changed repeatedly|lease lost|could not safely save/i.test(errorText));
+      if (retryableContention) {
         res.status(503);
         return originalJson(stripPlayerCollection({
           code: 'PLAYER_MUTATION_QUEUED',
@@ -387,156 +393,45 @@ export function createApp() {
     next();
   });
 
-  // Serialize state-changing requests per player inside this server instance.
-  // Devvit can execute requests concurrently on different instances, so a Redis
-  // lock is also required to protect a player's full read-modify-write mutation.
+  // Keep a small in-process FIFO for this runtime. Cross-instance correctness
+  // belongs to the domain mutation locks in player-lock.ts and the WATCH/EXEC
+  // compare-and-swap writers (Combat, Guilds, and shared projections). A second
+  // Redis lease here used a different key/timeout and made every action queue twice.
   const mutationQueues = new Map<string, Promise<void>>();
-  const MUTATION_LOCK_PREFIX = 'player-mutation-lock:';
-  const MUTATION_LOCK_TTL_MS = 2 * 60_000;
-  // Give legitimate queued actions enough time to finish behind longer-running saves/rolls.
-  const MUTATION_LOCK_WAIT_MS = 8_000;
-
-  const mutationLockKey = (playerKey: string) => MUTATION_LOCK_PREFIX + playerKey;
-
-  const mutationLockOwner = (): string => 'lease-' + secureRequestToken();
-
-  const parseMutationLock = (raw: string | null): { owner: string; expiresAt: number } | null => {
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as { owner?: unknown; expiresAt?: unknown };
-      const owner = String(parsed.owner ?? '').trim();
-      const expiresAt = Number(parsed.expiresAt ?? 0);
-      if (!owner || !Number.isFinite(expiresAt)) return null;
-      return { owner, expiresAt };
-    } catch {
-      return null;
-    }
-  };
-
-  const acquireMutationLock = async (playerKey: string): Promise<{
-    lockKey: string;
-    owner: string;
-  }> => {
-    const lockKey = mutationLockKey(playerKey);
-    const owner = mutationLockOwner();
-    const deadline = Date.now() + MUTATION_LOCK_WAIT_MS;
-
-    while (Date.now() < deadline) {
-      const now = Date.now();
-      const txn = await redis.watch(lockKey);
-      let transactionClosed = false;
-      try {
-        // TxClient.get() queues a transaction command. Read the watched value
-        // through Redis itself so we inspect the actual current lock contents.
-        const raw = await redis.get(lockKey);
-        const existing = parseMutationLock(raw);
-
-        if (existing && existing.expiresAt > now) {
-          await txn.unwatch();
-          transactionClosed = true;
-          await new Promise(resolve => setTimeout(resolve, 100));
-          continue;
-        }
-
-        const value = JSON.stringify({
-          owner,
-          expiresAt: now + MUTATION_LOCK_TTL_MS,
-        });
-
-        await txn.multi();
-        await txn.set(lockKey, value);
-        const committed = await txn.exec();
-        transactionClosed = true;
-
-        if (committed !== null) {
-          return { lockKey, owner };
-        }
-      } finally {
-        if (!transactionClosed) {
-          await txn.unwatch().catch(() => undefined);
-        }
-      }
-    }
-
-    throw new Error('PLAYER_MUTATION_QUEUED');
-  };
-
-  const releaseMutationLock = async (lockKey: string, owner: string): Promise<void> => {
-    let txn: Awaited<ReturnType<typeof redis.watch>> | null = null;
-    let transactionClosed = false;
-    try {
-      txn = await redis.watch(lockKey);
-      // TxClient.get() queues a transaction command. Read the watched value
-      // through Redis itself before deciding whether the lock is ours.
-      const raw = await redis.get(lockKey);
-      const existing = parseMutationLock(raw);
-      if (!existing || existing.owner !== owner) {
-        await txn.unwatch();
-        transactionClosed = true;
-        return;
-      }
-
-      await txn.multi();
-      await txn.del(lockKey);
-      await txn.exec();
-      transactionClosed = true;
-    } catch (error) {
-      console.error('[Mutation Lock] Failed to release lock:', error);
-    } finally {
-      if (txn && !transactionClosed) {
-        await txn.unwatch().catch(() => undefined);
-      }
-    }
-  };
 
   app.use('/api', async (req, res, next) => {
-    // Every player mutation, including Gear, Skills, Forge, Arena and combat
-    // beats, enters this server-side FIFO. The client dispatches immediately;
-    // the shared lock sequences requests before authoritative state checks.
     const mutatesState = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const readsAndPersistsPlayerState =
       req.method === 'GET' &&
       ['/me', '/leaderboard', '/guilds'].includes(req.path);
-    const requiresPlayerSerialization = mutatesState || readsAndPersistsPlayerState;
-    if (!requiresPlayerSerialization) return next();
+    if (!mutatesState && !readsAndPersistsPlayerState) return next();
 
-    const playerKey = context.userId ?? req.ip ?? 'unknown';
+    const playerKey = String(context.userId ?? req.ip ?? 'unknown');
     const previous = mutationQueues.get(playerKey) ?? Promise.resolve();
-
     let releaseLocal!: () => void;
     const current = new Promise<void>(resolve => { releaseLocal = resolve; });
     const chain = previous.then(() => current);
     mutationQueues.set(playerKey, chain);
 
     await previous;
-
-    let distributedLock: { lockKey: string; owner: string } | null = null;
-    try {
-      distributedLock = await acquireMutationLock(playerKey);
-      let released = false;
-      const releaseOnce = () => {
-        if (released) return;
-        released = true;
-        releaseLocal();
-        if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
-        if (distributedLock) {
-          void releaseMutationLock(distributedLock.lockKey, distributedLock.owner);
-          distributedLock = null;
-        }
-      };
-      res.once('finish', releaseOnce);
-      res.once('close', releaseOnce);
-      return next();
-    } catch (error) {
+    let released = false;
+    const releaseOnce = () => {
+      if (released) return;
+      released = true;
       releaseLocal();
       if (mutationQueues.get(playerKey) === chain) mutationQueues.delete(playerKey);
-      if (error instanceof Error && error.message === 'PLAYER_MUTATION_QUEUED') {
-        return res.status(503).json({
-          code: 'PLAYER_MUTATION_QUEUED',
-          error: 'Your action is queued and will retry automatically.',
-          retryAfterMs: 300,
-        });
-      }
+    };
+
+    if (res.destroyed) {
+      releaseOnce();
+      return;
+    }
+    res.once('finish', releaseOnce);
+    res.once('close', releaseOnce);
+    try {
+      return next();
+    } catch (error) {
+      releaseOnce();
       return next(error);
     }
   });
@@ -1389,7 +1284,7 @@ export function createApp() {
 
   const transientContentionError = (error: unknown): boolean => {
     const message = error instanceof Error ? error.message : String(error ?? '');
-    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
+    return /max(?:imum)? concurrency|concurrency limit|redis.*transaction|transaction.*failed|PLAYER_MUTATION_LEASE_LOST|another game action is still finishing|combat state changed repeatedly|guild.*changed|shared state changed|data changed before the roll saved|player state changed while saving|player activity changed repeatedly|could not safely save player data|could not create a roll prediction ticket|community event changed while|community progress changed while|daily streak community goal changed while/i.test(message);
   };
 
   const reportRedisTransactionFailure = (error: unknown) => {
@@ -1416,8 +1311,9 @@ export function createApp() {
     }
     if (transientContentionError(e)) {
       return res.status(503).json({
-        code: 'PLAYER_STATE_CONFLICT',
-        error: 'Your latest saved state changed while this action was processing. Refreshing state is safer than replaying it.',
+        code: 'PLAYER_MUTATION_QUEUED',
+        error: 'Your action is queued and will retry automatically.',
+        retryAfterMs: 300,
       });
     }
     return res.status(400).json({ error: e instanceof Error ? e.message : fallback });
@@ -1427,9 +1323,9 @@ export function createApp() {
     try { res.json(await getRollTicket()); }
     catch (e) {
       reportRedisTransactionFailure(e);
-      res.status(transientContentionError(e) ? 503 : 500).json({
-        error: transientContentionError(e) ? 'The game is busy preparing your next roll. Please retry.' : e instanceof Error ? e.message : 'Could not create roll prediction ticket.',
-      });
+      res.status(transientContentionError(e) ? 503 : 500).json(transientContentionError(e)
+        ? { code: 'PLAYER_MUTATION_QUEUED', error: 'Your action is queued and will retry automatically.', retryAfterMs: 300 }
+        : { error: e instanceof Error ? e.message : 'Could not create roll prediction ticket.' });
     }
   });
 
@@ -1867,8 +1763,9 @@ export function createApp() {
     }
     if (busy) {
       return res.status(503).json({
-        code: 'PLAYER_STATE_CONFLICT',
-        error: 'Player state changed while processing. Refresh the latest state before trying another action.',
+        code: 'PLAYER_MUTATION_QUEUED',
+        error: 'Your action is queued and will retry automatically.',
+        retryAfterMs: 300,
       });
     }
     return res.status(500).json({ error: 'The server hit an unexpected error. Please retry.' });
