@@ -163,6 +163,8 @@ export async function discardRedisSnapshotWritePlan(
   await deleteKeys(client, plan.chunkKeys);
 }
 
+const RETIRED_SNAPSHOT_TTL_MS = 10 * 60_000;
+
 export async function cleanupPreviousRedisSnapshot(
   client: RedisSnapshotClient,
   rootKey: string,
@@ -174,5 +176,15 @@ export async function cleanupPreviousRedisSnapshot(
     { length: previous.chunkCount },
     (_, index) => snapshotChunkKey(rootKey, previous.token, index),
   );
-  await deleteKeys(client, keys);
+  // Readers may have fetched the old manifest immediately before the atomic
+  // root swap. Retain its chunks briefly so that in-flight reads can finish.
+  const expiration = new Date(Date.now() + RETIRED_SNAPSHOT_TTL_MS);
+  for (const key of keys) {
+    try {
+      const value = await client.get(key);
+      if (typeof value === 'string') await client.set(key, value, { expiration });
+    } catch {
+      // An orphan is safer than invalidating a reader that still holds the old manifest.
+    }
+  }
 }
