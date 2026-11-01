@@ -339,7 +339,7 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
-  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
+  const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownBeforeMs: number | null; autoCooldownMs: number | null } | null>(null);
   const [alignmentConfirmationSeconds, setAlignmentConfirmationSeconds] = useState(60);
   const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
@@ -2532,9 +2532,13 @@ function App() {
       });
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
+      const clockworkBaseState = choice === 'clockwork'
+        ? { ...result.state, alignmentActiveChoice: null, alignmentActiveUntil: 0 }
+        : null;
       const confirmation = {
         choice,
         closesAt: Date.now() + 60_000,
+        autoCooldownBeforeMs: clockworkBaseState ? cooldownMs(clockworkBaseState, true) : null,
         autoCooldownMs: choice === 'clockwork' ? cooldownMs(result.state, true) : null,
       };
       alignmentConfirmationRef.current = confirmation;
@@ -3523,7 +3527,9 @@ function App() {
                 ? 'Your complete Luck multiplier is now raised to the power of 1.05.'
                 : alignmentConfirmation.choice === 'goldenOrbit'
                   ? 'All Coins earned are increased by 50%.'
-                  : `Auto Roll cooldown is now ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s (20% faster; 300ms minimum).`}
+                  : alignmentConfirmation.autoCooldownBeforeMs === alignmentConfirmation.autoCooldownMs
+                  ? `Auto Roll is already at the 300ms minimum. Clockwork cannot shorten it further.`
+                  : `Auto Roll cooldown reduced from ${((alignmentConfirmation.autoCooldownBeforeMs ?? 0) / 1000).toFixed(2)}s to ${((alignmentConfirmation.autoCooldownMs ?? 0) / 1000).toFixed(2)}s.`}
             </p>
             <p className="mt-1 text-[10px] text-slate-400">The selected effect remains active for 60 minutes.</p>
             <div
