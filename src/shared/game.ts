@@ -179,6 +179,8 @@ export const CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS = 4 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS = 8 * 60 * 60 * 1_000;
 /** The selection popup is a short-lived opportunity; buff instances still last two hours. */
 export const CELESTIAL_ALIGNMENT_PROMPT_DURATION_MS = 60 * 1_000;
+/** Bump to reschedule old saves that still carry the previous frequent cadence. */
+export const CELESTIAL_ALIGNMENT_SCHEDULE_VERSION = 2;
 export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
   (CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS + CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS) / 2;
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
@@ -1145,6 +1147,8 @@ export interface PlayerState {
   timeEnergy?: number;
   /** Next independent random Alignment event timestamp. */
   alignmentNextAt?: number;
+  /** Migration marker for the current Alignment event cadence. */
+  alignmentScheduleVersion?: number;
   /** Timestamp of an unclaimed Alignment prompt; zero means none is pending. */
   alignmentPendingAt?: number;
   /** True only for a prompt explicitly queued by the admin test console. */
@@ -1980,6 +1984,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastRollAt: null,
     timeEnergy: 0,
     alignmentNextAt: 0,
+    alignmentScheduleVersion: CELESTIAL_ALIGNMENT_SCHEDULE_VERSION,
     alignmentPendingAt: 0,
     alignmentPendingForced: false,
     alignmentActiveInstances: [],
