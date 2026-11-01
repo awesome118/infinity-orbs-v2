@@ -215,3 +215,4 @@ jobs:
 # Deployment trigger audit: user-requested dev-only upload of package.json version 2.1.49 on 2026-11-01.
 # Deployment retry audit: refreshed dev-only preflight after correcting the Guild recovery source-contract test.
 # Deployment retry audit: TypeScript fixes for Redis player projection and Alignment username normalization.
+# Deployment retry audit: player-save test now checks the narrowed Redis string input.
