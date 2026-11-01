@@ -339,6 +339,7 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
+  const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
   const [alignmentConfirmation, setAlignmentConfirmation] = useState<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownBeforeMs: number | null; autoCooldownMs: number | null } | null>(null);
   const [alignmentConfirmationSeconds, setAlignmentConfirmationSeconds] = useState(60);
   const alignmentConfirmationRef = useRef<{ choice: CelestialAlignmentChoice; closesAt: number; autoCooldownMs: number | null } | null>(null);
@@ -2508,8 +2509,20 @@ function App() {
 
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
-    const chosenPendingAt = alignmentStatus?.pendingAt ?? 0;
+    // The chooser can be visible before the first status poll has populated its timestamp.
+    // Use the last observed event time, then a local timestamp as a safe fallback, so a
+    // delayed pre-selection status response cannot reopen this same chooser.
+    const chosenPendingAt = Math.max(
+      alignmentStatus?.pendingAt ?? 0,
+      alignmentPendingSeenRef.current,
+      Date.now(),
+    );
+    alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
+    setAlignmentChoiceError(null);
     setAlignmentChoiceBusy(true);
+    // Remove the blocking modal as soon as a choice is submitted. A small status
+    // notice remains while the server confirms it; failures reopen the chooser with details.
+    setAlignmentPromptVisible(false);
     try {
       const result = await getJson<{
         state: PlayerState;
@@ -2552,7 +2565,10 @@ function App() {
       };
       showToast(`${names[choice]} aligned for 60 minutes.`, 'success');
     } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : 'Could not activate this Alignment.', 'warn');
+      const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
+      setAlignmentChoiceError(message);
+      setAlignmentPromptVisible(true);
+      showToast(message, 'warn');
     } finally {
       setAlignmentChoiceBusy(false);
     }
@@ -3470,6 +3486,7 @@ function App() {
             <div className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">A rare celestial event</div>
             <h2 id="celestial-alignment-title" className="mt-2 text-2xl sm:text-3xl font-black text-white">Celestial Alignment</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">The stars have aligned. Choose one effect to guide your next 60 minutes. Your next Alignment appears independently of your rolls.</p>
+            {alignmentChoiceError && <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200" role="alert">Your choice was not saved: {alignmentChoiceError}</p>}
             <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
@@ -3505,8 +3522,13 @@ function App() {
                 <span className="mt-4 block text-[10px] font-black uppercase tracking-wide text-emerald-200">20% faster Auto Roll</span>
               </button>
             </div>
-            {alignmentChoiceBusy && <div className="mt-4 text-center text-xs text-cyan-200">Locking in your Alignment…</div>}
           </section>
+        </div>
+      )}
+
+      {alignmentChoiceBusy && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[91] flex justify-center px-4" role="status" aria-live="polite" data-testid="celestial-alignment-saving">
+          <div className="rounded-xl border border-cyan-400/30 bg-slate-950/95 px-4 py-2 text-xs font-semibold text-cyan-100 shadow-lg">Locking in your Alignment…</div>
         </div>
       )}
 
