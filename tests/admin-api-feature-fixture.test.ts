@@ -136,3 +136,40 @@ test('admin mechanic remount tests use an unlocked navigation tab instead of gat
   assert.equal(runner.split('await remountRollSection();').length - 1, 2,
     'both mount-only RollSection preference tests should use the unlocked navigation helper');
 });
+
+
+test('admin force-roll preserves the requested rarity and Sonar checks match the live control', () => {
+  const debug = readFileSync(resolve(process.cwd(), 'src/server/debug.ts'), 'utf8');
+  const forceStart = debug.indexOf("debugRouter.post('/force-roll'");
+  const forceEnd = debug.indexOf("\ndebugRouter.post('/frenzy/start'", forceStart);
+  assert.ok(forceStart >= 0 && forceEnd > forceStart, 'admin force-roll route must exist');
+  const forceRoute = debug.slice(forceStart, forceEnd);
+  assert.match(
+    forceRoute,
+    /applyRolls\(s,\s*1,\s*forcedRarity,\s*source,\s*undefined,\s*randomOverride,\s*true\)/,
+    'admin force-rolls must use exact-rarity mode so crits cannot alter deterministic fixtures',
+  );
+
+  const rollSection = readFileSync(resolve(process.cwd(), 'src/client/components/RollSection.tsx'), 'utf8');
+  assert.match(rollSection, /data-testid="sonar-mode-toggle"/);
+
+  const runner = readFileSync(resolve(process.cwd(), 'src/client/components/DevDebugModal.tsx'), 'utf8');
+  const silentStart = runner.indexOf("'Mechanic · Silent Alert Mode'");
+  const silentEnd = runner.indexOf("\n        await step(", silentStart + 1);
+  assert.ok(silentStart >= 0 && silentEnd > silentStart, 'Silent Alert Mode test must exist');
+  const silentStep = runner.slice(silentStart, silentEnd);
+  assert.equal(
+    silentStep.split("dataset.testid === 'sonar-mode-toggle'").length - 1,
+    3,
+    'all Sonar toggle lookups must use the stable live control selector',
+  );
+  assert.match(silentStep, /Sonar Ping: ON/);
+  assert.match(silentStep, /Sonar Ping: OFF/);
+
+  const triggerStart = runner.indexOf("'Mechanic · Sonar Ping Rare Trigger'");
+  const triggerEnd = runner.indexOf("\n        await step(", triggerStart + 1);
+  assert.ok(triggerStart >= 0 && triggerEnd > triggerStart, 'Sonar trigger test must exist');
+  const triggerStep = runner.slice(triggerStart, triggerEnd);
+  assert.match(triggerStep, /highestRarity:\s*1_000/);
+  assert.match(triggerStep, /await onRefresh\(\)/);
+});

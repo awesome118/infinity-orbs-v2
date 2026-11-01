@@ -849,6 +849,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {hasSonarUpgrade && (
             <button
               type="button"
+              data-testid="sonar-mode-toggle"
               aria-pressed={sonarActive}
               onClick={() => {
                 const next = !sonarActive;

@@ -2509,7 +2509,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             let button: HTMLButtonElement | undefined;
             while (Date.now() < deadline) {
               button = Array.from(document.querySelectorAll('button'))
-                .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
+                .find(el => (el as HTMLButtonElement).dataset.testid === 'sonar-mode-toggle') as HTMLButtonElement | undefined;
               if (button) break;
               await new Promise(resolve => setTimeout(resolve, 50));
             }
@@ -2517,14 +2517,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             button.click();
             await new Promise(resolve => setTimeout(resolve, 100));
             let activeButton = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
-            if (!sound.sonarMode || !activeButton?.textContent?.includes('SILENT')) throw new Error('Sonar control did not enable Silent Mode.');
+              .find(el => (el as HTMLButtonElement).dataset.testid === 'sonar-mode-toggle') as HTMLButtonElement | undefined;
+            if (!sound.sonarMode || activeButton?.getAttribute('aria-pressed') !== 'true' || !activeButton.textContent?.includes('Sonar Ping: ON')) throw new Error('Sonar control did not enable Silent Mode.');
             activeButton.click();
             await new Promise(resolve => setTimeout(resolve, 100));
             const resetButton = Array.from(document.querySelectorAll('button'))
-              .find(el => (el as HTMLButtonElement).title === 'Silent Mode: Mutes standard rolls and alerts with a crystal chime on rare drops') as HTMLButtonElement | undefined;
-            if (sound.sonarMode || !resetButton?.textContent?.includes('OFF')) throw new Error('Sonar control did not return to OFF after the toggle check.');
-            return { text: 'SILENT → OFF' };
+              .find(el => (el as HTMLButtonElement).dataset.testid === 'sonar-mode-toggle') as HTMLButtonElement | undefined;
+            if (sound.sonarMode || resetButton?.getAttribute('aria-pressed') !== 'false' || !resetButton.textContent?.includes('Sonar Ping: OFF')) throw new Error('Sonar control did not return to OFF after the toggle check.');
+            return { text: 'ON → OFF' };
           },
           result => 'Client control unlocked · ' + result.text,
         );
@@ -2532,6 +2532,10 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         await step(
           'Mechanic · Sonar Ping Rare Trigger',
           async () => {
+            // Sonar pings are reserved for qualifying non-record drops; keep the fixture's best above the forced Orb.
+            await request('/api/dev/state', { highestRarity: 1_000 });
+            await onRefresh();
+            await new Promise(resolve => setTimeout(resolve, 50));
             sound.setSonarThreshold(100);
             sound.setSonarMode(true);
             const forced = await request<any>('/api/dev/force-roll', { rarity: 100, randomValue: 0.999999 });

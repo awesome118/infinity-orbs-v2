@@ -2538,7 +2538,7 @@ debugRouter.post('/force-roll', async (req, res) => {
     }
     const randomOverride = hasRandomValue ? () => randomValue : undefined;
     const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained } =
-      await applyRolls(s, 1, forcedRarity, source, undefined, randomOverride);
+      await applyRolls(s, 1, forcedRarity, source, undefined, randomOverride, true);
     const now = Date.now();
     s.lastRollAt = now;
     s.lastSeenAt = now;
