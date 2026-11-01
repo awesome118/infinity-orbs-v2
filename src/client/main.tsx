@@ -724,17 +724,23 @@ function App() {
   const latestGlobalBoostersRef = useRef<GlobalBoosterSnapshot | null>(null);
   const rollTicketRef = useRef<{
     ticketId: string;
-
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
+    seeds: string[];
+    predictionBaseRevision: number;
+    predictionStartIndex: number;
+    predictions: Array<{ index: number; orb: Orb }>;
   } | null>(null);
   const rollTicketRequestRef = useRef<Promise<{
     ticketId: string;
-
     nextIndex: number;
     rollsRemaining: number;
     expiresAt: number;
+    seeds: string[];
+    predictionBaseRevision: number;
+    predictionStartIndex: number;
+    predictions: Array<{ index: number; orb: Orb }>;
   }> | null>(null);
   const rollActionLockRef = useRef(false);
   const combatBeatActiveRef = useRef(false);
@@ -865,11 +871,15 @@ function App() {
 
     if (!rollTicketRequestRef.current) {
       const pending = getJson<{
-        ticketId: string;
-        nextIndex: number;
-        rollsRemaining: number;
-        expiresAt: number;
-      }>('/api/roll-ticket');
+    ticketId: string;
+    nextIndex: number;
+    rollsRemaining: number;
+    expiresAt: number;
+    seeds: string[];
+    predictionBaseRevision: number;
+    predictionStartIndex: number;
+    predictions: Array<{ index: number; orb: Orb }>;
+  }>('/api/roll-ticket');
       const tracked = pending.finally(() => {
         // An older session's request must not clear a newer session's in-flight ticket.
         if (rollTicketRequestRef.current === tracked) rollTicketRequestRef.current = null;
