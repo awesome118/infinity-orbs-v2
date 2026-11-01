@@ -93,7 +93,7 @@ test('all eleven trigger-based Rune Major Abilities scale and expose distinct me
   assert.equal(effects.eventHorizonPct,12.75);
   assert.equal(effects.shardConstellationPct,17);
   assert.equal(effects.temporalLoopPct,8);
-  assert.equal(effects.prismaticForkPct,15.3);
+  assert.ok(Math.abs(effects.prismaticForkPct-15.3)<1e-12);
   assert.equal(effects.criticalConvergencePct,13.6);
   assert.equal(effects.rarityLadderPct,7);
   assert.equal(effects.stellarDividendPct,18.7);
