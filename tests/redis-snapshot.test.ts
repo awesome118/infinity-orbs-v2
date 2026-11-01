@@ -10,6 +10,7 @@ import {
 
 function createMemoryRedis(maxSetChars = 256 * 1024) {
   const values = new Map<string, string>();
+  const expirations = new Map<string, Date>();
   const client: RedisSnapshotClient = {
     get: async key => values.get(key) ?? null,
     mGet: async keys => keys.map(key => values.get(key) ?? null),
@@ -18,11 +19,16 @@ function createMemoryRedis(maxSetChars = 256 * 1024) {
         throw new Error('Redis SET request exceeded the test payload ceiling.');
       }
       values.set(key, value);
+      if (options?.expiration) expirations.set(key, options.expiration);
+      else expirations.delete(key);
       return 'OK';
     },
-    del: async key => values.delete(key),
+    del: async key => {
+      expirations.delete(key);
+      return values.delete(key);
+    },
   };
-  return { client, values };
+  return { client, values, expirations };
 }
 
 test('large shared snapshots are split into bounded Redis SET values and verify on read', async () => {
@@ -73,7 +79,7 @@ test('chunk manifests fail closed when a chunk is missing or corrupted', async (
 });
 
 test('replaced snapshots and failed write plans clean up unreachable chunks', async () => {
-  const { client, values } = createMemoryRedis();
+  const { client, values, expirations } = createMemoryRedis();
   const rootKey = 'io:test:replace';
   const first = await createRedisSnapshotWritePlan(client, rootKey, 'a'.repeat(250_000));
   values.set(rootKey, first.storedValue);
@@ -81,7 +87,8 @@ test('replaced snapshots and failed write plans clean up unreachable chunks', as
   const second = await createRedisSnapshotWritePlan(client, rootKey, 'b'.repeat(250_000));
   values.set(rootKey, second.storedValue);
   await cleanupPreviousRedisSnapshot(client, rootKey, first.storedValue);
-  assert.ok(first.chunkKeys.every(key => !values.has(key)));
+  assert.ok(first.chunkKeys.every(key => values.has(key)));
+  assert.ok(first.chunkKeys.every(key => expirations.has(key)));
   assert.ok(second.chunkKeys.every(key => values.has(key)));
 
   await discardRedisSnapshotWritePlan(client, second);
