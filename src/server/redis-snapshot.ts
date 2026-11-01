@@ -3,7 +3,7 @@ import { redis } from './devvit-mock.js';
 export interface RedisSnapshotClient {
   get(key: string): Promise<string | null | undefined>;
   mGet(keys: string[]): Promise<Array<string | null | undefined>>;
-  set(key: string, value: string): Promise<unknown>;
+  set(key: string, value: string, options?: { expiration?: Date }): Promise<unknown>;
   del(key: string): Promise<unknown>;
 }
 
@@ -81,7 +81,7 @@ async function deleteKeys(client: RedisSnapshotClient, keys: string[]): Promise<
 }
 
 export async function readRedisSnapshot(
-  client: RedisSnapshotClient = redis,
+  client: RedisSnapshotClient,
   rootKey: string,
   storedValue: string | null | undefined,
 ): Promise<string | null> {
@@ -110,9 +110,10 @@ export async function readRedisSnapshot(
 }
 
 export async function createRedisSnapshotWritePlan(
-  client: RedisSnapshotClient = redis,
+  client: RedisSnapshotClient,
   rootKey: string,
   serialized: string,
+  options: { expiration?: Date } = {},
 ): Promise<RedisSnapshotWritePlan> {
   if (serialized.length <= INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
   if (serialized.length > MAX_CHARS) {
@@ -139,7 +140,7 @@ export async function createRedisSnapshotWritePlan(
   let written = 0;
   try {
     for (let index = 0; index < chunks.length; index += 1) {
-      await client.set(chunkKeys[index], chunks[index]);
+      await client.set(chunkKeys[index], chunks[index], options.expiration ? { expiration: options.expiration } : undefined);
       written += 1;
     }
   } catch (error) {
@@ -158,14 +159,14 @@ export async function createRedisSnapshotWritePlan(
 }
 
 export async function discardRedisSnapshotWritePlan(
-  client: RedisSnapshotClient = redis,
+  client: RedisSnapshotClient,
   plan: RedisSnapshotWritePlan,
 ): Promise<void> {
   await deleteKeys(client, plan.chunkKeys);
 }
 
 export async function cleanupPreviousRedisSnapshot(
-  client: RedisSnapshotClient = redis,
+  client: RedisSnapshotClient,
   rootKey: string,
   previousStoredValue: string | null | undefined,
 ): Promise<void> {
