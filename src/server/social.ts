@@ -2171,8 +2171,6 @@ export async function recordGlobalChatComment(input: {
   const targetPostId = normalizeRedditPostId(input.postId);
   const registeredPostId = normalizeRedditPostId(await redis.get(GLOBAL_GAME_POST_KEY));
   if (!targetPostId || !registeredPostId || targetPostId !== registeredPostId) return null;
-  // Reddit comment-create events are a separate entry point from the chat API.
-  // Fail closed here too if a legacy/corrupt canonical ID points at a Frenzy post.
   if (await isRegisteredFrenzyPost(registeredPostId)) return null;
 
   const rawId = String(input.commentId ?? '').trim();
@@ -2184,7 +2182,7 @@ export async function recordGlobalChatComment(input: {
   const userId = String(input.userId ?? '').trim();
   const message: GlobalChatMessage = {
     id,
-    username: String(input.username ?? '').trim().replace(/^u\//i, '').slice(0, 80) || 'Redditor',
+    username: String(input.username ?? '').trim().replace(/^u\\//i, '').slice(0, 80) || 'Redditor',
     text,
     timestamp: Number.isSafeInteger(Number(input.timestamp)) && Number(input.timestamp) >= 0
       ? Number(input.timestamp)
@@ -2196,38 +2194,52 @@ export async function recordGlobalChatComment(input: {
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    let closed = false;
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
     try {
-      const raw = await redis.get(GLOBAL_CHAT_KEY);
-      const messages = parseGlobalChatList(raw).filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()));
+      const storedRaw = await redis.get(GLOBAL_CHAT_KEY);
+      const decodedRaw = await readRedisLargeValue(GLOBAL_CHAT_KEY, storedRaw);
+      const messages = parseGlobalChatList(decodedRaw)
+        .filter(item => /^t1_[a-z0-9]+$/i.test(String(item.id ?? '').trim()));
       const previous = messages.find(item => item.id === id);
       if (previous) {
         await txn.unwatch();
-        closed = true;
+        transactionClosed = true;
         return previous;
       }
+
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
+      writePlan = await createRedisLargeValueWritePlan(
+        GLOBAL_CHAT_KEY,
+        JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)),
+      );
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, writePlan.storedValue);
       const committed = await txn.exec();
-      closed = true;
-      if (committed !== null) return message;
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(GLOBAL_CHAT_KEY, storedRaw);
+        return message;
+      }
     } finally {
-      if (!closed) await txn.unwatch().catch(() => undefined);
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
     }
   }
   throw new Error('Global Chat changed while recording a Reddit comment. Please retry.');
 }
 
 async function purgeChatMessagesForUser(userId: string, targetUsername: string): Promise<void> {
-  const cleanUsername = String(targetUsername).trim().replace(/^u\//i, '').toLowerCase();
+  const cleanUsername = String(targetUsername).trim().replace(/^u\\//i, '').toLowerCase();
 
   await updateGuilds(guilds => {
     for (const guild of guilds) {
       guild.chat = (guild.chat ?? []).filter(message => {
         const messageUserId = String(message.userId ?? '').trim();
-        const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
         return messageUserId !== userId && messageUsername !== cleanUsername;
       });
     }
@@ -2236,18 +2248,36 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
   await ensureRedisStringKey(GLOBAL_CHAT_KEY, '[]');
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(GLOBAL_CHAT_KEY);
-    const raw = await redis.get(GLOBAL_CHAT_KEY);
-    const messages = parseGlobalChatList(raw);
-    const retained = messages.filter(message => {
-      const messageUserId = String(message.userId ?? '').trim();
-      const messageUsername = String(message.username ?? '').trim().replace(/^u\//i, '').toLowerCase();
-      return messageUserId !== userId && messageUsername !== cleanUsername;
-    });
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      const storedRaw = await redis.get(GLOBAL_CHAT_KEY);
+      const decodedRaw = await readRedisLargeValue(GLOBAL_CHAT_KEY, storedRaw);
+      const messages = parseGlobalChatList(decodedRaw);
+      const retained = messages.filter(message => {
+        const messageUserId = String(message.userId ?? '').trim();
+        const messageUsername = String(message.username ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+        return messageUserId !== userId && messageUsername !== cleanUsername;
+      });
 
-    await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
-    const committed = await txn.exec();
-    if (committed !== null) return;
+      writePlan = await createRedisLargeValueWritePlan(
+        GLOBAL_CHAT_KEY,
+        JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)),
+      );
+      await txn.multi();
+      await txn.set(GLOBAL_CHAT_KEY, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(GLOBAL_CHAT_KEY, storedRaw);
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
 
   throw new Error('Chat changed while applying the mute. Please retry.');
@@ -2433,8 +2463,9 @@ export async function getGlobalChat(): Promise<GlobalChatMessage[]> {
   // context, the sender can still use the registered destination; it refuses
   // to mistake an unregistered Frenzy post for the main Game launcher.
   await resolveGlobalGamePostId().catch(() => null);
-  const raw = await redis.get(GLOBAL_CHAT_KEY);
-  const parsed = parseGlobalChatList(raw);
+  const storedRaw = await redis.get(GLOBAL_CHAT_KEY);
+  const decodedRaw = await readRedisLargeValue(GLOBAL_CHAT_KEY, storedRaw);
+  const parsed = parseGlobalChatList(decodedRaw);
 
   // Also filter against the mute registry so a concurrent write can never make
   // a muted user's message visible again after the purge.
@@ -2589,13 +2620,14 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ? rawRegistry as Record<string, string>
     : {};
 
-  const legacyRaw = await redis.get(key('leaderboard'));
+  const legacyStoredRaw = await redis.get(key('leaderboard'));
+  const legacyDecodedRaw = await readRedisLargeValue(key('leaderboard'), legacyStoredRaw);
   // The legacy projection is retained as a read-only recovery index. If registry
   // fields are missing, its user IDs let us rebuild the visible boards from the
   // durable player saves instead of returning empty leaderboards.
   let legacyBoard: LeaderboardEntry[] = [];
   try {
-    legacyBoard = parseLeaderboardList(legacyRaw);
+    legacyBoard = parseLeaderboardList(legacyDecodedRaw);
   } catch (error) {
     console.error('[Leaderboard] Ignoring corrupt legacy projection:', error);
   }
@@ -2722,8 +2754,6 @@ export async function leaderboard(): Promise<LeaderboardEntry[]> {
 export async function recordLeaderboard(s: PlayerState) {
   const userId = user();
   const incomingRevision = Math.max(0, Math.floor(Number(s.stateRevision ?? 0)) || 0);
-  // Projection tasks run asynchronously. Prefer the newest durable save when
-  // an older callback resumes after a later mutation has already committed.
   const persistedRaw = await redis.get(`player:${userId}`);
   const persisted = parseStoredJson<Partial<PlayerState>>(persistedRaw);
   const persistedRevision = Number(persisted?.stateRevision);
@@ -2752,26 +2782,43 @@ export async function recordLeaderboard(s: PlayerState) {
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const txn = await redis.watch(leaderboardKey);
-    const raw = await redis.get(leaderboardKey);
-    const board: LeaderboardEntry[] = parseLeaderboardList(raw);
-    const existing = board.find(existing =>
-      next.userId
-        ? existing.userId === next.userId || (!existing.userId && existing.username === name)
-        : existing.username === name,
-    );
-    if (existing) {
-      const existingRevision = Number(existing.stateRevision);
-      // WATCH protects list writes, not source freshness. An earlier async
-      // projection can finish later, so never replace a newer saved revision.
-      if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
-        Object.assign(existing, next);
+    let transactionClosed = false;
+    let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+    let writeCommitted = false;
+    try {
+      const storedRaw = await redis.get(leaderboardKey);
+      const decodedRaw = await readRedisLargeValue(leaderboardKey, storedRaw);
+      const board: LeaderboardEntry[] = parseLeaderboardList(decodedRaw);
+      const existing = board.find(existing =>
+        next.userId
+          ? existing.userId === next.userId || (!existing.userId && existing.username === name)
+          : existing.username === name,
+      );
+      if (existing) {
+        const existingRevision = Number(existing.stateRevision);
+        if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
+          Object.assign(existing, next);
+        }
+      } else board.push(next);
+      board.sort((a, b) => b.value - a.value);
+
+      writePlan = await createRedisLargeValueWritePlan(
+        leaderboardKey,
+        JSON.stringify(board.slice(0, 5000)),
+      );
+      await txn.multi();
+      await txn.set(leaderboardKey, writePlan.storedValue);
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        writeCommitted = true;
+        await retireRedisLargeValue(leaderboardKey, storedRaw);
+        return;
       }
-    } else board.push(next);
-    board.sort((a, b) => b.value - a.value);
-    await txn.multi();
-    await txn.set(leaderboardKey, JSON.stringify(board.slice(0, 5000)));
-    const committed = await txn.exec();
-    if (committed !== null) return;
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+      if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+    }
   }
   throw new Error('Leaderboard changed while recording the result. Please retry.');
 }
