@@ -1935,11 +1935,28 @@ function App() {
         return;
       }
 
-      // The UI may animate while the request is pending, but it must not know
-      // the outcome before the server commits it. Otherwise players can inspect
-      // future rewards and selectively submit only favorable rolls.
+      // The next few outcomes are prepared from this ticket before the
+      // player clicks. Reveal the predicted Orb immediately; the server still
+      // commits rewards using the same strictly sequential, one-use seed.
       const ticket = await ensureRollTicket();
       const ticketIndex = ticket.nextIndex;
+      const stateForRoll = stateRef.current ?? currentState;
+      const expectedPredictionRevision = ticket.predictionBaseRevision +
+        Math.max(0, ticketIndex - ticket.predictionStartIndex);
+      const prediction = ticket.predictions.find(item => item.index === ticketIndex);
+      const canShowPrediction = Boolean(
+        prediction &&
+        stateForRoll.stateRevision === expectedPredictionRevision &&
+        (isAutoRoll || (stateForRoll.freeRolls ?? 0) <= 0) &&
+        !useTimeEnergy,
+      );
+      if (canShowPrediction && prediction) {
+        setLastOrb(prediction.orb);
+        setLastBatch([prediction.orb]);
+        setBatchSummary(null);
+      }
+      const ticketSeed = ticket.seeds[ticketIndex];
+      if (!ticketSeed) throw new Error('Roll prediction seed is unavailable. Refresh the game.');
       rollTicketRef.current = {
         ...ticket,
         nextIndex: ticketIndex + 1,
@@ -1952,9 +1969,10 @@ function App() {
           auto: isAutoRoll,
           ticketId: ticket.ticketId,
           ticketIndex,
+          ticketSeed,
           useAllFreeRolls: !isAutoRoll && !useTimeEnergy &&
-            Math.max(0, Math.floor(Number(currentState.chainPatcherNextRarity ?? 0) || 0)) < 2 &&
-            (currentState.freeRolls ?? 0) > 0,
+            Math.max(0, Math.floor(Number(stateForRoll.chainPatcherNextRarity ?? 0) || 0)) < 2 &&
+            (stateForRoll.freeRolls ?? 0) > 0,
           useTimeEnergy,
         }),
       }));
