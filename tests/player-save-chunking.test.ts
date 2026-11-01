@@ -79,12 +79,12 @@ test('transient Redis and lock contention is normalized into one retryable queue
 
 test('combat state uses the shared large-value manifest instead of one oversized Redis SET', () => {
   const combat = source('src/server/combat.ts');
-  assert.match(combat, /createRedisLargeValueWritePlan\\(key,JSON\\.stringify\\(s\\)\\)/);
-  assert.match(combat, /readRedisLargeValue\\(key,/);
-  assert.match(combat, /txn\\.set\\(key,writePlan\\.storedValue\\)/);
-  assert.match(combat, /retireRedisLargeValue\\(key,previousRaw\\)/);
-  assert.match(combat, /discardRedisLargeValueWritePlan\\(writePlan\\)/);
-  assert.doesNotMatch(combat, /txn\\.set\\(key,JSON\\.stringify\\(s\\)\\)/);
+  assert.ok(combat.includes('createRedisLargeValueWritePlan(key,JSON.stringify(s))'));
+  assert.ok(combat.includes('readRedisLargeValue(key,'));
+  assert.ok(combat.includes('txn.set(key,writePlan.storedValue)'));
+  assert.ok(combat.includes('retireRedisLargeValue(key,previousRaw)'));
+  assert.ok(combat.includes('discardRedisLargeValueWritePlan(writePlan)'));
+  assert.ok(!combat.includes('txn.set(key,JSON.stringify(s))'));
 });
 
 test('unbounded shared Guild JSON is stored through an atomic chunk manifest', () => {
