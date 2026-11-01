@@ -1428,7 +1428,7 @@ function App() {
     const tick = () => {
       const now = Date.now();
       setAlignmentPromptNow(now);
-      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS && !alignmentChoiceBusy) {
+      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
         alignmentDismissedPendingAtRef.current = Math.max(
           alignmentDismissedPendingAtRef.current,
           pendingAt,
