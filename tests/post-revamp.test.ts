@@ -103,7 +103,7 @@ test('in-game start screen shares the same animated play emphasis', () => {
   const styles = source('src/client/post-revamp.css');
 
   assert.ok(splashScreen.includes('io-immersive-play-cta'));
-  assert.ok(splashScreen.includes("ready ? (hasProgress ? 'Continue Rolling' : 'Start Rolling')"));
+  assert.ok(splashScreen.includes("ready ? (hasProgress ? 'Continue playing' : 'Start playing')"));
   assert.match(styles, /\.io-immersive-play-cta/);
 });
 
@@ -160,4 +160,21 @@ test('main game spotlights first rolls and makes new Orb discoveries pop', () =>
   const reducedMotion = polish.slice(reducedMotionStart);
   assert.match(reducedMotion, /roll-button\.is-first-session-cta\.is-ready/);
   assert.match(reducedMotion, /latest-orb-mark\.is-new-discovery/);
+});
+
+test('immersive startup shows save-loading progress and unlocks the radiant Play button only when ready', () => {
+  const splashScreen = source('src/client/components/SplashScreen.tsx');
+  const main = source('src/client/main.tsx');
+  const styles = source('src/client/post-revamp.css');
+
+  assert.match(splashScreen, /role="progressbar"/);
+  assert.match(splashScreen, /aria-valuenow=\{progress\}/);
+  assert.match(splashScreen, /loadingProgress\?: number/);
+  assert.match(main, /setStartupProgress\(35\)/);
+  assert.match(main, /setStartupProgress\(100\)/);
+  assert.match(main, /loadingProgress=\{startupProgress\}/);
+  assert.match(splashScreen, /ready \? 'is-ready' : 'is-loading'/);
+  assert.match(styles, /\.io-splash-cta\.is-ready/);
+  assert.match(styles, /@keyframes io-splash-play-sheen/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });

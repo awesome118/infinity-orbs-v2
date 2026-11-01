@@ -313,6 +313,8 @@ function App() {
   }, []);
   const [authRequired, setAuthRequired] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [startupProgress, setStartupProgress] = useState(12);
+  const [startupStage, setStartupStage] = useState('Starting Infinity Orbs');
   const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
@@ -1114,6 +1116,11 @@ function App() {
   const refreshAll = useCallback(async () => {
     const refreshSequence = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
+    const isInitialStartup = stateRef.current === null;
+    if (isInitialStartup) {
+      setStartupProgress(35);
+      setStartupStage('Connecting to the game server and loading your save…');
+    }
     try {
       const me = await getJsonWithTimeout<PlayerState>('/api/me');
       if (!componentMountedRef.current) return;
@@ -1122,6 +1129,10 @@ function App() {
       applyPlayerState(me);
       setAuthRequired(false);
       setStartupError(null);
+      if (isInitialStartup) {
+        setStartupProgress(100);
+        setStartupStage('Your save is loaded · Ready to play');
+      }
       if (!splashEntered) return;
 
       if (me.gameBan?.active) return;
@@ -3056,6 +3067,8 @@ function App() {
       <SplashScreen
         ready={false}
         hasProgress={false}
+        loadingProgress={startupProgress}
+        loadingLabel={startupStage}
         onEnter={() => undefined}
       />
     );

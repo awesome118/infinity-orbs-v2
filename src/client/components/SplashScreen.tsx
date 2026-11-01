@@ -1,3 +1,4 @@
+import { ArrowRight, Sparkles } from 'lucide-react';
 import '../post-revamp.css';
 import { APP_VERSION } from '../../shared/version.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
@@ -8,6 +9,8 @@ type SplashScreenProps = {
   highestRarity?: number;
   highestRarityIsInfinity?: boolean;
   totalRolls?: number;
+  loadingProgress?: number;
+  loadingLabel?: string;
   onEnter: () => void;
 };
 
@@ -17,8 +20,12 @@ export function SplashScreen({
   highestRarity = 2,
   highestRarityIsInfinity = false,
   totalRolls = 0,
+  loadingProgress = ready ? 100 : 12,
+  loadingLabel = 'Connecting to your saved game…',
   onEnter,
 }: SplashScreenProps) {
+  const progress = Math.max(0, Math.min(100, Math.round(Number.isFinite(loadingProgress) ? loadingProgress : 0)));
+
   return (
     <main
       className="io-splash-screen fixed inset-0 z-[100] flex min-h-screen items-center justify-center overflow-y-auto px-5 py-8 text-slate-100"
@@ -44,7 +51,28 @@ export function SplashScreen({
             : 'Roll to find Orbs, earn Coins and XP, then improve your odds.'}
         </p>
 
-        {!hasProgress && (
+        <div className={`io-splash-loading ${ready ? 'is-ready' : 'is-loading'}`}>
+          <div className="io-splash-loading-header">
+            <span>{ready ? 'GAME READY' : 'LOADING YOUR GAME'}</span>
+            <strong>{progress}%</strong>
+          </div>
+          <div
+            className="io-splash-progress-track"
+            role="progressbar"
+            aria-label="Infinity Orbs loading progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+            aria-valuetext={ready ? 'Your saved game is ready to play' : `${loadingLabel} ${progress}%`}
+          >
+            <span className="io-splash-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="io-splash-loading-label" role="status" aria-live="polite">
+            {ready ? 'Your save is loaded. Everything is ready.' : loadingLabel}
+          </p>
+        </div>
+
+        {ready && !hasProgress && (
           <ol className="io-splash-steps" aria-label="How to get started">
             <li><span>1</span><div><strong>Roll</strong><small>See what you find</small></div></li>
             <li><span>2</span><div><strong>Earn</strong><small>Collect Coins and XP</small></div></li>
@@ -79,9 +107,11 @@ export function SplashScreen({
           disabled={!ready}
           aria-busy={!ready}
           aria-describedby="io-splash-hint"
-          className="io-immersive-play-cta io-splash-cta mt-7 min-h-14 w-full rounded-xl px-6 py-4 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-wait"
+          className={`io-immersive-play-cta io-splash-cta mt-7 min-h-14 w-full rounded-xl px-6 py-4 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:cursor-wait ${ready ? 'is-ready' : 'is-loading'}`}
         >
-          {ready ? (hasProgress ? 'Continue playing' : 'Start playing') : 'Getting your game ready…'}
+          {ready && <Sparkles className="io-splash-cta-sparkle" size={18} aria-hidden="true" />}
+          <span>{ready ? (hasProgress ? 'Continue playing' : 'Start playing') : 'Getting your game ready…'}</span>
+          {ready && <ArrowRight className="io-splash-cta-arrow" size={18} aria-hidden="true" />}
         </button>
 
         <p id="io-splash-hint" className="io-splash-hint mt-3 min-h-5 text-xs" aria-live="polite">
