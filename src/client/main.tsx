@@ -3349,6 +3349,7 @@ function App() {
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
                     {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
                     {tab === 'social' && <span className="io-nav-current-page">Community</span>}
+                    {tab === 'profile' && <span className="io-nav-current-page">Progress</span>}
                     <ChevronDown className="io-nav-icon io-nav-chevron" aria-hidden="true" />
                   </button>
                   {moreNavOpen && (

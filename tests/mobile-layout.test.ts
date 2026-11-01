@@ -73,3 +73,27 @@ test('dialogs remain scrollable above the bottom navigation and preserve reduced
   assert.ok(css.includes('overscroll-behavior: contain;'));
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'));
 });
+
+
+test('mobile second pass keeps the selected More destination visible and improves thumb targets', () => {
+  const main = read('src/client/main.tsx');
+  const css = read('src/client/mobile-experience.css');
+
+  assert.ok(main.includes("{tab === 'profile' && <span className=\"io-nav-current-page\">Progress</span>}"));
+  assert.ok(css.includes('.io-ui .io-combat-command-group'));
+  assert.ok(css.includes('grid-template-columns: repeat(2, minmax(0, 1fr)) !important;'));
+  assert.ok(css.includes('.io-ui .io-combat-command {'));
+  assert.ok(css.includes('min-height: 56px;'));
+  assert.ok(css.includes('.io-ui .roll-controls .roll-button'));
+  assert.ok(css.includes('min-height: 58px;'));
+  assert.ok(css.includes('outline: 2px solid #8bc8ff;'));
+});
+
+test('mobile content reserves space for the taller thumb navigation and preserves phone breakpoints', () => {
+  const css = read('src/client/mobile-experience.css');
+
+  assert.ok(css.includes('calc(128px + env(safe-area-inset-bottom, 0px))'));
+  assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) 116px;'));
+  assert.ok(css.includes('@media (max-width: 359px)'));
+  assert.ok(css.includes('scroll-snap-type: x proximity;'));
+});
