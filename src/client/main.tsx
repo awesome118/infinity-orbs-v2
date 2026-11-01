@@ -1992,6 +1992,29 @@ function App() {
       });
       setReadyAt(Date.now() + res.rollsRemainingUntilNext);
       mutationResyncNeededRef.current = false;
+      const activeTicket = rollTicketRef.current;
+      if (
+        activeTicket &&
+        activeTicket.ticketId === ticket.ticketId &&
+        activeTicket.nextIndex < 50 &&
+        activeTicket.predictions.filter(item => item.index >= activeTicket.nextIndex).length <= 2
+      ) {
+        const expectedTicketIndex = activeTicket.nextIndex;
+        const expectedTicketId = activeTicket.ticketId;
+        void getJson<typeof activeTicket>('/api/roll-ticket')
+          .then(refreshedTicket => {
+            const latestTicket = rollTicketRef.current;
+            if (
+              latestTicket?.ticketId === expectedTicketId &&
+              latestTicket.nextIndex === expectedTicketIndex &&
+              refreshedTicket.ticketId === expectedTicketId &&
+              refreshedTicket.nextIndex === expectedTicketIndex
+            ) {
+              rollTicketRef.current = refreshedTicket;
+            }
+          })
+          .catch(() => undefined);
+      }
           const acceptedRolls = Math.max(1, Math.min(1_000, Math.floor((Number(res.state.totalRolls) || 0) - (Number(currentState.totalRolls) || 0))));
           journeySessionRollsRef.current += acceptedRolls;
           if (!isAutoRoll) reportJourneyInteraction('roll_committed', acceptedRolls > 1 ? 'multi_roll' : 'single_roll');
