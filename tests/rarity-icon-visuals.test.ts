@@ -13,6 +13,7 @@ test('rarity milestone icons use the canonical orb colors and only shine when re
   assert.ok(icon.includes('info.bgGradient'));
   assert.ok(icon.includes("unlocked ? 'is-unlocked' : 'is-locked'"));
   assert.ok(codex.includes('<RarityOrbIcon rarity={milestone.minRarity} unlocked={reached} />'));
+  assert.ok(codex.includes("'--io-tier-color': milestone.color"));
   assert.ok(table.includes('<RarityOrbIcon rarity={tier.minRarity} unlocked={highestRarity >= tier.minRarity} compact />'));
 });
 

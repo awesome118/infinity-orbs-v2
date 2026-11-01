@@ -325,9 +325,10 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
                 key={milestone.tier}
                 className={`io-codex-milestone-card flex flex-col items-center justify-center transition-all ${reached ? 'is-unlocked' : 'is-locked'}`}
                 style={{
+                  '--io-tier-color': milestone.color,
                   borderColor: reached ? `${milestone.color}70` : undefined,
                   boxShadow: reached ? `0 0 20px ${milestone.color}18` : undefined,
-                }}
+                } as React.CSSProperties}
               >
                 <RarityOrbIcon rarity={milestone.minRarity} unlocked={reached} />
                 <span

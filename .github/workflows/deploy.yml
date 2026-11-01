@@ -119,6 +119,8 @@ jobs:
           node --import tsx --test tests/roll-ticket-seeds.test.ts
           # Guard admin Full Test fixtures against stale nav, force-roll, and leaderboard-cache assumptions.
           node --import tsx --test tests/admin-api-feature-fixture.test.ts
+          # Keep the responsive, rarity-colored milestone orb treatment covered before dev uploads.
+          node --import tsx --test tests/rarity-icon-visuals.test.ts
           npm run build
 
       # Check credentials before invoking any mutating Devvit command.
