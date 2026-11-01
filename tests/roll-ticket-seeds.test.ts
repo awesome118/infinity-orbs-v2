@@ -77,7 +77,7 @@ test('admin collection replacement marks old and incoming Codex keys for persist
   const stateRouteEnd = debug.indexOf("debugRouter.post('/preset'", stateRouteStart);
   assert.ok(stateRouteStart >= 0 && stateRouteEnd > stateRouteStart);
   const route = debug.slice(stateRouteStart, stateRouteEnd);
-  assert.ok(route.includes('...Object.keys(s.collection ?? {})') === false || route.includes('Object.keys(s.collection ?? {})'));
+  assert.ok(route.includes('Object.keys(s.collection ?? {})'));
   assert.ok(route.includes('Object.keys(next)'));
   assert.ok(route.includes('markCodexRarityWrite(s, rarityKey)'));
 });
