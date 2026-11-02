@@ -1,5 +1,10 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.23
+
+- **Large Roll Throughput:** Online roll processing now handles up to 10 million effective Orbs per server chunk instead of 500,000. The 4,096 representative-sample budget remains bounded, and a 300-million-Orb Time Energy batch is reduced from roughly 600 chunks to 30.
+- **Mobile Combat Navigation:** Combat navigation is pinned to the bottom of mobile screens. Fight, Dungeons, Gear, and Skills remain visible; Runes, Forge, and Arena are in a bottom-dock More menu, with Back to Orbs inside the menu.
+
 ### New in 2.2.22
 
 - **Time Energy Live Progress:** Large Time Energy spends now show server-reported Orb counts and a Frenzy-style progress bar. The overlay remains through the durable reward save and reaches 100% only after the save commits.
