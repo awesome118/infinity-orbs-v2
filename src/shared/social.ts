@@ -254,7 +254,9 @@ export function createGuildTask(
   tier = 1,
 ): GuildTask {
   const safeTier = Math.min(MAX_GUILD_TASK_TIER, Math.max(1, Math.floor(Number(tier) || 1)));
-  const typeScale = type === 'rolls' ? 1.35 : type === 'value' ? 1.45 : 1.30;
+  // Value goals deliberately reach ~1.5e85 at Tier 100. Rolls and rare-Orb
+  // tasks keep their existing, much gentler curves.
+  const typeScale = type === 'rolls' ? 1.35 : type === 'value' ? 6.5 : 1.30;
   const base = GUILD_TASK_BASES[type];
 
   const target = Math.max(1, Math.floor(
