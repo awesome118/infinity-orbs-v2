@@ -145,20 +145,26 @@ test('Frenzy start and claim bank Time Energy without multiplying by Multiball',
   assert.match(frenzyClaim, /grantCooldownReclaimerTimeEnergy\(s, frenzyActivations, reclaimedPerActivation\)/);
 });
 
-test('large Time Energy spends use the same weighted roll-batch compression and show a Frenzy-style treatment', () => {
+test('large Time Energy spends expose real server progress and retain the overlay through the durable save', () => {
   const server = source('src/server/game.ts');
+  const app = source('src/server/app.ts');
   const main = source('src/client/main.tsx');
   const batching = source('src/shared/roll-batching.ts');
 
   assert.match(server, /while \(remainingActivations > 0\)/);
   assert.match(server, /MAX_EFFECTIVE_ROLLS_PER_BATCH - 2/);
   assert.match(server, /createRollBatchPlan\(/);
-  assert.match(batching, /const weight = compress && remaining > sampleLimit/);
+  assert.match(server, /writeTimeEnergyRollProgress\(/);
+  assert.match(server, /async \(chunkProcessed: number\) =>/);
+  assert.match(server, /Mark complete only after the player save/);
+  assert.match(app, /app\.get\('\/api\/time-energy\/progress'/);
   assert.match(main, /TIME_ENERGY_CALCULATING_MIN_ORBS = 5_000/);
   assert.match(main, /data-testid="time-energy-calculating-backdrop"/);
-  assert.match(main, /Compressing Time Energy/);
-  assert.match(main, /timeEnergyActivationsAvailable\(currentState\.timeEnergy \?\? 0, cooldownMs\(currentState, false\)\)/);
+  assert.match(main, /\/api\/time-energy\/progress/);
+  assert.match(main, /timeEnergyProgressPercent/);
   assert.match(main, /await finishTimeEnergyCalculating\(\)/);
+  assert.doesNotMatch(main, /io-time-energy-progress-indeterminate/);
+  assert.match(batching, /const weight = compress && remaining > sampleLimit/);
 });
 
 test('admin Time Energy test grant is restricted by the trusted admin router and fills the bank to one million seconds', () => {
