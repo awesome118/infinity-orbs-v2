@@ -869,6 +869,18 @@
   box-shadow: 0 0 14px rgba(167, 139, 250, .52);
   transition: width .24s ease-out;
 }
+/* Time Energy uses the same visual language, but an indeterminate sweep because
+   the server resolves compressed chunks atomically rather than exposing fake progress. */
+.io-time-energy-progress-indeterminate {
+  width: 34% !important;
+  background: linear-gradient(90deg, #06b6d4, #6ee7b7 55%, #22d3ee) !important;
+  box-shadow: 0 0 16px rgba(34, 211, 238, .58) !important;
+  animation: io-time-energy-progress-sweep 1.15s ease-in-out infinite alternate;
+}
+@keyframes io-time-energy-progress-sweep {
+  from { transform: translateX(-8%); }
+  to { transform: translateX(210%); }
+}
 .io-frenzy-calculating-status {
   display: flex;
   align-items: center;
