@@ -11,7 +11,10 @@ const byteLength = (value: string): number => encoder.encode(value).length;
 const PLAYER_CHUNK_PREFIX = 'io:player-save-chunk:';
 const LARGE_CHUNK_PREFIX = 'io:large-value-chunk:v1:';
 const ANALYTICS_PREFIX = 'io:impressions:unique-v2:';
-const MAX_AUDIT_USERS = 100;
+const MAX_AUDIT_USERS = 2_000;
+const MAX_CODEX_AUDIT_USERS = 100;
+const MAX_INDEXED_VIEWERS = 2_000;
+const IMPRESSION_POST_TYPES = ['main-game', 'orb-share', 'frenzy'] as const;
 const MAX_PLAYER_CHUNK_PAYLOAD_READ_BYTES = 32 * 1024 * 1024;
 const MAX_TOP_VALUES = 25;
 
