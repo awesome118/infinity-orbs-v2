@@ -9,7 +9,7 @@ on:
 
 jobs:
   submit:
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.19]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.20]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,11 +39,11 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          test "$VERSION" = "2.2.19" || {
-            echo "Expected package version 2.2.19, got $VERSION."
+          test "$VERSION" = "2.2.20" || {
+            echo "Expected package version 2.2.20, got $VERSION."
             exit 1
           }
-          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.19'||p.packages?.['']?.version!=='2.2.19') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.19'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.20'||p.packages?.['']?.version!=='2.2.20') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.20'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
           echo "Preparing infinity-orbs@$VERSION for unlisted review."
 
       - name: Review preflight
@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           npm run preflight:guard
           npm run type-check
-          node --import tsx --test tests/mobile-layout.test.ts tests/large-number-economy.test.ts
+          node --import tsx --test tests/mobile-layout.test.ts tests/large-number-economy.test.ts tests/cooldown-time-energy.test.ts
 
       - name: Verify Devvit CLI authentication
         env:
@@ -88,4 +88,4 @@ jobs:
           DEVVIT_ALLOW_SOURCE_UPLOAD: "1"
           CI: true
         timeout-minutes: 15
-        run: npx devvit publish --version 2.2.19
+        run: npx devvit publish --version 2.2.20
