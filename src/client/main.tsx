@@ -2342,7 +2342,7 @@ function App() {
     const requiredPlayerLevel = upgradeUnlockLevel(id);
     if (currentState.level < requiredPlayerLevel) {
       showToast(`Unlocks at Level ${requiredPlayerLevel}.`, 'warn');
-      return;
+      return false;
     }
     const cost = upgradeCost(id, level);
     const canBuy = id === 'auto'
@@ -2413,7 +2413,6 @@ function App() {
     }
   };
 
-  // Upgrade All Standard Upgrades
   // Upgrade All Standard Upgrades
   const handleBuyAllUpgrades = async (): Promise<boolean> => {
     const currentState = stateRef.current;
