@@ -562,6 +562,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [paymentLogsLoading, setPaymentLogsLoading] = useState(false);
   const [saveLogs, setSaveLogs] = useState<Array<Record<string, unknown>>>([]);
   const [saveLogsLoading, setSaveLogsLoading] = useState(false);
+  const [clearAllLogsLoading, setClearAllLogsLoading] = useState(false);
   const [globalBooster, setGlobalBooster] = useState('luck');
   const [globalTier, setGlobalTier] = useState('1');
   const [globalMinutes, setGlobalMinutes] = useState('30');
@@ -1095,6 +1096,25 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       textarea.focus();
       textarea.select();
       setMessage('Clipboard access was blocked. The save diagnostics are selected; copy them manually.');
+    }
+  };
+
+  const clearAllDiagnosticLogs = async () => {
+    if (!window.confirm('Delete all stored diagnostic logs, including per-player Player Spy traces? Player saves, combat saves, Codex, leaderboards, and player progression will not be deleted.')) return;
+    setClearAllLogsLoading(true);
+    try {
+      const res = await fetch('/api/dev/diagnostic-logs/clear-all', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not clear diagnostic logs.');
+      setSaveLogs([]);
+      setPaymentLogs([]);
+      setGlobalBoosterLogs([]);
+      setGlobalBoosterActivationLog([]);
+      setMessage('Cleared ' + Number(data.sharedLogKeys ?? 0) + ' shared diagnostic log keys and ' + Number(data.playerSpyLogs ?? 0) + ' Player Spy logs. Player data was preserved.');
+    } catch (e: any) {
+      setMessage('Error: ' + (e?.message || 'Could not clear diagnostic logs.'));
+    } finally {
+      setClearAllLogsLoading(false);
     }
   };
 
@@ -5188,7 +5208,17 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             <span>Save & Booster Logs</span><span className="text-slate-600">Expand</span>
           </summary>
           <div className="mt-3 space-y-3">
-        <section className={panelBase + ' border border-rose-500/30'}>
+            <section className={panelBase + ' border border-red-500/30'}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-red-300">Emergency Diagnostic Cleanup</div>
+                  <p className="mt-1 text-[11px] text-slate-500">Deletes stored save, payment, Global Booster, and per-player Player Spy logs using Redis DEL. Does not touch player saves or progression.</p>
+                </div>
+                <button type="button" title="Delete all stored diagnostic logs without deleting player data." disabled={clearAllLogsLoading} onClick={() => void clearAllDiagnosticLogs()} className={buttonBase + ' bg-red-600/20 border-red-500/30 text-red-200 px-3 py-2'}>
+                  <Trash2 className="w-3.5 h-3.5 inline mr-1" /> {clearAllLogsLoading ? 'Clearing…' : 'Clear All Diagnostic Logs'}
+                </button>
+              </div>
+            </section>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
