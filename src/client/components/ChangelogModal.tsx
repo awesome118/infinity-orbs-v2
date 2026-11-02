@@ -11,6 +11,12 @@ const sections: Array<{
   entries: Array<{ title: string; description: string }>;
 }> = [
   {
+    title: "New in 2.2.2",
+    entries: [
+      { title: "Time Energy Generation", description: "Cooldown Reclaimer now earns 1% of your current roll cooldown per level with each normal manual or Auto Roll activation, including at the 300ms cooldown floor. Free Rolls, Chain Patcher rolls, and Time Energy-powered rolls do not generate more energy." },
+    ],
+  },
+  {
     title: "New in 2.2.0",
     entries: [
       { title: "Celestial Alignments", description: "Unlock a rare event and choose one of three temporary effects within 60 seconds: Starseeker raises ordinary Luck, Golden Orbit grants +50% Coins, or Clockwork makes Auto Roll 20% faster. Each chosen effect lasts 2 hours and stacks independently with earlier activations, with its own countdown." },
