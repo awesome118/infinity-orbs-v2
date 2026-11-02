@@ -10,7 +10,9 @@ import {
   cooldownMs,
   theoreticalCooldownMs,
   cooldownReclaimerEnergyPerActivationMs,
+  grantCooldownReclaimerTimeEnergy,
   timeEnergyActivationsAvailable,
+  TIME_ENERGY_MAX_MS,
 } from '../src/shared/game.js';
 
 const NOW = 1_800_000_000_000;
@@ -89,4 +91,54 @@ test('Time Energy requests spend one current cooldown per activation and do not 
   assert.match(handler, /if \(!usingTimeEnergy && !usingFreeRoll && !usingChainPatcher\)/);
   assert.match(handler, /const reclaimed = reclaimedPerActivation \* activations/);
   assert.match(handler, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s, isAuto\)/);
+});
+
+test('Time Energy awards are capped and require completed eligible activations', () => {
+  const state = createInitialState(NOW);
+  state.masterySkills!.cooldownReclaimer = 5;
+  const perActivation = cooldownReclaimerEnergyPerActivationMs(state);
+  assert.ok(perActivation > 0);
+
+  assert.equal(grantCooldownReclaimerTimeEnergy(state, 3, perActivation), perActivation * 3);
+  assert.equal(state.timeEnergy, perActivation * 3);
+  assert.equal(grantCooldownReclaimerTimeEnergy(state, -1, perActivation), 0);
+  assert.equal(grantCooldownReclaimerTimeEnergy(state, 1.5, perActivation), 0);
+
+  state.timeEnergy = TIME_ENERGY_MAX_MS - 5;
+  assert.equal(grantCooldownReclaimerTimeEnergy(state, 10_000, perActivation), 5);
+  assert.equal(state.timeEnergy, TIME_ENERGY_MAX_MS);
+
+  state.masterySkills!.cooldownReclaimer = 0;
+  state.timeEnergy = 0;
+  assert.equal(grantCooldownReclaimerTimeEnergy(state, 100), 0);
+  assert.equal(state.timeEnergy, 0);
+});
+
+test('manual and automatic Offline Orb claims award Time Energy per stored activation', () => {
+  const server = source('src/server/game.ts');
+  const automationStart = server.indexOf('async function processAutomation');
+  const automationEnd = server.indexOf('function flairTextColorForBackground', automationStart);
+  const automation = server.slice(automationStart, automationEnd);
+  assert.match(automation, /await applyRolls\(s, batches, undefined, 'offline'\);\s*grantCooldownReclaimerTimeEnergy\(s, batches, reclaimedPerActivation\)/);
+
+  const manualStart = server.indexOf('export async function claimOffline()');
+  const manualEnd = server.indexOf('export async function buyUpgrade(', manualStart);
+  const manual = server.slice(manualStart, manualEnd);
+  assert.match(manual, /await applyRolls\(s, batches, undefined, 'offline'\);\s*grantCooldownReclaimerTimeEnergy\(s, batches, reclaimedPerActivation\)/);
+});
+
+test('Frenzy start and claim bank Time Energy without multiplying by Multiball', () => {
+  const server = source('src/server/game.ts');
+  const startStart = server.indexOf('export async function startOrbFrenzy');
+  const startEnd = server.indexOf('export async function getOrbFrenzyHandoff', startStart);
+  const frenzyStart = server.slice(startStart, startEnd);
+  assert.match(frenzyStart, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s\)/);
+  assert.match(frenzyStart, /grantCooldownReclaimerTimeEnergy\(s, 1, reclaimedPerActivation\)/);
+
+  const claimStart = server.indexOf('export async function claimOrbFrenzy');
+  const claimEnd = server.indexOf('export async function postFrenzyThankYouComment', claimStart);
+  const frenzyClaim = server.slice(claimStart, claimEnd);
+  assert.match(frenzyClaim, /const frenzyRollsPerActivation = rollsPerActivation\(s\)/);
+  assert.match(frenzyClaim, /Math\.floor\(count \/ Math\.max\(1, frenzyRollsPerActivation\)\)/);
+  assert.match(frenzyClaim, /grantCooldownReclaimerTimeEnergy\(s, frenzyActivations, reclaimedPerActivation\)/);
 });
