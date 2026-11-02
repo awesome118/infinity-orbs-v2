@@ -157,9 +157,9 @@ function normalizeRecoverableGuildMemberFields(guild: Record<string, unknown>): 
       member.username = trimmed || `recovered-member-${index + 1}`;
     }
 
-    // Contribution is non-authoritative progress metadata. Clamp fractional or
-    // unsafe numbers, and reset non-numeric/negative corruption to zero rather than
-    // blocking every Guild read. Identity and authorization fields remain strict.
+    // Contribution is Collection Value metadata, not a discrete counter.
+    // Preserve finite integer magnitudes above MAX_SAFE_INTEGER; sanitize fractional,
+    // non-finite, or negative corruption without weakening identity/role validation.
     if (!isGuildValueProgress(member.contribution)) {
       member.contribution = normalizeGuildValueProgress(member.contribution);
     }
