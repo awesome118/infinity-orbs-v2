@@ -34,6 +34,7 @@ import {
   PRESTIGE_UPGRADES,
   cooldownMs,
   cooldownReclaimerEnergyPerActivationMs,
+  grantCooldownReclaimerTimeEnergy,
   timeEnergyActivationsAvailable,
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
@@ -3287,8 +3288,12 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
       throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
     }
     const batches = Math.min(offlineRollCap(s), s.offlineRolls);
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
     s.offlineRolls = 0;
-    if (batches > 0) await applyRolls(s, batches, undefined, 'offline');
+    if (batches > 0) {
+      await applyRolls(s, batches, undefined, 'offline');
+      grantCooldownReclaimerTimeEnergy(s, batches, reclaimedPerActivation);
+    }
     s.lastRollAt = Date.now();
 
     // Do not clear reminders before the player reward save commits. If save()
@@ -6316,8 +6321,10 @@ export async function claimOffline(): Promise<RollResponse> {
   const offlineCap = offlineRollCap(s);
   const batches = Math.min(offlineCap, s.offlineRolls);
   if (batches <= 0) throw new Error('No offline rolls waiting.');
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
   s.offlineRolls = 0;
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
+  grantCooldownReclaimerTimeEnergy(s, batches, reclaimedPerActivation);
   const now = Date.now();
   s.lastRollAt = now;
   s.lastSeenAt = now;
@@ -7429,6 +7436,7 @@ export async function startOrbFrenzy(options: {
     const forcedRarity = options.forcedRarity == null
       ? undefined
       : Math.max(2, Math.floor(Number(options.forcedRarity)));
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
     const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
 
     const subredditName = String(context.subredditName ?? '').trim();
@@ -7478,6 +7486,7 @@ export async function startOrbFrenzy(options: {
     s.lastFrenzyAt = createdAt;
     s.lastRollAt = Date.now();
     s.lastSeenAt = Date.now();
+    grantCooldownReclaimerTimeEnergy(s, 1, reclaimedPerActivation);
     // Do not publish a claimable post record unless the owner's roll rewards,
     // cooldown, Guild/community effects and post receipt all commit together.
     const frenzyPostKey = FRENZY_POST_PREFIX + postId;
