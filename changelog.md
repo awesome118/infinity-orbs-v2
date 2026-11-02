@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.22
+
+- **Time Energy Live Progress:** Large Time Energy spends now show server-reported Orb counts and a Frenzy-style progress bar. The overlay remains through the durable reward save and reaches 100% only after the save commits.
+- **Guild Collection Value Scaling:** Collection Value Guild Tasks now rise much more aggressively, reaching approximately 1.5e85 at Tier 100. Existing tasks migrate to the new target curve without discarding saved progress.
+- **Mobile Combat Skill Details:** Tapping a Combat Skill Gacha icon on mobile opens a readable detail sheet with the full effect, rarity, rank, duplicate progress, and equip action.
+
 ### New in 2.2.12
 
 - **Redis Storage Protection:** Leaderboard projections now refresh at most once per player per minute, and duplicate or stale callbacks are skipped. Retired shared large-value snapshots expire after 60 seconds instead of 10 minutes.
