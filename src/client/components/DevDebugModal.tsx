@@ -1110,7 +1110,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPaymentLogs([]);
       setGlobalBoosterLogs([]);
       setGlobalBoosterActivationLog([]);
-      setMessage('Diagnostic DEL completed: processed ' + Number(data.sharedLogKeys ?? 0) + ' shared log keys and ' + Number(data.playerSpyLogs ?? 0) + ' registered Player Spy keys. Player data was preserved.');
+      setMessage('Diagnostic cleanup deleted ' + Number(data.sharedLogKeysDeleted ?? 0) + ' shared log keys and ' + Number(data.playerSpyLogsDeleted ?? 0) + ' Player Spy logs. Player data was preserved.');
     } catch (e: any) {
       setMessage('Error: ' + (e?.message || 'Could not clear diagnostic logs.'));
     } finally {
