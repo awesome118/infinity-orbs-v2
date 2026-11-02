@@ -3,6 +3,30 @@ import { weekKey, weekEndMs, type GuildComboState } from './game.js';
 export type GuildRole = 'owner' | 'officer' | 'member';
 export type ChallengeType = 'rolls' | 'value' | 'rare';
 
+/**
+ * Guild task targets grow exponentially. Keep the generated tier finite while
+ * allowing Collection Value goals well beyond Number.MAX_SAFE_INTEGER.
+ */
+export const MAX_GUILD_TASK_TIER = 100;
+
+/** Normalize a non-negative Collection Value amount without a safe-integer ceiling. */
+export function normalizeGuildValueProgress(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+/** Add approximate large Collection Value amounts, saturating only at Number.MAX_VALUE. */
+export function addGuildValueProgress(current: unknown, amount: unknown): number {
+  const sum = normalizeGuildValueProgress(current) + normalizeGuildValueProgress(amount);
+  return Number.isFinite(sum) ? sum : Number.MAX_VALUE;
+}
+
+/** Above MAX_SAFE_INTEGER JavaScript numbers lose unit precision, but finite integer progress remains usable. */
+export function isGuildValueProgress(value: unknown, minimum = 0): value is number {
+  return typeof value === 'number' && Number.isFinite(value) &&
+    Number.isInteger(value) && value >= minimum;
+}
+
 export interface GuildMember {
   username: string;
   userId?: string;
@@ -229,7 +253,7 @@ export function createGuildTask(
   type: ChallengeType,
   tier = 1,
 ): GuildTask {
-  const safeTier = Math.max(1, Math.floor(Number(tier) || 1));
+  const safeTier = Math.min(MAX_GUILD_TASK_TIER, Math.max(1, Math.floor(Number(tier) || 1)));
   const typeScale = type === 'rolls' ? 1.35 : type === 'value' ? 1.45 : 1.30;
   const base = GUILD_TASK_BASES[type];
 
