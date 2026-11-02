@@ -677,6 +677,94 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   const diagnosticValues = await safeMGet(diagnosticSharedKeys);
   for (let i = 0; i < diagnosticSharedKeys.length; i += 1) add('Diagnostic logs', diagnosticSharedKeys[i], diagnosticValues[i]);
 
+  // Global Booster credit batches leave permanent manifests and per-player
+  // idempotency receipts. Their operation IDs are not stored in a separate
+  // index, but the bounded debug log can recover recent IDs when it is present.
+  const boosterLogRaw = diagnosticValues[2];
+  let boosterOperationIds: string[] = [];
+  if (typeof boosterLogRaw === 'string') {
+    try {
+      const entries = JSON.parse(boosterLogRaw) as unknown;
+      if (Array.isArray(entries)) {
+        boosterOperationIds = [...new Set(entries
+          .filter((entry): entry is Record<string, unknown> =>
+            Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry) &&
+            entry.stage === 'admin:grant-credits' &&
+            typeof entry.operationId === 'string' && entry.operationId.trim().length > 0,
+          )
+          .map(entry => String(entry.operationId).trim()))];
+      }
+    } catch {
+      errors.push('Global Booster debug log could not be parsed for batch operation IDs.');
+    }
+  }
+  adminCreditOperationsFound = boosterOperationIds.length;
+  const auditedBoosterOperationIds = boosterOperationIds.slice(-MAX_ADMIN_CREDIT_OPERATIONS_AUDITED);
+  adminCreditOperationsAudited = auditedBoosterOperationIds.length;
+  adminCreditOperationsSkipped = Math.max(0, adminCreditOperationsFound - adminCreditOperationsAudited);
+  const boosterManifestKeys = auditedBoosterOperationIds.map(
+    operationId => ADMIN_CREDIT_BATCH_PREFIX + encodeURIComponent(operationId),
+  );
+  try {
+    const boosterManifestValues = await safeMGetWide(boosterManifestKeys);
+    const receiptProbes: string[] = [];
+    for (let i = 0; i < boosterManifestKeys.length; i += 1) {
+      const manifestKey = boosterManifestKeys[i];
+      const storedValue = boosterManifestValues[i];
+      add('Admin Global Booster credit manifests', manifestKey, storedValue);
+      if (typeof storedValue !== 'string') continue;
+      let decodedManifest = storedValue;
+      const largeManifest = parseLargeManifest(manifestKey, storedValue);
+      if (largeManifest) {
+        const chunkKeys = Array.from(
+          { length: largeManifest.chunkCount },
+          (_, index) => largeChunkKey(largeManifest, index),
+        );
+        const chunkValues = await safeMGetWide(chunkKeys);
+        let joined = '';
+        let complete = true;
+        for (let chunk = 0; chunk < chunkKeys.length; chunk += 1) {
+          if (typeof chunkValues[chunk] !== 'string') {
+            complete = false;
+            missingLargeValueChunks += 1;
+            continue;
+          }
+          add('Admin Global Booster credit manifest chunks', chunkKeys[chunk], chunkValues[chunk]);
+          joined += chunkValues[chunk] as string;
+        }
+        if (!complete || joined.length !== largeManifest.length) {
+          errors.push('A Global Booster credit manifest has missing or incomplete chunks.');
+          continue;
+        }
+        decodedManifest = joined;
+      }
+      try {
+        const manifest = JSON.parse(decodedManifest) as { userIds?: unknown };
+        if (!Array.isArray(manifest.userIds)) continue;
+        for (const player of manifest.userIds) {
+          if (!player || typeof player !== 'object' || Array.isArray(player)) continue;
+          const userId = String((player as Record<string, unknown>).userId ?? '').trim();
+          if (!userId) continue;
+          receiptProbes.push(
+            ADMIN_CREDIT_RECEIPT_PREFIX +
+            encodeURIComponent(auditedBoosterOperationIds[i]) + ':' +
+            encodeURIComponent(userId),
+          );
+        }
+      } catch {
+        errors.push('A Global Booster credit batch manifest could not be parsed.');
+      }
+    }
+    const uniqueReceiptKeys = [...new Set(receiptProbes)];
+    const receiptValues = await safeMGetWide(uniqueReceiptKeys);
+    for (let i = 0; i < uniqueReceiptKeys.length; i += 1) {
+      if (receiptValues[i] != null) adminCreditGrantReceiptsPresent += 1;
+      add('Admin Global Booster credit receipts', uniqueReceiptKeys[i], receiptValues[i]);
+    }
+  } catch (error) {
+    errors.push('Global Booster batch manifest/receipt audit failed: ' + String(error));
+  }
+
   // Per-player operational and diagnostic keys reachable through the registry.
   const perPlayerKeys = userIds.flatMap(userId => [
     ['Diagnostic logs', 'io:player-spy:v1:' + userId],
