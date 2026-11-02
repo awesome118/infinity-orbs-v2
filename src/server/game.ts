@@ -1451,6 +1451,8 @@ const FRENZY_HANDOFF_PREFIX = 'io:frenzy:handoff:';
 const FRENZY_HANDOFF_TTL_MS = 60_000;
 const FRENZY_CLAIM_PROGRESS_PREFIX = 'io:frenzy:claim-progress:';
 const FRENZY_CLAIM_PROGRESS_TTL_MS = 3 * 60_000;
+const TIME_ENERGY_ROLL_PROGRESS_PREFIX = 'io:time-energy:roll-progress:';
+const TIME_ENERGY_ROLL_PROGRESS_TTL_MS = 3 * 60_000;
 const FRENZY_THANK_YOU_PREFIX = 'io:frenzy:thank-you:';
 const FRENZY_CLAIMERS_PREFIX = 'io:frenzy:claimers:v1:';
 const FRENZY_CLAIMER_PROJECTION_RECEIPT_PREFIX = 'io:frenzy:claimer-projection-receipt:v1:';
@@ -1602,6 +1604,82 @@ async function writeFrenzyClaimProgress(
     // Progress is display-only; never let a status write cancel a valid reward.
     console.error('[Frenzy Claim] Could not update live progress; reward processing continues.', error);
   }
+}
+
+interface TimeEnergyRollProgressRecord {
+  attemptId: string;
+  processed: number;
+  total: number;
+  updatedAt: number;
+  completed: boolean;
+}
+
+function timeEnergyRollProgressKey(userId: string): string {
+  return TIME_ENERGY_ROLL_PROGRESS_PREFIX + encodeURIComponent(userId);
+}
+
+async function writeTimeEnergyRollProgress(
+  userId: string,
+  attemptId: string,
+  total: number,
+  processed: number,
+  completed = false,
+): Promise<void> {
+  try {
+    const now = Date.now();
+    const safeTotal = Math.max(0, Math.floor(total));
+    const safeProcessed = Math.max(0, Math.min(safeTotal, Math.floor(processed)));
+    const record: TimeEnergyRollProgressRecord = {
+      attemptId,
+      processed: safeProcessed,
+      total: safeTotal,
+      updatedAt: now,
+      completed,
+    };
+    await redis.set(
+      timeEnergyRollProgressKey(userId),
+      JSON.stringify(record),
+      { expiration: new Date(now + TIME_ENERGY_ROLL_PROGRESS_TTL_MS) },
+    );
+  } catch (error) {
+    // Progress is display-only; never let it interrupt an otherwise valid roll.
+    console.error('[Time Energy] Could not update live roll progress; rolling continues.', error);
+  }
+}
+
+export async function getTimeEnergyRollProgress(): Promise<{
+  attemptId: string | null;
+  updatedAt: number | null;
+  active: boolean;
+  processed: number;
+  total: number;
+  percent: number;
+  completed: boolean;
+}> {
+  const raw = await redis.get(timeEnergyRollProgressKey(currentUserId()));
+  const progress = parseStoredJson<TimeEnergyRollProgressRecord>(raw);
+  if (
+    !progress ||
+    typeof progress.attemptId !== 'string' ||
+    !Number.isSafeInteger(progress.processed) ||
+    !Number.isSafeInteger(progress.total) ||
+    progress.processed < 0 ||
+    progress.total < 0 ||
+    progress.processed > progress.total ||
+    !Number.isSafeInteger(progress.updatedAt) ||
+    progress.updatedAt < 0
+  ) {
+    return { attemptId: null, updatedAt: null, active: false, processed: 0, total: 0, percent: 0, completed: false };
+  }
+  const completed = progress.completed === true;
+  const processed = Math.min(progress.total, progress.processed);
+  const percent = completed
+    ? 100
+    : progress.total > 0
+      ? Math.min(95, Math.floor((processed / progress.total) * 95))
+      : 0;
+  const active = !completed && Date.now() - progress.updatedAt <= TIME_ENERGY_ROLL_PROGRESS_TTL_MS;
+  return { attemptId: progress.attemptId, updatedAt: progress.updatedAt, active, processed, total: progress.total, percent, completed };
 }
 
 function frenzyClaimReceiptKey(postId: string, userId: string): string {
@@ -5918,7 +5996,12 @@ export async function roll(
   useAllFreeRolls = false,
   useTimeEnergy = false,
   ticketSeed?: string,
+  progressAttemptId?: string,
 ): Promise<RollResponse> {
+  const safeProgressAttemptId = typeof progressAttemptId === 'string' &&
+    progressAttemptId.length > 0 && progressAttemptId.length <= 128
+    ? progressAttemptId
+    : null;
   return withPlayerMutationLock(async () => {
     let ticketUse:
       | { ticket: RollTicket; raw: string; index: number; nextValue: string }
@@ -6019,6 +6102,12 @@ export async function roll(
     let rollCount = 0;
     let remainingActivations = activations;
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
+    const timeEnergyProgressUserId = usingTimeEnergy && safeProgressAttemptId ? currentUserId() : '';
+    const timeEnergyProgressTotal = freeRollActivations * ballsPerActivation;
+    let lastTimeEnergyProgressWriteAt = 0;
+    if (timeEnergyProgressUserId && safeProgressAttemptId) {
+      await writeTimeEnergyRollProgress(timeEnergyProgressUserId, safeProgressAttemptId, timeEnergyProgressTotal, 0, false);
+    }
     // Reserve two slots for Astral Magnetism's possible bonus Orbs.
     const maxActivationsPerChunk = Math.max(
       1,
@@ -6026,6 +6115,26 @@ export async function roll(
     );
     while (remainingActivations > 0) {
       const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
+      const progressOffset = rollCount;
+      const onTimeEnergyProgress = timeEnergyProgressUserId && safeProgressAttemptId
+        ? async (chunkProcessed: number) => {
+            const absoluteProcessed = Math.min(
+              timeEnergyProgressTotal,
+              progressOffset + Math.max(0, Math.floor(Number(chunkProcessed) || 0)),
+            );
+            const nowForProgress = Date.now();
+            if (absoluteProcessed >= timeEnergyProgressTotal || nowForProgress - lastTimeEnergyProgressWriteAt >= 100) {
+              lastTimeEnergyProgressWriteAt = nowForProgress;
+              await writeTimeEnergyRollProgress(
+                timeEnergyProgressUserId,
+                safeProgressAttemptId,
+                timeEnergyProgressTotal,
+                absoluteProcessed,
+                false,
+              );
+            }
+          }
+        : undefined;
       const result = await applyRolls(
         s,
         chunkActivations,
@@ -6034,7 +6143,7 @@ export async function roll(
         usingChainPatcher ? 1 : undefined,
         ticketRandom ? ticketRandom.next : undefined,
         usingChainPatcher,
-        undefined,
+        onTimeEnergyProgress,
         ticketRandom ? ticketRandom.nextRarity : undefined,
       );
       if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
@@ -6045,6 +6154,15 @@ export async function roll(
       shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + result.shardsGained);
       xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + result.xpGained);
       rollCount = Math.min(Number.MAX_SAFE_INTEGER, rollCount + result.rollCount);
+      if (timeEnergyProgressUserId && safeProgressAttemptId) {
+        await writeTimeEnergyRollProgress(
+          timeEnergyProgressUserId,
+          safeProgressAttemptId,
+          timeEnergyProgressTotal,
+          Math.min(timeEnergyProgressTotal, rollCount),
+          false,
+        );
+      }
       remainingActivations -= chunkActivations;
     }
     if (!bestOrb) throw new Error('No rolls were processed.');
@@ -6073,6 +6191,16 @@ export async function roll(
           }
         : undefined,
     );
+    if (timeEnergyProgressUserId && safeProgressAttemptId) {
+      // Mark complete only after the player save (and roll-ticket update) commits.
+      await writeTimeEnergyRollProgress(
+        timeEnergyProgressUserId,
+        safeProgressAttemptId,
+        timeEnergyProgressTotal,
+        timeEnergyProgressTotal,
+        true,
+      );
+    }
 
     void recordLeaderboard(s).catch(error => {
       console.error('[Leaderboard] Background update failed:', error);
