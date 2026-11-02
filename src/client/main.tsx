@@ -4043,15 +4043,45 @@ function App() {
                 <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-nav-item" + (tab === 'fight' ? " is-active" : "")}><Flame className="io-nav-icon" /><span className="io-nav-label">Fight</span></button>
                 <button type="button" aria-current={tab === 'dungeons' ? 'page' : undefined} onClick={() => changeTab('dungeons')} className={"nav-tab io-nav-item" + (tab === 'dungeons' ? " is-active" : "")}><DoorOpen className="io-nav-icon" /><span className="io-nav-label">Dungeons</span></button>
                 <button type="button" aria-current={tab === 'gear' ? 'page' : undefined} onClick={() => changeTab('gear')} className={"nav-tab io-nav-item" + (tab === 'gear' ? " is-active" : "")}><Package className="io-nav-icon" /><span className="io-nav-label">Gear</span></button>
-                <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-nav-item" + (tab === 'runes' ? " is-active" : "")}><Gem className="io-nav-icon" /><span className="io-nav-label">Runes</span></button>
-                <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-nav-item" + (tab === 'forge' ? " is-active" : "")}><Hammer className="io-nav-icon" /><span className="io-nav-label">Forge</span></button>
                 <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-nav-item" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="io-nav-icon" /><span className="io-nav-label">Skills</span></button>
-                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span><span className="io-nav-unlock">Coming soon</span></button>
+                <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'runes' ? " is-active" : "")}><Gem className="io-nav-icon" /><span className="io-nav-label">Runes</span></button>
+                <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'forge' ? " is-active" : "")}><Hammer className="io-nav-icon" /><span className="io-nav-label">Forge</span></button>
+                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span><span className="io-nav-unlock">Coming soon</span></button>
               </div>
-              <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch">
-                <Sparkles className="io-nav-icon" />
-                <span className="io-nav-label">Back to Orbs</span>
-              </button>
+              <div className="io-nav-trailing io-nav-combat-trailing">
+                <div className="io-nav-more-wrap io-nav-combat-mobile-more">
+                  <button
+                    type="button"
+                    className={"nav-tab io-nav-more io-nav-combat-more" + (moreNavOpen || ['runes', 'forge', 'arena'].includes(tab) ? " is-active" : "")}
+                    aria-label="More Combat tabs"
+                    aria-expanded={moreNavOpen}
+                    aria-controls="io-combat-more-navigation"
+                    onClick={() => setMoreNavOpen(open => !open)}
+                  >
+                    <span className="io-nav-label">More</span>
+                    {tab === 'runes' && <span className="io-nav-current-page">Runes</span>}
+                    {tab === 'forge' && <span className="io-nav-current-page">Forge</span>}
+                    {tab === 'arena' && <span className="io-nav-current-page">Arena</span>}
+                    <ChevronDown className="io-nav-icon io-nav-chevron" aria-hidden="true" />
+                  </button>
+                  {moreNavOpen && (
+                    <div id="io-combat-more-navigation" className="io-nav-menu io-nav-combat-menu" role="group" aria-label="More Combat tabs">
+                      <p className="io-nav-menu-title">More Combat</p>
+                      {renderNavItem('runes', 'Runes', Gem)}
+                      {renderNavItem('forge', 'Forge', Hammer)}
+                      {renderNavItem('arena', 'Arena', Users)}
+                      <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-nav-item io-combat-mode-switch">
+                        <Sparkles className="io-nav-icon" />
+                        <span className="io-nav-label">Back to Orbs</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
+                  <Sparkles className="io-nav-icon" />
+                  <span className="io-nav-label">Back to Orbs</span>
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -4079,7 +4109,7 @@ function App() {
       )}
 
       {/* Main Container Content */}
-      <main className="app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : "")}>
 
         {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
