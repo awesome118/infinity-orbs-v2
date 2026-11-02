@@ -72,7 +72,8 @@ test('Clockwork applies through the Auto Roll request, server cooldown, and live
   assert.ok(app.includes('req.body?.auto === true'));
   assert.ok(rollHandler.includes('const cd = cooldownMs(s, isAuto)'));
   assert.ok(rollHandler.includes('rollsRemainingUntilNext: cd'));
-  assert.ok(client.includes('setReadyAt(lastRollAt + cooldownMs(timingState, true))'));
+  assert.ok(client.includes('const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true)'));
+  assert.ok(client.includes('setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current))'));
 });
 
 test('Alignment has no post-claim popup and the active duration is a live Roll-screen countdown', () => {
