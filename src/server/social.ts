@@ -300,8 +300,9 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
           : generatedFallbackTaskType(taskIndex);
         const tier = clampInteger(task.tier, 1, MAX_GUILD_TASK_TIER, 1);
         const generated = createGuildTask(type, tier);
+        const existingValueTarget = type === 'value' ? normalizeGuildValueProgress(task.target) : 0;
         const target = type === 'value'
-          ? Math.max(1, normalizeGuildValueProgress(task.target) || generated.target)
+          ? Math.max(generated.target, existingValueTarget)
           : clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
         return {
           id: nonEmptyText(task.id, generated.id),
@@ -312,7 +313,9 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
             ? Math.min(target, normalizeGuildValueProgress(task.progress))
             : clampInteger(task.progress, 0, Number.MAX_SAFE_INTEGER, 0),
           reward: clampInteger(task.reward, 1, Number.MAX_SAFE_INTEGER, generated.reward),
-          label: nonEmptyText(task.label, generated.label),
+          label: type === 'value' && target === generated.target
+            ? generated.label
+            : nonEmptyText(task.label, generated.label),
         };
       });
     }
