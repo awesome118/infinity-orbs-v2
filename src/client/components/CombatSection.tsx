@@ -242,6 +242,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const [auto,setAuto]=useState(()=>{try{return window.localStorage.getItem('io-combat-auto')!=='false';}catch{return true;}}),[paused,setPaused]=useState(()=>{try{return window.localStorage.getItem('io-combat-paused')==='true';}catch{return false;}}),[intent,setIntent]=useState<CombatIntent>('strike');
   const [showAllSkills,setShowAllSkills]=useState(true);
   const [inspectedSkillId,setInspectedSkillId]=useState<string|null>(null);
+  const [mobileDetailSkillId,setMobileDetailSkillId]=useState<CombatSkillId|null>(null);
   const [queuedSkillId,setQueuedSkillId]=useState<CombatSkillId|null>(null);
   const [skillSearch,setSkillSearch]=useState('');
   useEffect(()=>{try{window.localStorage.setItem('io-combat-auto',String(auto));}catch{/* Embedded webviews can disable storage. */}},[auto]);
@@ -266,6 +267,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       if(event.key!=='Escape')return;
       cancelSkillTooltipClose();
       setInspectedSkillId(null);
+      setMobileDetailSkillId(null);
       const target=event.target;
       if(target instanceof HTMLElement&&target.closest('.io-combat-skill-icon-wrap.is-inspected'))target.blur();
     };
@@ -283,6 +285,9 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       cancelSkillTooltipClose();
     };
   },[cancelSkillTooltipClose]);
+  useEffect(()=>{
+    if(page!=='skills')setMobileDetailSkillId(null);
+  },[page]);
   const [visibleGearCount,setVisibleGearCount]=useState(60);
   const [gearSearch,setGearSearch]=useState('');
   const [gearSlotFilter,setGearSlotFilter]=useState<'all'|CombatGearSlot>('all');
@@ -591,6 +596,16 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
   const visibleSkills=COMBAT_SKILLS
     .filter(skill=>(showAllSkills||rankOf(state,skill.id)>0)&&[skill.name,skill.rarity,skill.stat,skill.effect].some(value=>String(value).toLowerCase().includes(skillSearch.trim().toLowerCase())))
     .sort((a,b)=>(skillRarityOrder[a.rarity]??99)-(skillRarityOrder[b.rarity]??99)||a.name.localeCompare(b.name));
+  const mobileDetailSkill=mobileDetailSkillId?COMBAT_SKILLS.find(skill=>skill.id===mobileDetailSkillId)??null:null;
+  const mobileDetailRank=mobileDetailSkill?rankOf(state,mobileDetailSkill.id):0;
+  const mobileDetailCopies=mobileDetailSkill?state.skillCopyProgress[mobileDetailSkill.id]??0:0;
+  const mobileDetailNeeded=mobileDetailRank>0?combatSkillCopiesForNextRank(mobileDetailRank):0;
+  const mobileDetailEquipped=mobileDetailSkill?state.equippedAbilities.includes(mobileDetailSkill.id):false;
+  const mobileDetailUnlocked=mobileDetailSkill?skillRarityUnlocked(mobileDetailSkill.rarity,state.skillGachaRank):false;
+  const mobileDetailUnlockRank=mobileDetailSkill?({Common:1,Uncommon:2,Rare:3,Epic:6,Mythic:9} as const)[mobileDetailSkill.rarity]:1;
+  const mobileDetailSlotsFull=state.equippedAbilities.length>=COMBAT_ABILITY_SLOTS;
+  const mobileDetailActionLabel=!mobileDetailUnlocked?'Unlock at Gacha Rank '+mobileDetailUnlockRank:mobileDetailRank===0?'Roll to discover':mobileDetailEquipped?'Unequip ability':mobileDetailSlotsFull?'Ability slots full':'Equip ability';
+  const mobileDetailCopyProgressPct=Math.max(0,Math.min(100,Math.round(mobileDetailCopies/Math.max(1,mobileDetailNeeded)*100)));
   const nextStrategyGuide=STRATEGY_GUIDE_RANKS.find(entry=>entry.rank===state.strategyGuideRank+1)??null;
   if(page==='runes')return <RunesSection/>;
   const healthMax=Math.max(1,Number(state.maxHealth)||1);
@@ -801,7 +816,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       </section>
       {lastSkills.length>0&&<div className="io-combat-skill-results" aria-label="Latest Skill Gacha results">{lastSkills.map((lastSkill,index)=><div key={lastSkill.id+'-'+index} className={'io-combat-skill-result '+rarityClass(lastSkill.rarity)} style={{animationDelay:Math.min(index*70,700)+'ms'}}><Sparkles size={18}/><div><strong>{lastSkill.name}</strong><p>{lastSkill.duplicate?(lastSkill.rankedUp?'Ranked up to Rank '+fmt(lastSkill.rank)+'.':'Duplicate progress '+fmt(lastSkill.progress)+'/'+fmt(lastSkill.copiesNeeded)+' toward Rank '+fmt(lastSkill.rank+1)+'. Higher ranks require more duplicate copies.'):'Unlocked as a new Rank 1 active ability.'}</p></div><span>{lastSkill.rarity.toUpperCase()}</span></div>)}</div>}
       {gachaRequirement&&<section className="io-combat-panel" style={{marginBottom:20}}><div className="io-combat-panel-head"><div><span className="io-combat-eyebrow">GACHA PROGRESSION</span><h2>Rank Up to {gachaRequirement.rank} · {gachaRequirement.unlocks}</h2><p>Requires {fmt(gachaRequirement.requiredPulls)} lifetime skill pulls and {fmt(gachaRequirement.requiredMarks)} Combat Marks. Current progress: {fmt(state.skillRolls)} pulls and {fmt(state.combatMarks)} Marks.</p></div><button type="button" className="io-combat-button is-primary" disabled={mutating||state.skillRolls<gachaRequirement.requiredPulls||state.combatMarks<gachaRequirement.requiredMarks} onClick={()=>void mutate('/api/combat/skills/rank-up')}>{state.skillRolls<gachaRequirement.requiredPulls?'Need '+fmt(gachaRequirement.requiredPulls-state.skillRolls)+' pulls':state.combatMarks<gachaRequirement.requiredMarks?'Need '+fmt(gachaRequirement.requiredMarks-state.combatMarks)+' Marks':'Rank Up Gacha'}</button></div></section>}
-      <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>{setInspectedSkillId(null);setShowAllSkills(!showAllSkills);}}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
+      <div className="io-combat-codex-toolbar"><div><span className="io-combat-eyebrow">SKILL CODEX</span><h2>{ownedSkills.length} / {COMBAT_SKILLS.length} discovered · {state.equippedAbilities.length}/{COMBAT_ABILITY_SLOTS} equipped</h2></div><button type="button" className="io-combat-button is-secondary" onClick={()=>{setInspectedSkillId(null);setMobileDetailSkillId(null);setShowAllSkills(!showAllSkills);}}>{showAllSkills?'Owned only':'Show all skills'}</button></div>
       <div className="io-combat-skill-search"><label htmlFor="io-combat-skill-search">Find a skill</label><input id="io-combat-skill-search" type="search" value={skillSearch} onChange={event=>setSkillSearch(event.target.value)} placeholder="Name, rarity, or effect…" /><span>{visibleSkills.length} shown</span></div>
       <div className="io-combat-skill-grid io-combat-skill-icons">{visibleSkills.map(skill=>{
         const rank=rankOf(state,skill.id),copies=state.skillCopyProgress[skill.id]??0,needed=rank>0?combatSkillCopiesForNextRank(rank):0;
@@ -812,7 +827,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
         return <article key={skill.id} className={'io-combat-skill-icon-wrap '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')+(inspectedSkillId===skill.id?' is-inspected':'')}
           onPointerEnter={event=>{lastSkillPointerTypeRef.current=event.pointerType;cancelSkillTooltipClose();if(event.pointerType==='mouse')setInspectedSkillId(skill.id);}}
           onPointerLeave={event=>{if(event.pointerType==='mouse')scheduleSkillTooltipClose(skill.id);}}>
-          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={event=>{if(!event.currentTarget.parentElement?.contains(event.relatedTarget as Node|null))setInspectedSkillId(current=>current===skill.id?null:current);}} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
+          <button type="button" className={'io-combat-skill-icon '+rarityClass(skill.rarity)+(isEquipped?' is-equipped':'')} aria-label={'Inspect '+skill.name} aria-expanded={inspectedSkillId===skill.id||mobileDetailSkillId===skill.id} title={skill.name} disabled={mutating} onFocus={()=>setInspectedSkillId(skill.id)} onBlur={event=>{if(!event.currentTarget.parentElement?.contains(event.relatedTarget as Node|null))setInspectedSkillId(current=>current===skill.id?null:current);}} onClick={()=>{if(lastSkillPointerTypeRef.current!=='mouse'||window.matchMedia('(max-width: 760px)').matches){cancelSkillTooltipClose();setInspectedSkillId(null);setMobileDetailSkillId(skill.id);}else if(lastSkillPointerTypeRef.current!=='mouse')setInspectedSkillId(current=>current===skill.id?null:skill.id);}}>
             <span>{glyph}</span><small>{rank>0?'R'+fmt(rank):'—'}</small>{isEquipped&&<b>✓</b>}
           </button>
           <div className="io-combat-skill-tooltip" role="group" aria-label={skill.name+' details and actions'}
@@ -825,6 +840,47 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
           </div>
         </article>;
       })}</div>
+      {mobileDetailSkill&&createPortal(
+        <div
+          className="io-combat-skill-mobile-detail-backdrop"
+          data-testid="combat-skill-mobile-details"
+          onPointerDown={event=>{if(event.target===event.currentTarget){setMobileDetailSkillId(null);setInspectedSkillId(null);}}}
+        >
+          <section
+            className={'io-combat-skill-mobile-detail '+rarityClass(mobileDetailSkill.rarity)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={'io-combat-mobile-skill-title-'+mobileDetailSkill.id}
+            aria-describedby={'io-combat-mobile-skill-description-'+mobileDetailSkill.id}
+          >
+            <div className="io-combat-skill-mobile-detail-head">
+              <span className="io-combat-eyebrow">{mobileDetailSkill.rarity.toUpperCase()} · {!mobileDetailUnlocked?'GACHA RANK '+mobileDetailUnlockRank:mobileDetailRank?'RANK '+fmt(mobileDetailRank):'NOT OWNED'}</span>
+              <button type="button" className="io-combat-skill-mobile-detail-close" aria-label="Close skill details" onClick={()=>{setMobileDetailSkillId(null);setInspectedSkillId(null);}}>×</button>
+            </div>
+            <h2 id={'io-combat-mobile-skill-title-'+mobileDetailSkill.id}>{mobileDetailSkill.name}</h2>
+            <p id={'io-combat-mobile-skill-description-'+mobileDetailSkill.id}>{skillValue(mobileDetailSkill,Math.max(1,mobileDetailRank),stats.speed)}</p>
+            {mobileDetailRank>0?(
+              <>
+                <small>{fmt(mobileDetailCopies)} / {fmt(mobileDetailNeeded)} copies toward Rank {fmt(mobileDetailRank+1)}</small>
+                <div className="io-combat-skill-progress" role="progressbar" aria-label={mobileDetailSkill.name+' duplicate progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={mobileDetailCopyProgressPct}>
+                  <span style={{width:mobileDetailCopyProgressPct+'%'}}/>
+                </div>
+              </>
+            ):!mobileDetailUnlocked?(
+              <p className="io-combat-skill-mobile-detail-note">Reach Gacha Rank {mobileDetailUnlockRank} to unlock this skill's rarity pool.</p>
+            ):(
+              <p className="io-combat-skill-mobile-detail-note">Not discovered yet. Roll the Skill Gacha to obtain this ability.</p>
+            )}
+            <button
+              type="button"
+              className={mobileDetailEquipped?'io-combat-button is-equipped':'io-combat-button is-primary'}
+              disabled={mutating||!mobileDetailUnlocked||mobileDetailRank===0||(!mobileDetailEquipped&&mobileDetailSlotsFull)}
+              onClick={()=>void mutate('/api/combat/skills/equip',{skillId:mobileDetailSkill.id,equip:!mobileDetailEquipped})}
+            >{mobileDetailActionLabel}</button>
+          </section>
+        </div>,
+        document.body,
+      )}
     </>}
 
     {page==='arena'&&<>
