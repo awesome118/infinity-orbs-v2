@@ -9,7 +9,13 @@ import {
   guildComboDurationMs,
   guildComboTimeProgress,
 } from '../src/shared/game.js';
-import { countGuildTaskRareOrbs } from '../src/shared/social.js';
+import {
+  addGuildValueProgress,
+  countGuildTaskRareOrbs,
+  createGuildTask,
+  isGuildValueProgress,
+  MAX_GUILD_TASK_TIER,
+} from '../src/shared/social.js';
 
 test('Guild combo time bar measures remaining time against all duration earned', () => {
   const startedAt = 1_000_000;
@@ -63,4 +69,29 @@ test('Guild combo time bar communicates the remaining-to-earned ratio accessibly
   assert.ok(ui.includes('Time left / earned'));
   assert.ok(ui.includes('guildComboTimeProgress(combo, now)'));
   assert.ok(ui.includes('Guild combo time remaining relative to total time earned'));
+});
+
+test('Guild Collection Value tasks retain finite targets above MAX_SAFE_INTEGER', () => {
+  const task = createGuildTask('value', 71);
+  assert.equal(task.tier, 71);
+  assert.ok(Number.isFinite(task.target));
+  assert.ok(Number.isInteger(task.target));
+  assert.ok(task.target > Number.MAX_SAFE_INTEGER);
+  assert.match(task.label, /9,879,390,699,563,258|9,879,390,699,563,2/);
+
+  const progress = addGuildValueProgress(Number.MAX_SAFE_INTEGER, task.target);
+  assert.ok(progress > Number.MAX_SAFE_INTEGER);
+  assert.equal(isGuildValueProgress(progress), true);
+  assert.equal(isGuildValueProgress(Number.POSITIVE_INFINITY), false);
+  assert.equal(MAX_GUILD_TASK_TIER, 100);
+});
+
+test('Guild parser and both contribution writers preserve large Collection Value progress', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  assert.match(social, /member\.contribution = addGuildValueProgress\(member\.contribution, safeValue\)/);
+  assert.match(social, /task\.type === 'value'\) task\.progress = addGuildValueProgress\(task\.progress, safeValue\)/);
+  assert.match(social, /isGuildValueProgress\(member\.contribution\)/);
+  assert.match(social, /isGuildValueProgress\(challenge\.target, 1\)/);
+  assert.match(social, /isGuildValueProgress\(value, minimum\)/);
+  assert.doesNotMatch(social, /task\.type === 'value'\) task\.progress = cap(?:SafeGuildCounter|Integer)\(task\.progress \+ safeValue\)/);
 });
