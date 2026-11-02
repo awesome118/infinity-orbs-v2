@@ -70,6 +70,7 @@ import {
   recordPlayerHeartbeat,
   hasCompletedFirstRollTutorial,
   markFirstRollTutorialSeen,
+  clearAllDiagnosticLogs,
 } from './game.js';
 import {
   createGuild,
@@ -760,6 +761,28 @@ export function createApp() {
     } catch (e) {
       console.error('Failed to create Infinity Orbs post:', e);
       res.status(400).json({ showToast: 'Failed to create Infinity Orbs post.' });
+    }
+  });
+
+  // One-time production recovery for the Redis quota lockout. Devvit invokes
+  // this lifecycle endpoint when an installed subreddit moves to a new app version.
+  // Keep the target version fixed: later upgrades must not repeatedly erase diagnostics.
+  const EMERGENCY_LOG_CLEANUP_VERSION = '2.2.6';
+  app.post('/internal/on-app-upgrade', async (_req, res) => {
+    const subredditName = String(context.subredditName ?? '').trim().replace(/^r\\//i, '').toLowerCase();
+    if (APP_VERSION !== EMERGENCY_LOG_CLEANUP_VERSION || subredditName !== 'infinityorbs') {
+      return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
+    }
+    try {
+      const result = await clearAllDiagnosticLogs();
+      console.warn('[Redis Recovery] Deleted diagnostic logs during the one-time production app upgrade:', result);
+      return res.status(200).json({ status: 'success', ...result });
+    } catch (error) {
+      console.error('[Redis Recovery] Diagnostic cleanup during app upgrade failed:', error);
+      return res.status(200).json({
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   });
 
