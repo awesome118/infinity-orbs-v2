@@ -14,7 +14,6 @@ import {
   Crown,
   BellRing,
   FastForward,
-  Radio,
   Compass,
   Award,
 } from 'lucide-react';
@@ -871,6 +870,28 @@ export const RollSection: React.FC<RollSectionProps> = ({
             </button>
           )}
 
+          {hasSonarUpgrade && hasAlignmentUpgrade && (
+            <button
+              type="button"
+              data-testid="alignment-alert-sound-toggle"
+              aria-label="Celestial Alignment prompt sound"
+              aria-pressed={alignmentSoundEnabled}
+              onClick={() => {
+                const next = !alignmentSoundEnabled;
+                setAlignmentSoundEnabled(next);
+                sound.setAlignmentSoundEnabled(next);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
+                alignmentSoundEnabled
+                  ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25'
+                  : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+              title="Play or mute Celestial Alignment prompt sounds"
+            >
+              <span>Alignment sound: {alignmentSoundEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
+
           {/* Chrono-Skip Instant Multi-Roll (Unlocked via Prestige) */}
           {hasInstantUpgrade && (
             <button
@@ -971,34 +992,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
         )}
 
-        {/* Sonar alerts are tied to the player's record, not a rarity threshold. */}
-        {hasSonarUpgrade && (
-          <div className="flex items-center gap-2 bg-slate-950/80 border border-cyan-900/40 rounded-xl px-3 py-1.5 text-[11px]">
-            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span className="text-slate-200 font-semibold">Record alerts</span>
-            <div className="min-w-0 flex-1 text-[10px] leading-relaxed text-slate-400">
-              {sonarAlertMode === 'near-best' ? 'Ping non-record Orbs that reach 90% of your current best rarity.' : 'Only a new all-time best triggers a Sonar alert.'} New bests always play the longer five-second celebration.
-            </div>
-            {hasAlignmentUpgrade && (
-              <button
-                type="button"
-                aria-pressed={alignmentSoundEnabled}
-                onClick={() => {
-                  const next = !alignmentSoundEnabled;
-                  setAlignmentSoundEnabled(next);
-                  sound.setAlignmentSoundEnabled(next);
-                }}
-                className={`shrink-0 rounded-lg border px-2.5 py-1 text-[10px] font-black transition-colors ${
-                  alignmentSoundEnabled
-                    ? 'border-cyan-400/35 bg-cyan-500/15 text-cyan-200'
-                    : 'border-slate-700 bg-slate-900 text-slate-400'
-                }`}
-              >
-                Alignment alerts · {alignmentSoundEnabled ? 'ON' : 'OFF'}
-              </button>
-            )}
-          </div>
-        )}
+
         {alignmentInstances.length > 0 && (
           <div className="w-full space-y-1.5" data-testid="active-celestial-alignments">
             {alignmentInstances.map((instance, index) => (
