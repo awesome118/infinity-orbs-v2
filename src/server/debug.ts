@@ -29,6 +29,7 @@ import {
   sendPushNotificationTest,
   getPlayerSpyLogs,
   clearPlayerSpyLogs,
+  clearAllDiagnosticLogs,
   getFollowPromptStats,
   getPopupConfig,
   setPopupConfig,
@@ -211,6 +212,15 @@ debugRouter.post('/combat-lab/action',async(req,res)=>{
   }catch(error){
     const message=error instanceof Error?error.message:'Combat Lab action failed.';
     return res.status(400).json({error:message});
+  }
+});
+
+debugRouter.post('/diagnostic-logs/clear-all', async (_req, res) => {
+  try {
+    const result = await clearAllDiagnosticLogs();
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Could not clear diagnostic logs.' });
   }
 });
 
