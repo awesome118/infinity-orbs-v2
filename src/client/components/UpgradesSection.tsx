@@ -40,8 +40,8 @@ import { sound } from '../sound.js';
 
 interface UpgradesSectionProps {
   state: PlayerState;
-  onBuyUpgrade: (id: UpgradeId) => Promise<void>;
-  onBuyAllUpgrades: () => Promise<void>;
+  onBuyUpgrade: (id: UpgradeId) => Promise<boolean>;
+  onBuyAllUpgrades: () => Promise<boolean>;
   onActivateTurbo: () => Promise<void>;
   busy: boolean;
 }
@@ -88,26 +88,28 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingId(u.id);
-    sound.playLevelUpFanfare();
-    if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
-    setRecentUpgradeId(u.id);
-    recentUpgradeTimerRef.current = window.setTimeout(() => {
-      setRecentUpgradeId(null);
-      recentUpgradeTimerRef.current = null;
-    }, 900);
-
-    const nextLvl = u.level + 1;
-    if (!reducedMotion && (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1))) {
-      if (allowMotionEffects()) confetti({
-        particleCount: 45,
-        spread: 55,
-        origin: { y: 0.65 },
-        colors: ['#fbbf24', '#f59e0b', '#38bdf8', '#34d399', '#c084fc'],
-      });
-    }
 
     try {
-      await onBuyUpgrade(u.id);
+      const purchased = await onBuyUpgrade(u.id);
+      if (purchased) {
+        sound.playLevelUpFanfare();
+        if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
+        setRecentUpgradeId(u.id);
+        recentUpgradeTimerRef.current = window.setTimeout(() => {
+          setRecentUpgradeId(null);
+          recentUpgradeTimerRef.current = null;
+        }, 900);
+
+        const nextLvl = u.level + 1;
+        if (!reducedMotion && (nextLvl % 5 === 0 || (u.id === 'auto' && nextLvl === 1))) {
+          if (allowMotionEffects()) confetti({
+            particleCount: 45,
+            spread: 55,
+            origin: { y: 0.65 },
+            colors: ['#fbbf24', '#f59e0b', '#38bdf8', '#34d399', '#c084fc'],
+          });
+        }
+      }
     } finally {
       upgradeActionLockRef.current = false;
       setUpgradingId(null);
@@ -118,15 +120,17 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
     upgradeActionLockRef.current = true;
     setUpgradingAll(true);
-    sound.playLevelUpFanfare();
-    if (allowMotionEffects()) confetti({
-      particleCount: 60,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#fbbf24', '#38bdf8', '#a855f7'],
-    });
     try {
-      await onBuyAllUpgrades();
+      const purchased = await onBuyAllUpgrades();
+      if (purchased) {
+        sound.playLevelUpFanfare();
+        if (allowMotionEffects()) confetti({
+          particleCount: 60,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#fbbf24', '#38bdf8', '#a855f7'],
+        });
+      }
     } finally {
       upgradeActionLockRef.current = false;
       setUpgradingAll(false);

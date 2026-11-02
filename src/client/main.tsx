@@ -76,6 +76,7 @@ import {
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
+import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
 import { sound } from './sound.js';
 import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
@@ -148,6 +149,11 @@ type ActiveTab =
   | 'arena';
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
+
+type QueuedUpgradePurchase = {
+  id: UpgradeId;
+  resolve: (purchased: boolean) => void;
+};
 
 let nextUpgradeDiagnosticSequence = 1;
 
@@ -786,7 +792,7 @@ function App() {
   const autoRollDisableForCombatRef = useRef(false);
   const pendingMutationCountRef = useRef(0);
   const mutationResyncNeededRef = useRef(false);
-  const upgradeBatchQueueRef = useRef<UpgradeId[]>([]);
+  const upgradeBatchQueueRef = useRef<QueuedUpgradePurchase[]>([]);
   const upgradeBatchTimerRef = useRef<number | null>(null);
   const upgradeBatchInFlightRef = useRef(false);
   const flushUpgradeBatchRef = useRef<(() => Promise<void>) | null>(null);
@@ -794,47 +800,26 @@ function App() {
   const boosterAnnouncementTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
-  const applyPlayerState = useCallback((nextState: PlayerState) => {
+  const applyPlayerState = useCallback((
+    nextState: PlayerState,
+    options?: { allowSameRevisionBalanceChanges?: boolean },
+  ) => {
     const nextServerRevision = Number(nextState.stateRevision);
     const nextServerGeneration = Number(nextState.saveGeneration);
     const currentState = stateRef.current;
 
-    // Revisions restart when a save generation is replaced. Compare generation
-    // first, then revision within that generation, so a reset/wipe is accepted
-    // while delayed reads from the previous save are still rejected.
-    if (
-      !Number.isSafeInteger(nextServerGeneration) || nextServerGeneration < 0 ||
-      !Number.isSafeInteger(nextServerRevision) || nextServerRevision < 0
-    ) {
+    // Normal reads reject balance changes at an unchanged durable revision.
+    // Upgrade recovery is the narrow exception: a rejected optimistic purchase
+    // has no server revision to advance, so the authoritative response is still
+    // at the same revision while its wallet differs from the optimistic UI.
+    if (!shouldAcceptPlayerStateSnapshot(
+      nextState,
+      currentState,
+      appliedServerGenerationRef.current,
+      appliedServerRevisionRef.current,
+      options?.allowSameRevisionBalanceChanges === true,
+    )) {
       return;
-    }
-    if (nextServerGeneration < appliedServerGenerationRef.current) return;
-
-    const isNewServerGeneration =
-      nextServerGeneration > appliedServerGenerationRef.current;
-    if (!isNewServerGeneration) {
-      if (nextServerRevision < appliedServerRevisionRef.current) return;
-
-      // A same-generation snapshot must not change balances without advancing
-      // the durable revision. That was allowing a delayed initial /api/me read
-      // to roll the resource bar back to zero after the first saved roll.
-      if (
-        nextServerRevision === appliedServerRevisionRef.current &&
-        currentState &&
-        (
-          (nextState.coins ?? 0) !== (currentState.coins ?? 0) ||
-          (nextState.shards ?? 0) !== (currentState.shards ?? 0) ||
-          (nextState.xp ?? 0) !== (currentState.xp ?? 0) ||
-          (nextState.level ?? 1) !== (currentState.level ?? 1) ||
-          (nextState.totalRolls ?? 0) !== (currentState.totalRolls ?? 0) ||
-          (nextState.freeRolls ?? 0) !== (currentState.freeRolls ?? 0) ||
-          (nextState.highestRarity ?? 0) !== (currentState.highestRarity ?? 0) ||
-          (nextState.collectionValue ?? 0) !== (currentState.collectionValue ?? 0) ||
-          (nextState.prestigeCount ?? 0) !== (currentState.prestigeCount ?? 0)
-        )
-      ) {
-        return;
-      }
     }
 
     appliedServerGenerationRef.current = nextServerGeneration;
@@ -1196,7 +1181,7 @@ function App() {
     }
   }, []);
 
-  const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async (options?: { allowSameRevisionBalanceChanges?: boolean }) => {
     const refreshSequence = ++refreshSequenceRef.current;
     const revisionAtStart = stateRevisionRef.current;
     const isInitialStartup = stateRef.current === null;
@@ -1209,7 +1194,7 @@ function App() {
       if (!componentMountedRef.current) return;
       try { window.sessionStorage.removeItem('io-wipe-recovery'); } catch { /* Embedded storage is optional. */ }
       if (refreshSequence !== refreshSequenceRef.current || revisionAtStart !== stateRevisionRef.current) return;
-      applyPlayerState(me);
+      applyPlayerState(me, options);
       setAuthRequired(false);
       setStartupError(null);
       if (isInitialStartup) {
@@ -2244,8 +2229,9 @@ function App() {
       upgradeBatchTimerRef.current = null;
     }
 
-    const ids = upgradeBatchQueueRef.current.splice(0, 100);
-    if (ids.length === 0) return;
+    const batch = upgradeBatchQueueRef.current.splice(0, 100);
+    if (batch.length === 0) return;
+    const ids = batch.map(item => item.id);
     const diagnosticId = createUpgradeDiagnosticId();
     const requestStartedAt = Date.now();
     const clientStateRevision = Number(stateRef.current?.stateRevision ?? 0);
@@ -2267,20 +2253,40 @@ function App() {
           });
 
           pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
+          const remainingPurchases = new Map<UpgradeId, number>();
+          for (const purchase of res.purchased) {
+            remainingPurchases.set(
+              purchase.id,
+              (remainingPurchases.get(purchase.id) ?? 0) + 1,
+            );
+          }
+          for (const queuedPurchase of batch) {
+            const remaining = remainingPurchases.get(queuedPurchase.id) ?? 0;
+            const purchased = remaining > 0;
+            if (purchased) remainingPurchases.set(queuedPurchase.id, remaining - 1);
+            queuedPurchase.resolve(purchased);
+          }
+
           if (upgradeBatchQueueRef.current.length === 0) {
-            applyPlayerState(res.state);
+            // This response is authoritative even when a rejected purchase did
+            // not advance the durable revision. Reconcile the optimistic wallet
+            // and level instead of leaving the speculative purchase on screen.
+            applyPlayerState(res.state, { allowSameRevisionBalanceChanges: true });
             mutationResyncNeededRef.current = false;
-            if (res.purchased.length > 0) {
-              for (const purchase of res.purchased) reportJourneyInteraction('upgrade_purchased', purchase.id);
-              if (!journeyFirstUpgradeTrackedRef.current) {
-                journeyFirstUpgradeTrackedRef.current = true;
-                reportJourneyProgress(0.75, 'first_upgrade');
-              }
-              showToast(`Upgraded ${res.purchased.length} level${res.purchased.length === 1 ? '' : 's'} · ${formatNumber(res.totalSpent)} Coins spent.`, 'success');
+          }
+          if (res.purchased.length > 0) {
+            for (const purchase of res.purchased) reportJourneyInteraction('upgrade_purchased', purchase.id);
+            if (!journeyFirstUpgradeTrackedRef.current) {
+              journeyFirstUpgradeTrackedRef.current = true;
+              reportJourneyProgress(0.75, 'first_upgrade');
             }
-            if (res.stoppedReason && res.purchased.length < ids.length) {
-              showToast(res.stoppedReason, res.purchased.length > 0 ? 'info' : 'warn');
-            }
+            showToast(`Upgraded ${res.purchased.length} level${res.purchased.length === 1 ? '' : 's'} · ${formatNumber(res.totalSpent)} Coins spent.`, 'success');
+          }
+          if (res.purchased.length < ids.length) {
+            showToast(
+              res.stoppedReason || 'The server did not accept the remaining upgrade purchase(s). Your wallet and levels were restored.',
+              res.purchased.length > 0 ? 'info' : 'warn',
+            );
           }
         } catch (error: any) {
           pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
@@ -2302,15 +2308,17 @@ function App() {
               clientStateRevision,
             }),
           }).catch(() => undefined);
-          // The optimistic queue depends on the prior batch. If the server
-          // rejects that batch, discard dependent predictions and read back truth.
+          // Drop the failed batch and any clicks that were predicted from it.
+          // Resolve every waiting UI action as failed after authoritative refresh.
+          const rejectedPurchases = [...batch, ...upgradeBatchQueueRef.current];
           upgradeBatchQueueRef.current = [];
           if (upgradeBatchTimerRef.current !== null) {
             window.clearTimeout(upgradeBatchTimerRef.current);
             upgradeBatchTimerRef.current = null;
           }
-          await refreshAll().catch(() => null);
+          await refreshAll({ allowSameRevisionBalanceChanges: true }).catch(() => null);
           mutationResyncNeededRef.current = false;
+          for (const queuedPurchase of rejectedPurchases) queuedPurchase.resolve(false);
           showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
         }
       });
@@ -2326,9 +2334,9 @@ function App() {
   };
   flushUpgradeBatchRef.current = flushUpgradeBatch;
 
-  const handleBuyUpgrade = async (id: UpgradeId) => {
+  const handleBuyUpgrade = async (id: UpgradeId): Promise<boolean> => {
     const currentState = stateRef.current;
-    if (!currentState) return;
+    if (!currentState) return false;
 
     const level = currentState.upgrades[id] ?? 0;
     const requiredPlayerLevel = upgradeUnlockLevel(id);
@@ -2350,7 +2358,7 @@ function App() {
             : 'Upgrade is already at its maximum level.',
         'warn',
       );
-      return;
+      return false;
     }
 
     // Instant local response: update the visible level/wallet before the server
@@ -2368,14 +2376,16 @@ function App() {
     setState(nextState);
     sound.playChime(659.25, 'sine', 0.2);
 
-    upgradeBatchQueueRef.current.push(id);
-    if (!upgradeBatchInFlightRef.current) {
-      if (upgradeBatchTimerRef.current !== null) window.clearTimeout(upgradeBatchTimerRef.current);
-      upgradeBatchTimerRef.current = window.setTimeout(() => {
-        upgradeBatchTimerRef.current = null;
-        void flushUpgradeBatchRef.current?.();
-      }, 55);
-    }
+    return new Promise<boolean>((resolve) => {
+      upgradeBatchQueueRef.current.push({ id, resolve });
+      if (!upgradeBatchInFlightRef.current) {
+        if (upgradeBatchTimerRef.current !== null) window.clearTimeout(upgradeBatchTimerRef.current);
+        upgradeBatchTimerRef.current = window.setTimeout(() => {
+          upgradeBatchTimerRef.current = null;
+          void flushUpgradeBatchRef.current?.();
+        }, 55);
+      }
+    });
   };
   const handleBuyChainPatcher = async () => {
     if (!stateRef.current || busy) return;
@@ -2404,9 +2414,10 @@ function App() {
   };
 
   // Upgrade All Standard Upgrades
-  const handleBuyAllUpgrades = async () => {
+  // Upgrade All Standard Upgrades
+  const handleBuyAllUpgrades = async (): Promise<boolean> => {
     const currentState = stateRef.current;
-    if (!currentState) return;
+    if (!currentState) return false;
 
     const next: PlayerState = {
       ...currentState,
@@ -2436,7 +2447,7 @@ function App() {
 
     if (purchases <= 0) {
       showToast('No upgrades are currently affordable.', 'info');
-      return;
+      return false;
     }
 
     stateRef.current = next;
@@ -2445,31 +2456,33 @@ function App() {
     sound.playChime(523.25, 'triangle', 0.3);
 
     pendingMutationCountRef.current += 1;
-    void enqueueMutation(async () => {
+    return enqueueMutation(async () => {
       try {
         const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
           method: 'POST',
         });
 
-        pendingMutationCountRef.current -= 1;
+        pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
         if (pendingMutationCountRef.current === 0) {
-          applyPlayerState(res.state);
+          applyPlayerState(res.state, { allowSameRevisionBalanceChanges: true });
           mutationResyncNeededRef.current = false;
-          showToast(
-            res.upgradedCount > 0
-              ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${formatNumber(res.totalSpent)} Coins.`
-              : 'No upgrades are currently affordable.',
-            res.upgradedCount > 0 ? 'success' : 'info',
-          );
         }
+        showToast(
+          res.upgradedCount > 0
+            ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${formatNumber(res.totalSpent)} Coins.`
+            : 'No upgrades are currently affordable. Your wallet and levels were restored.',
+          res.upgradedCount > 0 ? 'success' : 'info',
+        );
+        return res.upgradedCount > 0;
       } catch (error: any) {
-        pendingMutationCountRef.current -= 1;
+        pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
         mutationResyncNeededRef.current = true;
         if (pendingMutationCountRef.current === 0) {
-          await refreshAll().catch(() => null);
+          await refreshAll({ allowSameRevisionBalanceChanges: true }).catch(() => null);
           mutationResyncNeededRef.current = false;
         }
         showToast(error?.message || 'Upgrade verification failed. State refreshed.', 'warn');
+        return false;
       }
     });
   };
