@@ -455,19 +455,26 @@ async function createPlayerSaveWritePlan(userId: string, serialized: string): Pr
 export async function discardPlayerSaveWritePlan(plan: PlayerSaveWritePlan): Promise<void> {
   for (const keyName of plan.chunkKeys) await redis.del(keyName).catch(() => undefined);
 }
-const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 * 60_000;
+// Requests have a 30-second platform ceiling. Retain old immutable chunks for
+// twice that window so a request that already read the prior manifest can finish.
+const PLAYER_SAVE_RETIRED_CHUNK_TTL_SECONDS = 60;
 export async function cleanupPreviousPlayerSave(userId: string, previousRaw: string | null | undefined): Promise<void> {
   const previous = parsePlayerSaveManifest(previousRaw);
   if (!previous) return;
-  const expiration = new Date(Date.now() + PLAYER_SAVE_RETIRED_CHUNK_TTL_MS);
-  for (let index = 0; index < previous.chunkCount; index += 1) {
-    const keyName = playerSaveChunkKey(userId, previous.token, index);
-    try {
-      const chunk = await redis.get(keyName);
-      if (typeof chunk === 'string') await redis.set(keyName, chunk, { expiration });
-    } catch (error) {
-      console.warn('[Player Save] Previous chunk could not be retired; it remains readable:', error);
-    }
+  const keys = Array.from(
+    { length: previous.chunkCount },
+    (_, index) => playerSaveChunkKey(userId, previous.token, index),
+  );
+  // EXPIRE changes only key metadata; do not GET and rewrite every old 64 KiB
+  // chunk on each player save.
+  for (let offset = 0; offset < keys.length; offset += 8) {
+    await Promise.all(keys.slice(offset, offset + 8).map(async keyName => {
+      try {
+        await redis.expire(keyName, PLAYER_SAVE_RETIRED_CHUNK_TTL_SECONDS);
+      } catch (error) {
+        console.warn('[Player Save] Previous chunk could not be retired; it remains readable:', keyName, error);
+      }
+    }));
   }
 }
 export async function readPlayerSaveForUser(userId: string, storedValue: string | null | undefined): Promise<string | null> {
