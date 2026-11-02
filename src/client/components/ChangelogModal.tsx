@@ -11,203 +11,59 @@ const sections: Array<{
   entries: Array<{ title: string; description: string }>;
 }> = [
   {
-    title: 'New in 2.2.0',
+    title: "New in 2.2.0",
     entries: [
-      {
-        title: "Celestial Alignment Stacks",
-        description: "Celestial Alignments now last 2 hours. Matching effects can stack, each with its own countdown, and your choices stay available until you pick one.",
-      },
-      {
-        title: "Time Energy Bank",
-        description: "Time Energy banks recovered roll cooldown and can fund multiple complete manual or Auto Rolls. Unused partial energy carries forward.",
-      },
-      {
-        title: "Sonar Ping Controls",
-        description: "Choose whether Sonar pings on non-record Orbs within 10% of your current best or only on a new record. You can also allow Celestial Alignment sounds while Sonar is blocking other sounds.",
-      },
-      {
-        title: "Three New Rune Rarities",
-        description: "Astral, Celestial, and Transcendent Runes now extend the Rune rarity ladder beyond Cosmic.",
-      },
-      {
-        title: "Rarity-Scaled Rune Abilities",
-        description: "Higher-rarity Runes now grant stronger Rune Major Abilities, and Rune details show the rarity-scaled effect strength.",
-      },
-      {
-        title: "Guild Task and Combo Progress",
-        description: "Rare-Orb Guild tasks count every qualifying Orb earned, including rewards from large Multi Rolls. Guild Combos show the time remaining compared with the total time you earned.",
-      },
-      {
-        title: "Rarity Milestone Orbs",
-        description: "Collection milestones and the rarity table now use recognizable, rarity-colored Orb icons, with a glow for tiers you have discovered.",
-      },
-      {
-        title: "Responsive Orb Results",
-        description: "Orb results now fit the screen: fullscreen displays use 9 Orbs per row, while mobile displays use 3 across. Game and Combat screens also adapt more cleanly to phones, tablets, and desktop.",
-      },
-      {
-        title: "Faster Mobile Gear Equipping",
-        description: "Unequipped Gear items on mobile now have an Equip button right on the inventory card, so you do not need to open the item inspector first. Desktop Gear tiles are more compact.",
-      },
-      {
-        title: "Upgraded Main-Game Post",
-        description: "The in-feed game preview has a larger animated infinity-orb energy field, with Continue playing anchored at the bottom of the card.",
-      },
-      {
-        title: "Frenzy Claim Activity",
-        description: "Embedded Frenzy posts now show the claim count and the five most recent players who claimed that Frenzy.",
-      },
+      { title: "Celestial Alignments", description: "Unlock a rare event and choose one of three temporary effects within 60 seconds: Starseeker raises ordinary Luck, Golden Orbit grants +50% Coins, or Clockwork makes Auto Roll 20% faster. Each chosen effect lasts 2 hours and stacks independently with earlier activations, with its own countdown." },
+      { title: "Time Energy Bank", description: "Time Energy banks recovered roll cooldown and can fund multiple complete manual or Auto Rolls. Unused partial energy carries forward." },
+      { title: "Sonar Ping Controls", description: "Choose whether Sonar pings on non-record Orbs within 10% of your current best or only on a new record. You can also allow Celestial Alignment sounds while Sonar is blocking other sounds." },
+      { title: "Three New Rune Rarities", description: "Astral, Celestial, and Transcendent Runes now extend the Rune rarity ladder beyond Cosmic." },
+      { title: "Rarity-Scaled Rune Abilities", description: "Higher-rarity Runes now grant stronger Rune Major Abilities, and Rune details show the rarity-scaled effect strength." },
+      { title: "Guild Task and Combo Progress", description: "Rare-Orb Guild tasks count every qualifying Orb earned, including rewards from large Multi Rolls. Guild Combos show the time remaining compared with the total time you earned." },
+      { title: "Rarity Milestone Orbs", description: "Collection milestones and the rarity table now use recognizable, rarity-colored Orb icons, with a glow for tiers you have discovered." },
+      { title: "Responsive Orb Results", description: "Orb results now fit the screen: fullscreen displays use 9 Orbs per row, while mobile displays use 3 across. Game and Combat screens also adapt more cleanly to phones, tablets, and desktop." },
+      { title: "Faster Mobile Gear Equipping", description: "Unequipped Gear items on mobile now have an Equip button right on the inventory card, so you do not need to open the item inspector first. Desktop Gear tiles are more compact." },
+      { title: "Upgraded Main-Game Post", description: "The in-feed game preview has a larger animated infinity-orb energy field, with Continue playing anchored at the bottom of the card." },
+      { title: "Frenzy Claim Activity", description: "Embedded Frenzy posts now show the claim count and the five most recent players who claimed that Frenzy." },
     ],
   },
   {
-    title: 'Major New Features',
+    title: "New in 2.0.0",
     entries: [
-      {
-        title: 'Combat Mode',
-        description: 'Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression.',
-      },
-      {
-        title: 'Three Expeditions',
-        description: 'Added Undercrypt, Cinder Vault, and Glass Labyrinth. Each dungeon tracks its own best depth and has a boss every tenth depth.',
-      },
-      {
-        title: 'Dungeon Runs',
-        description: 'Added automatic dungeon runs, selectable combat tactics, manual actions, persistent health between encounters, and new-run resets.',
-      },
-      {
-        title: 'Gear, Forge & Abilities',
-        description: 'Added seven gear slots, randomized gear stats and traits, quality rolls, nonlinear gear power, the Forge, Scrap, and 30 Gear Major Abilities.',
-      },
-      {
-        title: 'Combat Skill Gacha',
-        description: 'Added 35 active skills. Duplicate skills increase ranks, making repeated pulls useful.',
-      },
-      {
-        title: 'Arena',
-        description: 'Added asynchronous player-build battles against recently active players, with rating and win/loss records.',
-      },
-      {
-        title: 'Rune System',
-        description: 'Added seven Rune rarities, from Common through Cosmic. Monsters drop Runes; bosses always drop one and elites have improved drop odds.',
-      },
-      {
-        title: 'Rune Loadouts',
-        description: 'Rune loadouts improve core-game Orb Luck, Coins, Shard chance, and XP. Unlock more Rune slots through Delver levels and dungeon depth, then strengthen Runes by sacrificing duplicates or enabling Auto Sacrifice.',
-      },
+      { title: "Major feature — Combat Mode", description: "Added Combat as a separate game mode, unlocked at Core Level 8, with a guided introduction and its own progression." },
+      { title: "Major feature — Three Expeditions", description: "Added Undercrypt, Cinder Vault, and Glass Labyrinth. Each dungeon tracks its own best depth and has a boss every tenth depth." },
+      { title: "Major feature — Dungeon Runs", description: "Added automatic dungeon runs, selectable combat tactics, manual actions, persistent health between encounters, and new-run resets." },
+      { title: "Major feature — Gear, Forge & Abilities", description: "Added seven gear slots, randomized gear stats and traits, quality rolls, nonlinear gear power, the Forge, Scrap, and 30 Gear Major Abilities." },
+      { title: "Major feature — Combat Skill Gacha", description: "Added 35 active skills. Duplicate skills increase ranks, making repeated pulls useful." },
+      { title: "Major feature — Arena", description: "Added asynchronous player-build battles against recently active players, with rating and win/loss records." },
+      { title: "Major feature — Rune System", description: "Added seven Rune rarities, from Common through Cosmic. Monsters drop Runes; bosses always drop one and elites have improved drop odds." },
+      { title: "Major feature — Rune Loadouts", description: "Rune loadouts improve core-game Orb Luck, Coins, Shard chance, and XP. Unlock more Rune slots through Delver levels and dungeon depth, then strengthen Runes by sacrificing duplicates or enabling Auto Sacrifice." },
+      { title: "Core game — Push Notification Opt-In", description: "Added a one-time push notification prompt. Notifications stay off unless enabled, and the prompt explains the limited alerts and the bell control for changing the setting later." },
+      { title: "Core game — First-Roll Tutorial", description: "Added a first-roll tutorial that introduces rolling an Orb, the result screen, Upgrades, and the Codex. It can be skipped at any time." },
+      { title: "Core game — Aftershock", description: "Added Aftershock, a Mastery skill that provides Critical Luck based on the best dry interval between successive all-time rarity records." },
+      { title: "Core game — Unbroken Momentum", description: "Added Unbroken Momentum, a Prestige upgrade that grants permanent roll Speed based on the longest uninterrupted online rolling session." },
+      { title: "Core game — Codex Devotion", description: "Updated Codex Devotion to show its current Luck bonus and the bonus from the next level." },
+      { title: "Core game — Chain Patcher", description: "Added Chain Patcher to the Codex. It guarantees the cheapest missing rarity adjacent to the longest consecutive Codex chain on the next accepted roll, for a Shard cost and with a 24-hour purchase cooldown." },
+      { title: "Core game — Shared Orb Frenzies", description: "Shared Orb Frenzies can be claimed by multiple different players during the post’s lifetime. Each player still has their own claim cooldown." },
+      { title: "Core game — Rune Inventory Improvements", description: "Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls." },
+      { title: "Core game — Global Chat & Player Sessions", description: "Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list." },
+      { title: "Core game — Main-Game Visual Feedback", description: "Made the first dozen rolls easier to spot with a brighter Orb stage, a clear first-roll action, and a restrained pulsing Roll button. Newly discovered Orbs receive a short visual highlight; reduced-motion preferences are respected." },
+      { title: "Core game — Post Previews & Play CTA", description: "Revamped main-game, shared-Orb, and Frenzy previews with animated Orb visuals and a glowing, pulsing Play button that makes starting the game unmistakable." },
+      { title: "Core game — Frenzy Reward Reveal", description: "Reworked Frenzy rewards into a full animated Orb reveal with orbiting effects, visible personal claim cooldowns, post-expiry timer, and a persistent Play button. Main-game and shared-Orb posts now feature animated Orb energy effects." },
+      { title: "Core game — Frenzy Roll Payouts", description: "Frenzies now grant ordinary random Orb rolls instead of guaranteeing the posted Orb rarity. Payouts use the full Multiball multiplier, with Frenzy Volley adding a separate +20% bonus; the post shows your exact personal roll count." },
+      { title: "Core game — Infinity Overflow", description: "Rolls whose calculated rarity exceeds JavaScript’s largest finite number now display as 1/Infinity. The finite 1.797693e308 rarity remains a numeric rarity." },
+      { title: "Balance change — Repeatable Upgrade Costs", description: "Unlimited repeatable core-game upgrades cost 15% more; capped Roll Speed and Offline Generation Speed keep their existing cost curves." },
+      { title: "Balance change — Supernova Critical Scaling", description: "Supernova now multiplies the normal critical multiplier instead of replacing it, so it remains powerful as Critical upgrades grow." },
+      { title: "Balance change — Mastery Engine Removed", description: "Mastery Engine has been removed for balancing purposes." },
+      { title: "Bug fix — Notification Prompt", description: "Fixed the one-time push notification prompt for returning players." },
+      { title: "Bug fix — Silent Alert Mode", description: "Fixed Silent Alert Mode’s toggle becoming out of sync with the active sound mode." },
+      { title: "Bug fix — Combat Encounter Effects", description: "Fixed encounter effects carrying into a new run." },
+      { title: "Bug fix — Shared Orb Previews", description: "Fixed shared Orb previews rejecting valid large rarity values." },
+      { title: "Bug fix — Leaderboard Recovery", description: "Kept older shared-Orb leaderboard entries visible when legacy records are missing account IDs." },
+      { title: "Bug fix — Frenzy Claims & Post Performance", description: "Fixed Frenzy claims so the main game consumes the armed handoff and plays the reward-batch reveal; centered orbit rings, smoothed their rotation, reduced shared-Orb glow, and kept skill details open long enough to equip abilities." },
+      { title: "Bug fix — Rune Controls", description: "Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession." },
     ],
   },
-  {
-    title: 'Core Game Changes',
-    entries: [
-      {
-        title: 'Push Notification Opt-In',
-        description: 'Added a one-time push notification prompt. Notifications stay off unless enabled, and the prompt explains the limited alerts and the bell control for changing the setting later.',
-      },
-      {
-        title: 'First-Roll Tutorial',
-        description: 'Added a first-roll tutorial that introduces rolling an Orb, the result screen, Upgrades, and the Codex. It can be skipped at any time.',
-      },
-      {
-        title: 'Aftershock',
-        description: 'Added Aftershock, a Mastery skill that provides Critical Luck based on the best dry interval between successive all-time rarity records.',
-      },
-      {
-        title: 'Unbroken Momentum',
-        description: 'Added Unbroken Momentum, a Prestige upgrade that grants permanent roll Speed based on the longest uninterrupted online rolling session.',
-      },
-      {
-        title: 'Codex Devotion',
-        description: 'Updated Codex Devotion to show its current Luck bonus and the bonus from the next level.',
-      },
-      {
-        title: 'Chain Patcher',
-        description: 'Added Chain Patcher to the Codex. It guarantees the cheapest missing rarity adjacent to the longest consecutive Codex chain on the next accepted roll, for a Shard cost and with a 24-hour purchase cooldown.',
-      },
-      {
-        title: 'Shared Orb Frenzies',
-        description: 'Shared Orb Frenzies can be claimed by multiple different players during the post’s lifetime. Each player still has their own claim cooldown.',
-      },
-      {
-        title: 'Rune Inventory Improvements',
-        description: 'Added Rune inventory search, equipped filters, level and XP progress, capacity warnings, and clearer Strengthen and Auto Sacrifice controls.',
-      },
-      {
-        title: 'Global Chat & Player Sessions',
-        description: 'Improved Global Chat status messaging when posting is unavailable and added active-session length to the player list.',
-      },
-      {
-        title: 'Main-Game Visual Feedback',
-        description: 'Made the first dozen rolls easier to spot with a brighter Orb stage, a clear first-roll action, and a restrained pulsing Roll button. Newly discovered Orbs receive a short visual highlight; reduced-motion preferences are respected.',
-      },
-      {
-        title: 'Post Previews & Play CTA',
-        description: 'Revamped main-game, shared-Orb, and Frenzy previews with animated Orb visuals and a glowing, pulsing Play button that makes starting the game unmistakable.',
-      },
-      {
-        title: 'Frenzy Reward Reveal',
-        description: 'Reworked Frenzy rewards into a full animated Orb reveal with orbiting effects, visible personal claim cooldowns, post-expiry timer, and a persistent Play button. Main-game and shared-Orb posts now feature animated Orb energy effects.',
-      },
-      {
-        title: 'Frenzy Roll Payouts',
-        description: 'Frenzies now grant ordinary random Orb rolls instead of guaranteeing the posted Orb rarity. Payouts use the full Multiball multiplier, with Frenzy Volley adding a separate +20% bonus; the post shows your exact personal roll count.',
-      },
-      {
-        title: 'Infinity Overflow',
-        description: 'Rolls whose calculated rarity exceeds JavaScript’s largest finite number now display as 1/Infinity. The finite 1.797693e308 rarity remains a numeric rarity.',
-      },
-    ],
-  },
-  {
-    title: 'Balance Changes',
-    entries: [
-      {
-        title: 'Repeatable Upgrade Costs',
-        description: 'Unlimited repeatable core-game upgrades cost 15% more; capped Roll Speed and Offline Generation Speed keep their existing cost curves.',
-      },
-      {
-        title: 'Supernova Critical Scaling',
-        description: 'Supernova now multiplies the normal critical multiplier instead of replacing it, so it remains powerful as Critical upgrades grow.',
-      },
-      {
-        title: 'Mastery Engine Removed',
-        description: 'Mastery Engine has been removed for balancing purposes.',
-      },
-    ],
-  },
-  {
-    title: 'Bug Fixes & Improvements',
-    entries: [
-      {
-        title: 'Notification Prompt',
-        description: 'Fixed the one-time push notification prompt for returning players.',
-      },
-      {
-        title: 'Silent Alert Mode',
-        description: 'Fixed Silent Alert Mode’s toggle becoming out of sync with the active sound mode.',
-      },
-      {
-        title: 'Combat Encounter Effects',
-        description: 'Fixed encounter effects carrying into a new run.',
-      },
-      {
-        title: 'Shared Orb Previews',
-        description: 'Fixed shared Orb previews rejecting valid large rarity values.',
-      },
-      {
-        title: 'Leaderboard Recovery',
-        description: 'Kept older shared-Orb leaderboard entries visible when legacy records are missing account IDs.',
-      },
-      {
-        title: 'Frenzy Claims & Post Performance',
-        description: 'Fixed Frenzy claims so the main game consumes the armed handoff and plays the reward-batch reveal; centered orbit rings, smoothed their rotation, reduced shared-Orb glow, and kept skill details open long enough to equip abilities.',
-      },
-      {
-        title: 'Rune Controls',
-        description: 'Fixed Rune controls so Equip, Strengthen, and Auto Sacrifice actions no longer conflict when used in quick succession.',
-      },
-    ],
-  },
-];
+];;
 
 export const ChangelogModal: React.FC<ChangelogModalProps> = ({ onClose }) => {
   const [search, setSearch] = useState('');
