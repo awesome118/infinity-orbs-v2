@@ -127,6 +127,8 @@ jobs:
           node --import tsx --test tests/mobile-layout.test.ts
           # Keep the max, reset, and unlock debug presets in sync with the upgrade registry.
           node --import tsx --test tests/upgrade-expansion.test.ts
+          # Verify Coins and repeatable upgrade persistence beyond MAX_SAFE_INTEGER.
+          node --import tsx --test tests/large-number-economy.test.ts
           # Validate upgrade-batch rejection/rollback telemetry and route ID parity.
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts tests/player-state-reconciliation.test.ts tests/upgrade-spam-ui.test.ts
           # Guard the roll-ticket lock boundary, admin seed plumbing, and deterministic preview stream.
