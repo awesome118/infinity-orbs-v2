@@ -17,6 +17,10 @@ const MAX_AUDIT_USERS = 2_000;
 const MAX_CODEX_AUDIT_USERS = 100;
 const MAX_INDEXED_VIEWERS = 2_000;
 const IMPRESSION_POST_TYPES = ['main-game', 'orb-share', 'frenzy'] as const;
+const IMPRESSION_SOURCE_TYPES = ['orb-share', 'frenzy'] as const;
+const ADMIN_CREDIT_BATCH_PREFIX = 'io:admin-global-booster-credit-batch:';
+const ADMIN_CREDIT_RECEIPT_PREFIX = 'io:admin-global-booster-credit-grant:';
+const MAX_ADMIN_CREDIT_OPERATIONS_AUDITED = 25;
 const MAX_PLAYER_CHUNK_PAYLOAD_READ_BYTES = 32 * 1024 * 1024;
 const MAX_TOP_VALUES = 25;
 
@@ -103,7 +107,14 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   let impressionViewerRecordsMissing = 0;
   let impressionViewerRecordsInvalid = 0;
   let impressionViewerCountMismatches = 0;
+  let impressionMarkerKeysAudited = 0;
+  let impressionMarkerKeysPresent = 0;
+  let adminCreditOperationsFound = 0;
+  let adminCreditOperationsAudited = 0;
+  let adminCreditOperationsSkipped = 0;
+  let adminCreditGrantReceiptsPresent = 0;
   let impressionViewerUniquePostViews = 0;
+  const impressionViewerMarkerProbes: Array<{ family: string; key: string }> = [];
   const impressionViewerUniquePostViewsByType: Record<(typeof IMPRESSION_POST_TYPES)[number], number> = {
     'main-game': 0,
     'orb-share': 0,
@@ -153,6 +164,10 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   const safeMGet = async (keys: string[]): Promise<unknown[]> => {
     if (!keys.length) return [];
     return readInBatches(keys, batch => redisClient.mGet(batch), 12, 3);
+  };
+  const safeMGetWide = async (keys: string[]): Promise<unknown[]> => {
+    if (!keys.length) return [];
+    return readInBatches(keys, batch => redisClient.mGet(batch), 64, 4);
   };
 
   const registryKey = 'io:player-registry';
