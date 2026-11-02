@@ -264,10 +264,17 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
 
   // Codex hashes are generation-scoped. Audit the active generation only;
   // obsolete generations cannot be discovered without a provider key scan.
-  const codexRequests = userIds.flatMap(userId => {
+  const codexEligibleUserIds = userIds.filter(userId => {
     const state = playerStates.get(userId);
-    if (!state || state.collectionStorageVersion < 1) return [];
-    codexUsersAudited += 1;
+    return Boolean(state && state.collectionStorageVersion >= 1);
+  });
+  codexUsersEligible = codexEligibleUserIds.length;
+  const codexAuditUserIds = codexEligibleUserIds.slice(0, MAX_CODEX_AUDIT_USERS);
+  codexUsersAudited = codexAuditUserIds.length;
+  codexUsersSkipped = Math.max(0, codexUsersEligible - codexUsersAudited);
+  const codexRequests = codexAuditUserIds.flatMap(userId => {
+    const state = playerStates.get(userId);
+    if (!state) return [];
     return Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) => ({
       userId,
       shard,
