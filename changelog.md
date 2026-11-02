@@ -1,5 +1,19 @@
 # Infinity Orbs Changelog
 
+### Update 2.2.0 — Player-Facing Changes
+
+- **Celestial Alignment Stacks:** Celestial Alignments now last 2 hours. Matching effects can stack, each with its own countdown, and your choices stay available until you pick one.
+- **Time Energy Bank:** Time Energy banks recovered roll cooldown and can fund multiple complete manual or Auto Rolls. Unused partial energy carries forward.
+- **Sonar Ping Controls:** Choose whether Sonar pings on non-record Orbs within 10% of your current best or only on a new record. You can also allow Celestial Alignment sounds while Sonar is blocking other sounds.
+- **Three New Rune Rarities:** Astral, Celestial, and Transcendent Runes now extend the Rune rarity ladder beyond Cosmic.
+- **Rarity-Scaled Rune Abilities:** Higher-rarity Runes now grant stronger Rune Major Abilities, and Rune details show the rarity-scaled effect strength.
+- **Guild Task and Combo Progress:** Rare-Orb Guild tasks count every qualifying Orb earned, including rewards from large Multi Rolls. Guild Combos show the time remaining compared with the total time you earned.
+- **Rarity Milestone Orbs:** Collection milestones and the rarity table now use recognizable, rarity-colored Orb icons, with a glow for tiers you have discovered.
+- **Responsive Orb Results:** Orb results now fit the screen: fullscreen displays use 9 Orbs per row, while mobile displays use 3 across. Game and Combat screens also adapt more cleanly to phones, tablets, and desktop.
+- **Faster Mobile Gear Equipping:** Unequipped Gear items on mobile now have an Equip button right on the inventory card, so you do not need to open the item inspector first. Desktop Gear tiles are more compact.
+- **Upgraded Main-Game Post:** The in-feed game preview has a larger animated infinity-orb energy field, with Continue playing anchored at the bottom of the card.
+- **Frenzy Claim Activity:** Embedded Frenzy posts now show the claim count and the five most recent players who claimed that Frenzy.
+
 ### Oversized Save Protection, Queued Mutations, and Stacked Celestial Alignments (2.1.49)
 
 - Split oversized player saves into immutable 64 KiB Redis chunks and atomically switch a compact, checksummed manifest only after all chunks are written. Legacy saves remain readable and migrate on their next save.
