@@ -35,15 +35,19 @@ test('10 million effective Orbs stay inside the 4,096-sample request budget', ()
   assert.equal(effectiveCount, 10_000_000);
 });
 
-test('300 million effective Orbs fit into thirty bounded online chunks', () => {
+test('300 million effective Orbs process in roughly 30 bounded online chunks', () => {
   const totalEffective = 300_000_000;
-  let remaining = totalEffective;
+  const ballsPerActivation = 150;
+  const totalActivations = totalEffective / ballsPerActivation;
+  const maxActivationsPerChunk = Math.floor((MAX_EFFECTIVE_ROLLS_PER_BATCH - 2) / ballsPerActivation);
+  let remainingActivations = totalActivations;
   let processed = 0;
   let chunks = 0;
   let simulatedSamples = 0;
 
-  while (remaining > 0) {
-    const chunkEffective = Math.min(MAX_EFFECTIVE_ROLLS_PER_BATCH, remaining);
+  while (remainingActivations > 0) {
+    const chunkActivations = Math.min(remainingActivations, maxActivationsPerChunk);
+    const chunkEffective = chunkActivations * ballsPerActivation;
     const plan = createRollBatchPlan(chunkEffective, 0, true, MAX_SIMULATED_ROLLS_PER_REQUEST);
     assert.ok(plan.simulatedBaseCount <= MAX_SIMULATED_ROLLS_PER_REQUEST);
     let chunkProcessed = 0;
@@ -54,12 +58,12 @@ test('300 million effective Orbs fit into thirty bounded online chunks', () => {
     processed += chunkProcessed;
     simulatedSamples += plan.simulatedBaseCount;
     chunks += 1;
-    remaining -= chunkEffective;
+    remainingActivations -= chunkActivations;
   }
 
-  assert.equal(chunks, 30);
+  assert.equal(chunks, 31); // 30 full 9,999,900-Orb chunks plus the final remainder.
   assert.equal(processed, totalEffective);
-  assert.ok(simulatedSamples <= 30 * MAX_SIMULATED_ROLLS_PER_REQUEST);
+  assert.ok(simulatedSamples <= 31 * MAX_SIMULATED_ROLLS_PER_REQUEST);
 });
 
 
