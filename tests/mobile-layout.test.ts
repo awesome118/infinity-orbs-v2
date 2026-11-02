@@ -185,3 +185,12 @@ test('mobile Gear inventory exposes a direct Equip button on every item', () => 
   assert.ok(css.includes('min-height: 46px;'));
   assert.ok(css.includes('touch-action: manipulation;'));
 });
+
+test('mobile Global Chat panel sits above the bottom navigation', () => {
+  const component = read('src/client/components/GlobalChatWindow.tsx');
+  const css = read('src/client/mobile-experience.css');
+
+  assert.ok(component.includes('className="io-chat-window fixed bottom-4 right-4'));
+  assert.ok(css.includes('.io-ui .io-chat-window {'));
+  assert.ok(css.includes('bottom: calc(88px + env(safe-area-inset-bottom,0px)) !important;'));
+});
