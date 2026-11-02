@@ -112,6 +112,7 @@ function queueCombatOrbFocusSync(rarity: number, name?: string): void {
 }
 import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest, recordUpgradeBatchDiagnostic } from './server-monitor.js';
+import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
@@ -764,21 +765,46 @@ export function createApp() {
     }
   });
 
-  // One-time production recovery for the Redis quota lockout. Devvit invokes
-  // this lifecycle endpoint when an installed subreddit moves to a new app version.
-  // Keep the target version fixed: later upgrades must not repeatedly erase diagnostics.
+  // Keep the completed v2.2.6 recovery path for historical traceability.
+  // The v2.2.8 production upgrade performs a strictly read-only storage audit.
   const EMERGENCY_LOG_CLEANUP_VERSION = '2.2.6';
+  const REDIS_STORAGE_AUDIT_VERSION = '2.2.8';
   app.post('/internal/on-app-upgrade', async (_req, res) => {
     const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
-    if (APP_VERSION !== EMERGENCY_LOG_CLEANUP_VERSION || subredditName !== 'infinityorbs') {
+    if (subredditName !== 'infinityorbs') {
+      return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
+    }
+    if (APP_VERSION === EMERGENCY_LOG_CLEANUP_VERSION) {
+      try {
+        const result = await clearAllDiagnosticLogs();
+        console.warn('[Redis Recovery] Deleted diagnostic logs during the one-time production app upgrade:', result);
+        return res.status(200).json({ status: 'success', ...result });
+      } catch (error) {
+        console.error('[Redis Recovery] Diagnostic cleanup during app upgrade failed:', error);
+        return res.status(200).json({
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (APP_VERSION !== REDIS_STORAGE_AUDIT_VERSION) {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
     }
     try {
-      const result = await clearAllDiagnosticLogs();
-      console.warn('[Redis Recovery] Deleted diagnostic logs during the one-time production app upgrade:', result);
-      return res.status(200).json({ status: 'success', ...result });
+      const report = await auditKnownRedisStorage(redis);
+      // One labelled JSON line keeps the report easy to capture from Codespaces.
+      console.warn('[Redis Storage Audit] READ ONLY REPORT ' + JSON.stringify(report));
+      return res.status(200).json({
+        status: 'audited',
+        generatedAt: report.generatedAt,
+        indexedPlayersAudited: report.indexedPlayersAudited,
+        indexedPlayersTotal: report.indexedPlayersTotal,
+        knownIndexedPayloadBytes: report.knownIndexedPayloadBytes,
+        groups: report.groups,
+        errors: report.errors,
+      });
     } catch (error) {
-      console.error('[Redis Recovery] Diagnostic cleanup during app upgrade failed:', error);
+      console.error('[Redis Storage Audit] Read-only audit failed during app upgrade:', error);
       return res.status(200).json({
         status: 'error',
         message: error instanceof Error ? error.message : String(error),
