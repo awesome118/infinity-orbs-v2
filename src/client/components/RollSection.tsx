@@ -47,8 +47,8 @@ interface RollSectionProps {
   readyAt: number;
   busy: boolean;
   autoRoll: boolean;
-  onBuyUpgrade: (id: UpgradeId) => Promise<void>;
-  onBuyAllUpgrades: () => Promise<void>;
+  onBuyUpgrade: (id: UpgradeId) => Promise<boolean>;
+  onBuyAllUpgrades: () => Promise<boolean>;
   onOpenUpgrades: () => void;
   onToggleAutoRoll: () => void;
   onRoll: () => Promise<void>;

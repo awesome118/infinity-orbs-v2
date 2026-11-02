@@ -1,6 +1,6 @@
 name: Deploy Devvit
 
-# v2.2.14 fixes optimistic upgrade rollback and waits for server-confirmed purchases.
+# v2.2.14 fixes optimistic upgrade rollback, waits for server-confirmed purchases, and types quick-upgrade callbacks to match.
 
 # Explicit user-requested responsive, fullscreen and immediate-dispatch overhaul (2026-11-01): deploy v2.1.49 to r/infinity_orbs_dev only.
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
