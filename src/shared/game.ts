@@ -2579,6 +2579,29 @@ export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = 
   return Math.min(TIME_ENERGY_MAX_MS, Math.floor(currentCooldownMs * level * 0.01));
 }
 
+/**
+ * Add completed eligible activations to the player's Time Energy bank.
+ * Callers pass the cooldown-derived amount captured before the reward batch,
+ * so leveling or other roll side effects cannot change the rate mid-claim.
+ */
+export function grantCooldownReclaimerTimeEnergy(
+  s: PlayerState,
+  activations: number,
+  energyPerActivationMs = cooldownReclaimerEnergyPerActivationMs(s),
+): number {
+  const safeActivations = Number.isSafeInteger(activations) && activations > 0 ? activations : 0;
+  const safeEnergyPerActivation = Number.isSafeInteger(energyPerActivationMs) && energyPerActivationMs > 0
+    ? Math.min(TIME_ENERGY_MAX_MS, energyPerActivationMs)
+    : 0;
+  const rawCurrent = Number(s.timeEnergy ?? 0);
+  const currentEnergy = Number.isSafeInteger(rawCurrent) && rawCurrent >= 0
+    ? Math.min(TIME_ENERGY_MAX_MS, rawCurrent)
+    : 0;
+  const earned = safeEnergyPerActivation * safeActivations;
+  s.timeEnergy = Math.min(TIME_ENERGY_MAX_MS, currentEnergy + earned);
+  return s.timeEnergy - currentEnergy;
+}
+
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
 export function rollsPerActivation(s: PlayerState): number {
   let balls = 1;
