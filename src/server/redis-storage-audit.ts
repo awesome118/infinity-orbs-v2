@@ -635,11 +635,6 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     ['Follow prompt records', 'io:follow-prompt-reward:v1:' + userId],
     ['Temporary player state', 'io:fake-ccu:' + userId],
     ['Temporary player state', 'infinity-orbs:first-roll-tutorial:' + userId],
-    ['Temporary player state', 'io:frenzy:handoff:' + userId],
-    ['Temporary player state', 'io:frenzy:claim-progress:' + encodeURIComponent(userId)],
-    ['Temporary player state', 'io:feedback-cooldown:' + userId],
-    ['Temporary player state', 'io:chat-cooldown:global:' + userId],
-    ['Temporary player state', 'io:chat-cooldown:report:' + userId],
   ] as const);
   const perPlayerValues = await safeMGet(perPlayerKeys.map(item => item[1]));
   for (let i = 0; i < perPlayerKeys.length; i += 1) add(perPlayerKeys[i][0], perPlayerKeys[i][1], perPlayerValues[i]);
