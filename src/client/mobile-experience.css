@@ -2213,3 +2213,158 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
     display: none !important;
   }
 }
+
+
+/* Mobile Combat uses a fixed bottom dock. Four core destinations stay visible;
+   the remaining three live in an upward-opening More menu. */
+@media (max-width: 760px) {
+  .io-ui .app-main.io-app-main-combat {
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .io-ui .app-nav.io-nav-combat {
+    position: fixed !important;
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 100;
+    width: 100% !important;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 1px solid var(--io-line-bright);
+    background: rgba(12, 19, 31, .96);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, .24);
+    backdrop-filter: blur(16px);
+  }
+
+  .io-ui .app-nav.io-nav-combat .nav-shell {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 58px !important;
+    align-items: stretch;
+    flex-direction: row !important;
+    gap: 6px;
+    width: 100%;
+    max-width: none;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-list {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    gap: 3px;
+    padding: 0;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-list > .io-nav-combat-overflow {
+    display: none !important;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-list > .io-nav-item {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 56px;
+    gap: 3px;
+    padding: 5px 2px;
+    border-radius: 11px;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-list > .io-nav-item .io-nav-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-list > .io-nav-item .io-nav-label {
+    font-size: 9px;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-trailing {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    width: auto;
+    min-width: 0;
+    flex: 0 0 58px;
+    margin: 0;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-mobile-more {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-more {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 56px;
+    gap: 3px;
+    padding: 5px 2px;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-more .io-nav-label {
+    font-size: 9px;
+    line-height: 1.1;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-more .io-nav-current-page {
+    display: none;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-more .io-nav-chevron {
+    width: 14px;
+    height: 14px;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-menu {
+    top: auto !important;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: min(260px, calc(100vw - 16px));
+    max-height: min(70dvh, 520px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-menu .nav-tab {
+    width: 100%;
+    min-height: 44px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-menu .nav-tab .io-nav-label {
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  .io-ui .io-nav-combat .io-nav-combat-desktop-return {
+    display: none !important;
+  }
+}
+
+@media (min-width: 761px) {
+  .io-ui .io-nav-combat .io-nav-combat-mobile-more {
+    display: none !important;
+  }
+}
