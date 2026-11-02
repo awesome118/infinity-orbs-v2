@@ -336,7 +336,7 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   }
 
   return (
-    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
+    <section role="dialog" aria-modal={false} aria-label="Global Chat" className="io-chat-window fixed bottom-4 right-4 z-40 w-[min(380px,calc(100vw-2rem))] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur-xl overflow-hidden">
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/95 px-4 py-3">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-indigo-300" />
