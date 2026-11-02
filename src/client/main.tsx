@@ -66,6 +66,7 @@ import {
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_OWNER_SHARD_REWARD,
   rollsPerActivation,
+  timeEnergyActivationsAvailable,
   upgradeCost,
   upgradeUnlockLevel,
   prestigeUpgradeCost,
@@ -295,6 +296,7 @@ async function getJsonWithTimeout<T>(url: string, timeoutMs = 10_000, options?: 
 
 export const FRENZY_CALCULATING_DELAY_MS = 650;
 const FRENZY_CALCULATING_MIN_VISIBLE_MS = 420;
+const TIME_ENERGY_CALCULATING_MIN_ORBS = 5_000;
 
 function App() {
   const [webViewMode, setWebViewMode] = useState<'inline' | 'expanded'>(() => {
@@ -672,6 +674,8 @@ function App() {
   const [newBestModalData, setNewBestModalData] = useState<{ orb: Orb; prevBest: number } | null>(null);
   const [frenzyRunTriggered, setFrenzyRunTriggered] = useState(false);
   const [showFrenzyCalculating, setShowFrenzyCalculating] = useState(false);
+  const [showTimeEnergyCalculating, setShowTimeEnergyCalculating] = useState(false);
+  const [timeEnergyCalculatingCounts, setTimeEnergyCalculatingCounts] = useState<{ activations: number; orbs: number } | null>(null);
   const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
     active: false, processed: 0, total: 0, percent: 0,
   });
@@ -1950,8 +1954,45 @@ function App() {
 
     rollActionLockRef.current = true;
     let frenzySubmissionInFlight = false;
+    let timeEnergyCalculatingTimeout: number | null = null;
+    let timeEnergyCalculatingShownAt = 0;
     setIsRolling(true);
     if (!frenzyArmed) sound.playRollNormal();
+
+    const timeEnergyActivations = useTimeEnergy
+      ? timeEnergyActivationsAvailable(currentState.timeEnergy ?? 0, cooldownMs(currentState, false))
+      : 0;
+    const timeEnergyOrbs = timeEnergyActivations * Math.max(1, rollsPerActivation(currentState));
+    const shouldAnimateTimeEnergy = useTimeEnergy &&
+      Number.isFinite(timeEnergyOrbs) &&
+      timeEnergyOrbs >= TIME_ENERGY_CALCULATING_MIN_ORBS &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (shouldAnimateTimeEnergy) {
+      setTimeEnergyCalculatingCounts({ activations: timeEnergyActivations, orbs: timeEnergyOrbs });
+      timeEnergyCalculatingTimeout = window.setTimeout(() => {
+        timeEnergyCalculatingTimeout = null;
+        timeEnergyCalculatingShownAt = Date.now();
+        if (componentMountedRef.current) setShowTimeEnergyCalculating(true);
+      }, FRENZY_CALCULATING_DELAY_MS);
+    }
+
+    const finishTimeEnergyCalculating = async () => {
+      if (timeEnergyCalculatingTimeout !== null) {
+        window.clearTimeout(timeEnergyCalculatingTimeout);
+        timeEnergyCalculatingTimeout = null;
+      }
+      if (timeEnergyCalculatingShownAt > 0) {
+        const remainingVisibleMs = FRENZY_CALCULATING_MIN_VISIBLE_MS - (Date.now() - timeEnergyCalculatingShownAt);
+        if (remainingVisibleMs > 0) {
+          await new Promise(resolve => window.setTimeout(resolve, remainingVisibleMs));
+        }
+        timeEnergyCalculatingShownAt = 0;
+      }
+      if (componentMountedRef.current) {
+        setShowTimeEnergyCalculating(false);
+        setTimeEnergyCalculatingCounts(null);
+      }
+    };
 
     try {
       if (!isAutoRoll && !useTimeEnergy && frenzyArmed) {
@@ -2113,6 +2154,7 @@ function App() {
         showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
       }
     } finally {
+      await finishTimeEnergyCalculating();
       setIsRolling(false);
       rollActionLockRef.current = false;
     }
@@ -4229,6 +4271,43 @@ function App() {
               >
                 Not now
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showTimeEnergyCalculating && timeEnergyCalculatingCounts && (
+        <div className="fixed inset-0 z-[90] io-modal-backdrop io-frenzy-calculating-backdrop flex items-center justify-center p-4" data-testid="time-energy-calculating-backdrop">
+          <section
+            className="io-modal-card io-frenzy-calculating-card w-full max-w-md bg-slate-950/95"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="time-energy-calculating-title"
+            aria-describedby="time-energy-calculating-description"
+          >
+            <div className="io-frenzy-calculating-kicker"><Zap className="w-4 h-4" /> TIME ENERGY COMPRESSION</div>
+            <div className="io-frenzy-calculating-stage" aria-hidden="true">
+              <div className="io-frenzy-calculating-aura" />
+              {Array.from({ length: 12 }, (_, index) => (
+                <span className="io-frenzy-calculating-orb" key={index} />
+              ))}
+              <div className="io-frenzy-calculating-core"><span>∞</span></div>
+            </div>
+            <h2 id="time-energy-calculating-title" className="io-frenzy-calculating-title">Compressing Time Energy</h2>
+            <p id="time-energy-calculating-description" className="io-frenzy-calculating-copy">
+              Resolving {formatNumber(timeEnergyCalculatingCounts.activations)} instant activations as weighted roll batches.
+            </p>
+            <div className="io-frenzy-progress-wrap">
+              <div className="io-frenzy-progress-meta">
+                <span>{formatNumber(timeEnergyCalculatingCounts.orbs)} ORBS IN THIS BURST</span>
+                <strong>COMPRESSING</strong>
+              </div>
+              <div className="io-frenzy-progress-track" role="progressbar" aria-label="Time Energy compression in progress">
+                <span className="io-time-energy-progress-indeterminate" />
+              </div>
+            </div>
+            <div className="io-frenzy-calculating-status" role="status" aria-live="polite">
+              <span className="io-frenzy-calculating-status-dot" /> Processing compressed roll batches
             </div>
           </section>
         </div>
