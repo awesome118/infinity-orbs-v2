@@ -148,19 +148,19 @@ test('emergency diagnostic cleanup uses quota-safe DEL and never deletes player 
   for (const fn of ['clearPaymentDebugLogs', 'clearGlobalBoosterDebugLogs', 'clearGlobalBoosterActivationLog']) {
     const start = game.indexOf('export async function ' + fn);
     assert.ok(start >= 0, fn + ' exists');
-    const next = game.indexOf('\\nexport ', start + 1);
+    const next = game.indexOf('\nexport ', start + 1);
     const body = game.slice(start, next >= 0 ? next : game.length);
-    assert.match(body, /redis\\.del\\(/, fn + ' uses DEL');
-    assert.doesNotMatch(body, /redis\\.set\\(/, fn + ' does not use quota-gated SET');
+    assert.match(body, /redis\.del\(/, fn + ' uses DEL');
+    assert.doesNotMatch(body, /redis\.set\(/, fn + ' does not use quota-gated SET');
   }
   assert.match(game, /export async function clearAllDiagnosticLogs/);
-  assert.match(game, /redis\\.hKeys\\(PLAYER_REGISTRY_KEY\\)/);
-  assert.match(game, /redis\\.del\\(playerSpyKey\\(userId\\)\\)/);
+  assert.match(game, /redis\.hKeys\(PLAYER_REGISTRY_KEY\)/);
+  assert.match(game, /redis\.del\(playerSpyKey\(userId\)\)/);
   const clearAllStart = game.indexOf('export async function clearAllDiagnosticLogs');
-  const clearAllEnd = game.indexOf('\\nexport ', clearAllStart + 1);
+  const clearAllEnd = game.indexOf('\nexport ', clearAllStart + 1);
   const clearAllBody = game.slice(clearAllStart, clearAllEnd >= 0 ? clearAllEnd : game.length);
   assert.doesNotMatch(clearAllBody, /playerKeyFor|playerSaveChunkKey|codexShardKey|combatKey/i);
-  assert.match(debug, /debugRouter\\.post\\('\\/diagnostic-logs\\/clear-all'/);
+  assert.match(debug, /debugRouter\.post\('\/diagnostic-logs\/clear-all'/);
   assert.match(ui, /Clear All Diagnostic Logs/);
   assert.match(ui, /Player saves, combat saves, Codex, leaderboards, and player progression/);
 });
