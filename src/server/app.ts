@@ -771,7 +771,7 @@ export function createApp() {
     if (subredditName !== 'infinityorbs') {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
     }
-    if (APP_VERSION !== REDIS_STORAGE_AUDIT_VERSION) {
+    if (String(APP_VERSION) !== REDIS_STORAGE_AUDIT_VERSION) {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
     }
     try {
