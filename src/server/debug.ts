@@ -108,6 +108,7 @@ import {
 import { recordLeaderboard } from './social.js';
 import { getImpressionDashboard } from './impressions.js';
 import { estimateKnownRedisStorage, getServerMonitorSnapshot } from './server-monitor.js';
+import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import { APP_VERSION } from '../shared/version.js';
 
 const DEBUG_USERS = new Set([
@@ -151,6 +152,16 @@ debugRouter.get('/server-monitor/storage', async (_req, res) => {
     res.json(await estimateKnownRedisStorage(redis));
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Could not estimate Redis storage usage.' });
+  }
+});
+
+debugRouter.get('/server-monitor/storage/audit', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  try {
+    res.json(await auditKnownRedisStorage(redis));
+  } catch (error) {
+    console.error('[Redis Storage Audit] Read-only audit failed:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not audit Redis storage.' });
   }
 });
 
