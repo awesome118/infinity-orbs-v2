@@ -166,8 +166,30 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   }
 
   const allUserIds = Object.keys(registry);
-  const userIds = allUserIds.slice(0, MAX_AUDIT_USERS);
-  const truncatedUsers = Math.max(0, allUserIds.length - userIds.length);
+  let legacyLeaderboardRaw: unknown = null;
+  const legacyLeaderboardIds: string[] = [];
+  try {
+    legacyLeaderboardRaw = await redisClient.get('io:leaderboard');
+    if (typeof legacyLeaderboardRaw === 'string' && !legacyLeaderboardRaw.startsWith('{"__ioLargeValueManifest":1')) {
+      const legacyEntries = JSON.parse(legacyLeaderboardRaw) as unknown;
+      if (Array.isArray(legacyEntries)) {
+        for (const entry of legacyEntries) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+          const userId = String((entry as Record<string, unknown>).userId ?? '').trim();
+          if (userId && !legacyLeaderboardIds.includes(userId)) legacyLeaderboardIds.push(userId);
+        }
+      }
+    }
+  } catch (error) {
+    errors.push('Legacy leaderboard index read/parse failed: ' + String(error));
+  }
+  legacyLeaderboardPlayerIds = legacyLeaderboardIds.length;
+  legacyLeaderboardIdsMissingRegistry = legacyLeaderboardIds.filter(userId =>
+    !Object.prototype.hasOwnProperty.call(registry, userId),
+  ).length;
+  const allIndexedUserIds = Array.from(new Set([...allUserIds, ...legacyLeaderboardIds]));
+  const userIds = allIndexedUserIds.slice(0, MAX_AUDIT_USERS);
+  const truncatedUsers = Math.max(0, allIndexedUserIds.length - userIds.length);
   const playerKeys = userIds.map(id => 'player:' + id);
   const combatKeys = userIds.map(id => 'infinity-orbs:combat:' + id);
   const generationKeys = userIds.map(id => 'player-generation:' + id);
