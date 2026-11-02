@@ -70,6 +70,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   const groups = new Map<string, StorageGroup>();
   const largest: Array<{ family: string; bytes: number; keyBytes: number; valueBytes: number }> = [];
   const errors: string[] = [];
+  const now = Date.now();
   let missingPlayerChunks = 0;
   let playerChunkPayloadBytesEstimated = 0;
   let playerChunkPayloadBytesRead = 0;
@@ -358,7 +359,6 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     ANALYTICS_PREFIX + 'conversion-count:main-game-post',
   ];
   const analyticsTimeKeys: string[] = [];
-  const now = Date.now();
   const hour = Math.floor(now / 3_600_000);
   const day = Math.floor(now / 86_400_000);
   for (let n = 0; n <= 25; n += 1) for (const type of ['main-game', 'orb-share', 'frenzy']) analyticsTimeKeys.push(ANALYTICS_PREFIX + 'hour:' + (hour - n) + ':' + type);
