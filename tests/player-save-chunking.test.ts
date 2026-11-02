@@ -139,3 +139,24 @@ test('retired player-save chunks use short metadata-only expiry instead of rewri
   assert.doesNotMatch(game, /redis\.set\(keyName, chunk, \{ expiration \}\)/);
   assert.doesNotMatch(game, /const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 \* 60_000/);
 });
+
+
+test('emergency diagnostic cleanup uses quota-safe DEL and never deletes player saves', () => {
+  const game = source('src/server/game.ts');
+  const debug = source('src/server/debug.ts');
+  const ui = source('src/client/components/DevDebugModal.tsx');
+  for (const fn of ['clearPaymentDebugLogs', 'clearGlobalBoosterDebugLogs', 'clearGlobalBoosterActivationLog']) {
+    const start = game.indexOf('export async function ' + fn);
+    assert.ok(start >= 0, fn + ' exists');
+    const body = game.slice(start, game.indexOf('\\n}', start) + 2);
+    assert.match(body, /redis\\.del\\(/, fn + ' uses DEL');
+    assert.doesNotMatch(body, /redis\\.set\\(/, fn + ' does not use quota-gated SET');
+  }
+  assert.match(game, /export async function clearAllDiagnosticLogs/);
+  assert.match(game, /redis\\.hKeys\\(PLAYER_REGISTRY_KEY\\)/);
+  assert.match(game, /redis\\.del\\(playerSpyKey\\(userId\\)\\)/);
+  assert.match(game, /PLAYER_SAVE_CHUNK_PREFIX/);
+  assert.match(debug, /debugRouter\\.post\\('\\/diagnostic-logs\\/clear-all'/);
+  assert.match(ui, /Clear All Diagnostic Logs/);
+  assert.match(ui, /Player saves, combat saves, Codex, leaderboards, and player progression/);
+});
