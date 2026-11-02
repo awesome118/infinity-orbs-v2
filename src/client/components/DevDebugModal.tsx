@@ -5491,6 +5491,21 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            title="Set your Time Energy bank to its full one-million-second test capacity."
+            onClick={() => void sendAdminAction(
+              '/api/dev/time-energy/grant-test',
+              {},
+              true,
+              'Time Energy set to 1,000,000 seconds.',
+            )}
+            disabled={loading}
+            className={`${buttonBase} mt-2 w-full bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-400/30 text-cyan-200 px-3 py-2.5`}
+          >
+            <Zap className="inline w-3.5 h-3.5 mr-1.5" /> Set Time Energy to 1,000,000 Seconds
+          </button>
+          <p className="text-[10px] text-slate-500">Fills your bank to its cap. Only the trusted admin account can use this test control.</p>
         </section>
           </div>
         </details>
