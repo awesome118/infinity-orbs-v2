@@ -769,7 +769,7 @@ export function createApp() {
   // Keep the target version fixed: later upgrades must not repeatedly erase diagnostics.
   const EMERGENCY_LOG_CLEANUP_VERSION = '2.2.6';
   app.post('/internal/on-app-upgrade', async (_req, res) => {
-    const subredditName = String(context.subredditName ?? '').trim().replace(/^r\\//i, '').toLowerCase();
+    const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
     if (APP_VERSION !== EMERGENCY_LOG_CLEANUP_VERSION || subredditName !== 'infinityorbs') {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
     }
