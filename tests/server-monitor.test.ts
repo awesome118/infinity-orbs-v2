@@ -198,6 +198,7 @@ test('read-only Redis audit reports indexed saves, combat, shared keys, and byte
     hGetAll: async (key: string) => key === 'io:player-registry'
       ? { [userId]: JSON.stringify({ username: 'AuditFixture' }) }
       : {},
+    get: async (key: string) => values[key] ?? null,
     mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
     zCard: async (_key: string) => 4,
   };
@@ -227,6 +228,7 @@ test('read-only Redis audit inspects registered players beyond the former 100-pl
   }
   const fakeRedis = {
     hGetAll: async (key: string) => key === 'io:player-registry' ? registry : {},
+    get: async (key: string) => values[key] ?? null,
     mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
     zCard: async () => 0,
   };
@@ -264,6 +266,7 @@ test('read-only Redis audit estimates impression marker counts and payload bytes
       if (key === 'io:impressions:unique-v2:viewer-index') return viewerIndex;
       return {};
     },
+    get: async (key: string) => viewerRows[key] ?? null,
     mGet: async (keys: string[]) => keys.map(key => viewerRows[key] ?? null),
     zCard: async () => 0,
   };
@@ -289,5 +292,63 @@ test('read-only Redis audit estimates impression marker counts and payload bytes
   assert.equal(report.impressionViewerMarkerEstimatedCount, 10);
   assert.ok(report.impressionSeenPostMarkerEstimatedBytes > 0);
   assert.ok(report.impressionViewerMarkerEstimatedBytes > report.impressionSeenPostMarkerEstimatedBytes);
+});
+
+test('read-only Redis audit discovers legacy-leaderboard-only player saves', async () => {
+  const legacyUserId = 'legacy-leaderboard-only-user';
+  const values: Record<string, string> = {
+    'io:leaderboard': JSON.stringify([{ userId: legacyUserId, username: 'LegacyAccount' }]),
+    ['player:' + legacyUserId]: JSON.stringify({ username: 'LegacyAccount', coins: 99 }),
+  };
+  const fakeRedis = {
+    get: async (key: string) => values[key] ?? null,
+    hGetAll: async (key: string) => key === 'io:player-registry' ? {} : {},
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+    zCard: async () => 0,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.indexedPlayersTotal, 0);
+  assert.equal(report.indexedPlayersIncludingLegacyLeaderboard, 1);
+  assert.equal(report.indexedPlayersAudited, 1);
+  assert.equal(report.legacyLeaderboardPlayerIds, 1);
+  assert.equal(report.legacyLeaderboardIdsMissingRegistry, 1);
+  assert.equal(report.groups.find(group => group.label === 'Player saves')?.keys, 1);
+});
+
+test('read-only Redis audit finds retired impression namespace and indexed Frenzy metadata', async () => {
+  const legacyPostId = 't3_legacyfrenzy123';
+  const hour = Math.floor(Date.now() / 3_600_000);
+  const day = Math.floor(Date.now() / 86_400_000);
+  const values: Record<string, string> = {
+    'io:impressions:total': '777',
+    ['io:impressions:post:frenzy:' + encodeURIComponent(legacyPostId)]: '12',
+    ['io:impressions:hour:' + hour + ':frenzy']: '3',
+    ['io:impressions:day:' + day + ':frenzy']: '4',
+    ['io:frenzy:post:' + legacyPostId]: JSON.stringify({ ownerId: 'owner', rarity: 12 }),
+    ['io:frenzy:claimers:v1:' + encodeURIComponent(legacyPostId)]: JSON.stringify({ count: 2, players: [] }),
+  };
+  const legacyPostIndex = {
+    ['frenzy:' + legacyPostId]: JSON.stringify({
+      postType: 'frenzy',
+      postId: legacyPostId,
+      lastSeenAt: Date.now(),
+    }),
+  };
+  const fakeRedis = {
+    get: async (key: string) => values[key] ?? null,
+    hGetAll: async (key: string) => key === 'io:impressions:post-index' ? legacyPostIndex : {},
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+    zCard: async () => 0,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.legacyImpressionPostIndexFields, 1);
+  assert.equal(report.legacyImpressionPostCountersPresent, 1);
+  assert.ok(report.legacyImpressionTimeBucketKeysPresent >= 2);
+  assert.ok(report.groups.some(group => group.label === 'Legacy impression analytics' && group.bytes > 0));
+  assert.equal(report.indexedPostMetadataKeysPresent, 2);
+  assert.ok(report.groups.some(group => group.label === 'Frenzy post records' && group.keys === 1));
+  assert.ok(report.groups.some(group => group.label === 'Frenzy claimer projections' && group.keys === 1));
 });
 
