@@ -2352,9 +2352,11 @@ function buildStandardUpgradeLimits(): Record<string, number> {
       continue;
     }
     let level = 0;
-    while (level < 256) {
-      const cost = upgradeCost(id, level);
-      if (!Number.isFinite(cost) || cost > Number.MAX_SAFE_INTEGER) break;
+    // Coin amounts intentionally support finite JS Numbers beyond the safe-integer
+    // range. That boundary limits consecutive integer precision, not the maximum
+    // spendable balance or purchase cost. Stop only when the cost overflows or
+    // an upgrade's own cap makes upgradeCost return Infinity.
+    while (Number.isFinite(upgradeCost(id, level))) {
       level += 1;
     }
     limits[id] = level;
