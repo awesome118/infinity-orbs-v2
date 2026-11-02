@@ -34,7 +34,7 @@ test('Guild parsing repairs only recoverable member metadata before strict valid
   assert.match(parser, /\(\(member as any\)\.userId == null \|\| typeof \(member as any\)\.userId === 'string'\)/);
 });
 
-test('legacy Guild contribution writer cannot create unsafe member counters', () => {
+test('Guild contribution writer preserves large Collection Value and bounds discrete counters', () => {
   const social = source('src/server/social.ts');
   const start = social.indexOf('export async function contribute(');
   const end = social.indexOf('export async function prepareGuildRollEffects(', start);
