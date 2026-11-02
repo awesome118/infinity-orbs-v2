@@ -166,15 +166,13 @@ test('emergency diagnostic cleanup uses quota-safe DEL and never deletes player 
 });
 
 
-test('quota recovery runs from the one-time production AppUpgrade trigger before UI access', () => {
+test('read-only Redis storage audit runs from the production AppUpgrade trigger', () => {
   const app = source('src/server/app.ts');
   const config = JSON.parse(source('devvit.json')) as { triggers?: Record<string, string> };
   assert.equal(config.triggers?.onAppUpgrade, '/internal/on-app-upgrade');
-  assert.match(app, /EMERGENCY_LOG_CLEANUP_VERSION = '2\.2\.6'/);
   assert.match(app, /app\.post\('\/internal\/on-app-upgrade'/);
-  assert.match(app, /APP_VERSION === EMERGENCY_LOG_CLEANUP_VERSION/);
   assert.ok(app.includes("REDIS_STORAGE_AUDIT_VERSION = '2.2.8'"));
   assert.ok(app.includes('await auditKnownRedisStorage(redis)'));
   assert.match(app, /subredditName !== 'infinityorbs'/);
-  assert.match(app, /await clearAllDiagnosticLogs\(\)/);
+  assert.doesNotMatch(app, /clearAllDiagnosticLogs/);
 });
