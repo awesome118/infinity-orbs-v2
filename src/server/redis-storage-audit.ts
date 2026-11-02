@@ -445,10 +445,51 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     analyticsTimeKeys.push(ANALYTICS_PREFIX + 'unique-today:' + (day - n));
   }
   for (const post of analyticsPostIndex) analyticsCounterKeys.push(ANALYTICS_PREFIX + 'post:' + post.postType + ':' + encodeURIComponent(post.postId));
-  const analyticsValues = await safeMGet([...analyticsCounterKeys, ...analyticsTimeKeys]);
+  const analyticsReadKeys = [...analyticsCounterKeys, ...analyticsTimeKeys];
+  const analyticsValues = await safeMGet(analyticsReadKeys);
   for (let i = 0; i < analyticsValues.length; i += 1) {
-    const key = [...analyticsCounterKeys, ...analyticsTimeKeys][i];
-    add('Impression analytics counters', key, analyticsValues[i]);
+    add('Impression analytics counters', analyticsReadKeys[i], analyticsValues[i]);
+  }
+
+  // The original analytics implementation used the broader io:impressions:
+  // namespace. It was superseded by unique-v2, but no migration or namespace
+  // purge was part of that change. Probe its known index, aggregate keys, and
+  // bounded recent buckets without attempting unsupported global key scans.
+  const legacyImpressionCounterKeys = [
+    LEGACY_IMPRESSIONS_PREFIX + 'total',
+    ...['main-game', 'orb-share', 'frenzy'].map(type => LEGACY_IMPRESSIONS_PREFIX + 'type:' + type),
+    ...['mobile', 'tablet', 'desktop', 'unknown'].map(device => LEGACY_IMPRESSIONS_PREFIX + 'device:' + device),
+    ...['main-game', 'orb-share', 'frenzy'].flatMap(type =>
+      ['mobile', 'tablet', 'desktop', 'unknown'].map(device =>
+        LEGACY_IMPRESSIONS_PREFIX + 'type-device:' + type + ':' + device,
+      ),
+    ),
+    ...legacyImpressionPosts.map(post =>
+      LEGACY_IMPRESSIONS_PREFIX + 'post:' + post.postType + ':' + encodeURIComponent(post.postId),
+    ),
+  ];
+  const legacyImpressionTimeKeys: string[] = [];
+  for (let n = 0; n < LEGACY_IMPRESSION_TIME_BUCKET_DAYS * 24; n += 1) {
+    for (const type of IMPRESSION_POST_TYPES) {
+      legacyImpressionTimeKeys.push(LEGACY_IMPRESSIONS_PREFIX + 'hour:' + (hour - n) + ':' + type);
+    }
+  }
+  for (let n = 0; n < LEGACY_IMPRESSION_TIME_BUCKET_DAYS; n += 1) {
+    for (const type of IMPRESSION_POST_TYPES) {
+      legacyImpressionTimeKeys.push(LEGACY_IMPRESSIONS_PREFIX + 'day:' + (day - n) + ':' + type);
+    }
+  }
+  const legacyImpressionReadKeys = [...legacyImpressionCounterKeys, ...legacyImpressionTimeKeys];
+  const legacyImpressionValues = await safeMGet(legacyImpressionReadKeys);
+  for (let i = 0; i < legacyImpressionValues.length; i += 1) {
+    const value = legacyImpressionValues[i];
+    if (value != null && i >= 20 && i < legacyImpressionCounterKeys.length) {
+      legacyImpressionPostCountersPresent += 1;
+    }
+    if (value != null && i >= legacyImpressionCounterKeys.length) {
+      legacyImpressionTimeBucketKeysPresent += 1;
+    }
+    add('Legacy impression analytics', legacyImpressionReadKeys[i], value);
   }
 
   const postIdByteStats = new Map<string, { bytes: number; count: number }>();
