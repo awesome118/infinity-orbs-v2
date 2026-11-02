@@ -171,7 +171,7 @@ test('read-only Redis storage audit runs from the production AppUpgrade trigger'
   const config = JSON.parse(source('devvit.json')) as { triggers?: Record<string, string> };
   assert.equal(config.triggers?.onAppUpgrade, '/internal/on-app-upgrade');
   assert.match(app, /app\.post\('\/internal\/on-app-upgrade'/);
-  assert.ok(app.includes("REDIS_STORAGE_AUDIT_VERSION = '2.2.11'"));
+  assert.ok(app.includes("REDIS_STORAGE_AUDIT_VERSION = '2.2.12'"));
   assert.ok(app.includes('await auditKnownRedisStorage(redis)'));
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.doesNotMatch(app, /clearAllDiagnosticLogs/);
