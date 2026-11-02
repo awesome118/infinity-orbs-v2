@@ -130,3 +130,12 @@ test('unbounded shared Guild JSON is stored through an atomic chunk manifest', (
   assert.match(game, /write\.key === 'io:guilds'/);
   assert.match(game, /extraWritePlans/);
 });
+
+
+test('retired player-save chunks use short metadata-only expiry instead of rewriting payloads', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /PLAYER_SAVE_RETIRED_CHUNK_TTL_SECONDS = 60/);
+  assert.match(game, /redis\\.expire\\(keyName, PLAYER_SAVE_RETIRED_CHUNK_TTL_SECONDS\\)/);
+  assert.doesNotMatch(game, /redis\\.set\\(keyName, chunk, \\{ expiration \\}\\)/);
+  assert.doesNotMatch(game, /const PLAYER_SAVE_RETIRED_CHUNK_TTL_MS = 10 \\* 60_000/);
+});
