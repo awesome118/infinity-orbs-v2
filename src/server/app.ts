@@ -41,6 +41,7 @@ import {
   postFrenzyThankYouComment,
   getOrbFrenzyInfo,
   getOrbFrenzyClaimProgress,
+  getTimeEnergyRollProgress,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
   startOrbFrenzy,
@@ -1368,10 +1369,11 @@ export function createApp() {
       const ticketId = typeof req.body?.ticketId === 'string' ? req.body.ticketId : '';
       const ticketIndex = req.body?.ticketIndex;
       const ticketSeed = typeof req.body?.ticketSeed === 'string' ? req.body.ticketSeed : '';
+      const progressAttemptId = typeof req.body?.progressAttemptId === 'string' ? req.body.progressAttemptId : undefined;
       if (!ticketId || !Number.isSafeInteger(ticketIndex) || !ticketSeed) {
         return res.status(400).json({ error: 'Roll request is missing its ticket. Refresh the game and try again.' });
       }
-      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true, ticketSeed);
+      const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true, ticketSeed, progressAttemptId);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
       res.json(result);
@@ -1663,6 +1665,12 @@ export function createApp() {
     res.set('Cache-Control', 'no-store');
     try { res.json(await getOrbFrenzyClaimProgress()); }
     catch (e) { badRequest(res, e, 'Could not load Frenzy progress.'); }
+  });
+
+  app.get('/api/time-energy/progress', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { res.json(await getTimeEnergyRollProgress()); }
+    catch (e) { badRequest(res, e, 'Could not load Time Energy progress.'); }
   });
 
   app.post('/api/frenzy/claim', async (req, res) => {
