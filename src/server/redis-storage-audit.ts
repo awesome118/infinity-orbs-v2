@@ -406,13 +406,95 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     add('Impression analytics counters', key, analyticsValues[i]);
   }
 
+  const postIdByteStats = new Map<string, { bytes: number; count: number }>();
+  let allIndexedPostIdBytes = 0;
+  let allIndexedPostIdCount = 0;
+  for (const post of analyticsPostIndex) {
+    const type = post.postType as (typeof IMPRESSION_POST_TYPES)[number];
+    if (!IMPRESSION_POST_TYPES.includes(type)) continue;
+    const encodedIdBytes = byteLength(encodeURIComponent(post.postId));
+    const stats = postIdByteStats.get(type) ?? { bytes: 0, count: 0 };
+    stats.bytes += encodedIdBytes;
+    stats.count += 1;
+    postIdByteStats.set(type, stats);
+    allIndexedPostIdBytes += encodedIdBytes;
+    allIndexedPostIdCount += 1;
+  }
+
   try {
     const viewerKeys = analyticsViewerHashes.map(hash => ANALYTICS_PREFIX + 'viewer:' + hash);
     const viewerValues = await safeMGet(viewerKeys);
-    for (let i = 0; i < viewerKeys.length; i += 1) add('Impression viewer records', viewerKeys[i], viewerValues[i]);
+    for (let i = 0; i < viewerKeys.length; i += 1) {
+      const raw = viewerValues[i];
+      add('Impression viewer records', viewerKeys[i], raw);
+      if (raw == null) {
+        impressionViewerRecordsMissing += 1;
+        continue;
+      }
+      if (typeof raw !== 'string') {
+        impressionViewerRecordsInvalid += 1;
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(raw) as { uniquePostViews?: unknown; byType?: unknown };
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          impressionViewerRecordsInvalid += 1;
+          continue;
+        }
+        const rawByType = parsed.byType && typeof parsed.byType === 'object' && !Array.isArray(parsed.byType)
+          ? parsed.byType as Record<string, unknown>
+          : {};
+        const byType = {
+          'main-game': auditCount(rawByType['main-game']),
+          'orb-share': auditCount(rawByType['orb-share']),
+          frenzy: auditCount(rawByType.frenzy),
+        };
+        const uniquePostViews = auditCount(parsed.uniquePostViews);
+        const byTypeTotal = IMPRESSION_POST_TYPES.reduce((total, type) => total + byType[type], 0);
+        impressionViewerRecordsParsed += 1;
+        impressionViewerUniquePostViews += uniquePostViews;
+        if (byTypeTotal !== uniquePostViews) impressionViewerCountMismatches += 1;
+        for (const type of IMPRESSION_POST_TYPES) {
+          impressionViewerUniquePostViewsByType[type] += byType[type];
+          if (byType[type] > 0) {
+            impressionSeenTypeMarkerEstimatedCount += 1;
+            impressionSeenTypeMarkerEstimatedBytes +=
+              byteLength(ANALYTICS_PREFIX + 'seen-type-user:' + type + ':') + 64 + 1;
+          }
+        }
+      } catch {
+        impressionViewerRecordsInvalid += 1;
+      }
+    }
   } catch (error) {
     errors.push('Impression viewer-record audit failed: ' + String(error));
   }
+
+  impressionSeenUserMarkerEstimatedCount = impressionViewerRecordsParsed;
+  impressionSeenPostMarkerEstimatedCount = IMPRESSION_POST_TYPES.reduce(
+    (total, type) => total + impressionViewerUniquePostViewsByType[type],
+    0,
+  );
+  for (const type of IMPRESSION_POST_TYPES) {
+    const markerCount = impressionViewerUniquePostViewsByType[type];
+    if (markerCount <= 0) continue;
+    const stats = postIdByteStats.get(type);
+    const averagePostIdBytes = stats?.count
+      ? stats.bytes / stats.count
+      : allIndexedPostIdCount > 0
+        ? allIndexedPostIdBytes / allIndexedPostIdCount
+        : 0;
+    const markerKeyBytes =
+      byteLength(ANALYTICS_PREFIX + 'seen-post-user:' + type + ':') +
+      Math.ceil(averagePostIdBytes) +
+      byteLength(':' + '0'.repeat(64));
+    impressionSeenPostMarkerEstimatedBytes += markerCount * (markerKeyBytes + 1);
+  }
+  const seenUserMarkerBytes = byteLength(ANALYTICS_PREFIX + 'seen-user:') + 64 + 1;
+  impressionViewerMarkerEstimatedBytes =
+    impressionSeenPostMarkerEstimatedBytes +
+    impressionViewerRecordsParsed * seenUserMarkerBytes +
+    impressionSeenTypeMarkerEstimatedBytes;
 
   const diagnosticSharedKeys = [
     'io:save-debug:v1', 'io:payment-debug-log:v1',
