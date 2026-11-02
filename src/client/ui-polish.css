@@ -935,6 +935,10 @@
   .io-frenzy-progress-track > span {
     transition: none !important;
   }
+  .io-time-energy-progress-indeterminate {
+    animation: none !important;
+    transform: translateX(0);
+  }
   .io-frenzy-calculating-card,
   .io-frenzy-calculating-aura,
   .io-frenzy-calculating-core,
