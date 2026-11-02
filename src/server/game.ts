@@ -6123,7 +6123,7 @@ export async function roll(
               progressOffset + Math.max(0, Math.floor(Number(chunkProcessed) || 0)),
             );
             const nowForProgress = Date.now();
-            if (absoluteProcessed >= timeEnergyProgressTotal || nowForProgress - lastTimeEnergyProgressWriteAt >= 100) {
+            if (absoluteProcessed >= timeEnergyProgressTotal || nowForProgress - lastTimeEnergyProgressWriteAt >= 250) {
               lastTimeEnergyProgressWriteAt = nowForProgress;
               await writeTimeEnergyRollProgress(
                 timeEnergyProgressUserId,
