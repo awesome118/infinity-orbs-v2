@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { auditKnownRedisStorage } from '../src/server/redis-storage-audit.js';
+
 import {
   beginServerRequest,
   estimateKnownRedisStorage,
@@ -176,4 +178,41 @@ test('storage estimate includes the payload represented by active chunked player
   assert.ok(playerSaves.bytes >= 256 * 1024);
   assert.equal(playerSaves.records, 5); // manifest plus four active chunks
   assert.match(estimate.note, /Retired chunk generations/);
+});
+
+
+test('read-only Redis audit reports indexed saves, combat, shared keys, and byte leaders', async () => {
+  const userId = 'redis-audit-fixture-user';
+  const values: Record<string, string> = {
+    ['player:' + userId]: JSON.stringify({
+      username: 'AuditFixture',
+      coins: 12345,
+      saveGeneration: 2,
+      collectionStorageVersion: 0,
+    }),
+    ['infinity-orbs:combat:' + userId]: JSON.stringify({ depth: 17, combatMarks: 9876 }),
+    'io:guilds': JSON.stringify([{ id: 'audit-guild', name: 'Audit Guild' }]),
+    'io:save-debug:v1': JSON.stringify([{ event: 'save-test' }]),
+  };
+  const fakeRedis = {
+    hGetAll: async (key: string) => key === 'io:player-registry'
+      ? { [userId]: JSON.stringify({ username: 'AuditFixture' }) }
+      : {},
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+    zCard: async (_key: string) => 4,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.indexedPlayersTotal, 1);
+  assert.equal(report.indexedPlayersAudited, 1);
+  assert.equal(report.playerAuditTruncated, false);
+  assert.equal(report.onlinePlayersCurrentCount, 4);
+  assert.ok(report.knownIndexedPayloadBytes > 0);
+  assert.ok(report.groups.some(group => group.label === 'Player saves' && group.keys === 1));
+  assert.ok(report.groups.some(group => group.label === 'Combat saves' && group.keys === 1));
+  assert.ok(report.groups.some(group => group.label === 'Guild data' && group.keys === 1));
+  assert.ok(report.groups.some(group => group.label === 'Diagnostic logs' && group.keys === 1));
+  assert.ok(report.largestKnownValues.length > 0);
+  assert.equal(report.platformReportedTotalAvailable, false);
+  assert.ok(report.limitations.some(item => /global key scanning/.test(item)));
 });
