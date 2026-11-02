@@ -13,6 +13,7 @@ import {
   grantCooldownReclaimerTimeEnergy,
   timeEnergyActivationsAvailable,
   TIME_ENERGY_MAX_MS,
+  TIME_ENERGY_MAX_ACTIVATIONS_PER_USE,
 } from '../src/shared/game.js';
 
 const NOW = 1_800_000_000_000;
@@ -75,7 +76,8 @@ test('Time Energy funds as many whole activations as the current cooldown can af
   assert.equal(timeEnergyActivationsAvailable(3_999, 2_000), 1);
   assert.equal(timeEnergyActivationsAvailable(1_999, 2_000), 0);
   assert.equal(timeEnergyActivationsAvailable(4_500, 2_000), 2);
-  assert.equal(timeEnergyActivationsAvailable(1_000_000_000, 300), 5_000);
+  assert.equal(timeEnergyActivationsAvailable(TIME_ENERGY_MAX_MS, 300), TIME_ENERGY_MAX_ACTIVATIONS_PER_USE);
+  assert.equal(TIME_ENERGY_MAX_ACTIVATIONS_PER_USE, 3_333_333);
   assert.equal(timeEnergyActivationsAvailable(-1, 2_000), 0);
   assert.equal(timeEnergyActivationsAvailable(4_000, 0), 0);
 });
@@ -141,4 +143,30 @@ test('Frenzy start and claim bank Time Energy without multiplying by Multiball',
   assert.match(frenzyClaim, /const frenzyRollsPerActivation = rollsPerActivation\(s\)/);
   assert.match(frenzyClaim, /Math\.floor\(count \/ Math\.max\(1, frenzyRollsPerActivation\)\)/);
   assert.match(frenzyClaim, /grantCooldownReclaimerTimeEnergy\(s, frenzyActivations, reclaimedPerActivation\)/);
+});
+
+test('large Time Energy spends use the same weighted roll-batch compression and show a Frenzy-style treatment', () => {
+  const server = source('src/server/game.ts');
+  const main = source('src/client/main.tsx');
+  const batching = source('src/shared/roll-batching.ts');
+
+  assert.match(server, /while \(remainingActivations > 0\)/);
+  assert.match(server, /MAX_EFFECTIVE_ROLLS_PER_BATCH - 2/);
+  assert.match(server, /createRollBatchPlan\(/);
+  assert.match(batching, /const weight = compress && remaining > sampleLimit/);
+  assert.match(main, /TIME_ENERGY_CALCULATING_MIN_ORBS = 5_000/);
+  assert.match(main, /data-testid="time-energy-calculating-backdrop"/);
+  assert.match(main, /Compressing Time Energy/);
+  assert.match(main, /timeEnergyActivationsAvailable\(currentState\.timeEnergy \?\? 0, cooldownMs\(currentState, false\)\)/);
+  assert.match(main, /await finishTimeEnergyCalculating\(\)/);
+});
+
+test('admin Time Energy test grant is restricted by the trusted admin router and fills the bank to one million seconds', () => {
+  const debug = source('src/server/debug.ts');
+  const ui = source('src/client/components/DevDebugModal.tsx');
+  assert.match(debug, /debugRouter\.post\('\/time-energy\/grant-test'/);
+  assert.match(debug, /s\.timeEnergy = TIME_ENERGY_MAX_MS/);
+  assert.match(debug, /grantedSeconds: TIME_ENERGY_MAX_MS \/ 1_000/);
+  assert.match(ui, /\/api\/dev\/time-energy\/grant-test/);
+  assert.match(ui, /Set Time Energy to 1,000,000 Seconds/);
 });
