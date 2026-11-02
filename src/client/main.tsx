@@ -676,6 +676,22 @@ function App() {
   const [showFrenzyCalculating, setShowFrenzyCalculating] = useState(false);
   const [showTimeEnergyCalculating, setShowTimeEnergyCalculating] = useState(false);
   const [timeEnergyCalculatingCounts, setTimeEnergyCalculatingCounts] = useState<{ activations: number; orbs: number } | null>(null);
+  const [timeEnergyProgress, setTimeEnergyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
+    active: false, processed: 0, total: 0, percent: 0,
+  });
+  const [timeEnergyDisplayedProcessed, setTimeEnergyDisplayedProcessed] = useState(0);
+  const timeEnergyProgressTotal = timeEnergyProgress.total > 0
+    ? timeEnergyProgress.total
+    : Math.max(0, timeEnergyCalculatingCounts?.orbs ?? 0);
+  const timeEnergyProgressCount = Math.min(
+    timeEnergyProgressTotal,
+    Math.max(timeEnergyProgress.processed, timeEnergyDisplayedProcessed),
+  );
+  const timeEnergyProgressPercent = timeEnergyProgress.percent >= 100
+    ? 100
+    : timeEnergyProgressTotal > 0
+      ? Math.min(95, (timeEnergyProgressCount / timeEnergyProgressTotal) * 95)
+      : timeEnergyProgress.percent;
   const [frenzyProgress, setFrenzyProgress] = useState<{ active: boolean; processed: number; total: number; percent: number }>({
     active: false, processed: 0, total: 0, percent: 0,
   });
@@ -1956,6 +1972,59 @@ function App() {
     let frenzySubmissionInFlight = false;
     let timeEnergyCalculatingTimeout: number | null = null;
     let timeEnergyCalculatingShownAt = 0;
+    let timeEnergyProgressInterval: number | null = null;
+    let timeEnergyProgressDisplayInterval: number | null = null;
+    let timeEnergyProgressPollInFlight = false;
+    let activeTimeEnergyProgressAttemptId: string | null = null;
+    let latestTimeEnergyProgress = { processed: 0, total: 0 };
+    let completedTimeEnergyRollCount: number | null = null;
+    const stopTimeEnergyProgressPolling = () => {
+      if (timeEnergyProgressInterval !== null) {
+        window.clearInterval(timeEnergyProgressInterval);
+        timeEnergyProgressInterval = null;
+      }
+      if (timeEnergyProgressDisplayInterval !== null) {
+        window.clearInterval(timeEnergyProgressDisplayInterval);
+        timeEnergyProgressDisplayInterval = null;
+      }
+      activeTimeEnergyProgressAttemptId = null;
+    };
+    const refreshTimeEnergyProgress = async () => {
+      if (!activeTimeEnergyProgressAttemptId || timeEnergyProgressPollInFlight) return;
+      const attemptId = activeTimeEnergyProgressAttemptId;
+      timeEnergyProgressPollInFlight = true;
+      try {
+        const progress = await getJson<{
+          attemptId: string | null;
+          updatedAt: number | null;
+          active: boolean;
+          processed: number;
+          total: number;
+          percent: number;
+          completed: boolean;
+        }>('/api/time-energy/progress', { cache: 'no-store' });
+        if (progress.attemptId !== attemptId || activeTimeEnergyProgressAttemptId !== attemptId) return;
+        if (componentMountedRef.current) {
+          const nextProcessed = Math.max(0, Math.floor(Number(progress.processed) || 0));
+          const nextTotal = Math.max(0, Math.floor(Number(progress.total) || 0));
+          latestTimeEnergyProgress = {
+            processed: Math.max(latestTimeEnergyProgress.processed, nextProcessed),
+            total: Math.max(latestTimeEnergyProgress.total, nextTotal),
+          };
+          setTimeEnergyDisplayedProcessed(current => Math.max(current, latestTimeEnergyProgress.processed));
+          setTimeEnergyProgress(current => ({
+            active: progress.active === true,
+            processed: Math.max(current.processed, nextProcessed),
+            total: Math.max(current.total, nextTotal),
+            percent: Math.max(current.percent, Math.max(0, Math.min(100, Number(progress.percent) || 0))),
+          }));
+        }
+      } catch {
+        // Progress is display-only; a polling failure must never cancel the roll.
+      } finally {
+        timeEnergyProgressPollInFlight = false;
+      }
+    };
     setIsRolling(true);
     if (!frenzyArmed) sound.playRollNormal();
 
@@ -1968,7 +2037,27 @@ function App() {
       timeEnergyOrbs >= TIME_ENERGY_CALCULATING_MIN_ORBS &&
       !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (shouldAnimateTimeEnergy) {
+      activeTimeEnergyProgressAttemptId = window.crypto?.randomUUID?.()
+        ?? `time-energy-${Date.now().toString(36)}-${Math.floor(window.performance.now() * 1000).toString(36)}`;
+      latestTimeEnergyProgress = { processed: 0, total: timeEnergyOrbs };
       setTimeEnergyCalculatingCounts({ activations: timeEnergyActivations, orbs: timeEnergyOrbs });
+      setTimeEnergyProgress({ active: true, processed: 0, total: timeEnergyOrbs, percent: 0 });
+      setTimeEnergyDisplayedProcessed(0);
+      void refreshTimeEnergyProgress();
+      timeEnergyProgressInterval = window.setInterval(() => { void refreshTimeEnergyProgress(); }, 250);
+      // Smooth the visible count between server snapshots without outrunning confirmed work.
+      timeEnergyProgressDisplayInterval = window.setInterval(() => {
+        const { processed, total } = latestTimeEnergyProgress;
+        if (total <= 0) return;
+        setTimeEnergyDisplayedProcessed(current => {
+          const base = Math.max(current, processed);
+          const ceiling = Math.min(total, processed + Math.max(500, Math.ceil(total * 0.01)));
+          if (base >= ceiling) return base;
+          const room = ceiling - base;
+          const step = 1 + Math.floor(Math.random() * Math.min(250, room));
+          return Math.min(ceiling, base + step);
+        });
+      }, 50);
       timeEnergyCalculatingTimeout = window.setTimeout(() => {
         timeEnergyCalculatingTimeout = null;
         timeEnergyCalculatingShownAt = Date.now();
@@ -1977,6 +2066,13 @@ function App() {
     }
 
     const finishTimeEnergyCalculating = async () => {
+      stopTimeEnergyProgressPolling();
+      if (shouldAnimateTimeEnergy && completedTimeEnergyRollCount !== null) {
+        const finalCount = Math.max(0, Math.floor(completedTimeEnergyRollCount));
+        latestTimeEnergyProgress = { processed: finalCount, total: finalCount };
+        setTimeEnergyDisplayedProcessed(finalCount);
+        setTimeEnergyProgress({ active: false, processed: finalCount, total: finalCount, percent: 100 });
+      }
       if (timeEnergyCalculatingTimeout !== null) {
         window.clearTimeout(timeEnergyCalculatingTimeout);
         timeEnergyCalculatingTimeout = null;
@@ -1991,6 +2087,8 @@ function App() {
       if (componentMountedRef.current) {
         setShowTimeEnergyCalculating(false);
         setTimeEnergyCalculatingCounts(null);
+        setTimeEnergyProgress({ active: false, processed: 0, total: 0, percent: 0 });
+        setTimeEnergyDisplayedProcessed(0);
       }
     };
 
@@ -2080,10 +2178,16 @@ function App() {
             Math.max(0, Math.floor(Number(stateForRoll.chainPatcherNextRarity ?? 0) || 0)) < 2 &&
             (stateForRoll.freeRolls ?? 0) > 0,
           useTimeEnergy,
+          ...(activeTimeEnergyProgressAttemptId
+            ? { progressAttemptId: activeTimeEnergyProgressAttemptId }
+            : {}),
         }),
       }));
 
       if (isAutoRoll) autoRollCooldownRetryUntilRef.current = 0;
+      if (useTimeEnergy && shouldAnimateTimeEnergy) {
+        completedTimeEnergyRollCount = Math.max(0, Math.floor(Number(res.rollsProcessed) || 0));
+      }
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
         setNewBestModalData({ orb: res.orb, prevBest: previousBest });
@@ -4299,11 +4403,23 @@ function App() {
             </p>
             <div className="io-frenzy-progress-wrap">
               <div className="io-frenzy-progress-meta">
-                <span>{formatNumber(timeEnergyCalculatingCounts.orbs)} ORBS IN THIS BURST</span>
-                <strong>COMPRESSING</strong>
+                <span>
+                  {timeEnergyProgressTotal > 0
+                    ? `${formatNumber(timeEnergyProgressCount)} / ${formatNumber(timeEnergyProgressTotal)} ORBS`
+                    : 'PREPARING ROLLS'}
+                </span>
+                <strong>{Math.round(Math.max(0, Math.min(100, timeEnergyProgressPercent)))}%</strong>
               </div>
-              <div className="io-frenzy-progress-track" role="progressbar" aria-label="Time Energy compression in progress">
-                <span className="io-time-energy-progress-indeterminate" />
+              <div
+                className="io-frenzy-progress-track"
+                role="progressbar"
+                aria-label="Time Energy roll progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.max(0, Math.min(100, timeEnergyProgressPercent)))}
+                aria-valuetext={`${formatNumber(timeEnergyProgressCount)} of ${formatNumber(timeEnergyProgressTotal)} Orbs processed`}
+              >
+                <span style={{ width: `${Math.max(0, Math.min(100, timeEnergyProgressPercent))}%` }} />
               </div>
             </div>
             <div className="io-frenzy-calculating-status" role="status" aria-live="polite">
