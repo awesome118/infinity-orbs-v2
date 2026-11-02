@@ -216,3 +216,78 @@ test('read-only Redis audit reports indexed saves, combat, shared keys, and byte
   assert.equal(report.platformReportedTotalAvailable, false);
   assert.ok(report.limitations.some(item => /global key scanning/.test(item)));
 });
+
+test('read-only Redis audit inspects registered players beyond the former 100-player sample', async () => {
+  const userIds = Array.from({ length: 120 }, (_, index) => 'redis-audit-user-' + String(index).padStart(3, '0'));
+  const registry = Object.fromEntries(userIds.map(userId => [userId, JSON.stringify({ username: userId })]));
+  const values: Record<string, string> = {};
+  for (const userId of userIds) {
+    values['player:' + userId] = JSON.stringify({ username: userId, saveGeneration: 1, collectionStorageVersion: 0 });
+    values['infinity-orbs:combat:' + userId] = JSON.stringify({ depth: 1 });
+  }
+  const fakeRedis = {
+    hGetAll: async (key: string) => key === 'io:player-registry' ? registry : {},
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+    zCard: async () => 0,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.indexedPlayersTotal, 120);
+  assert.equal(report.indexedPlayersAudited, 120);
+  assert.equal(report.playerAuditTruncated, false);
+  assert.equal(report.groups.find(group => group.label === 'Player saves')?.keys, 120);
+  assert.equal(report.groups.find(group => group.label === 'Combat saves')?.keys, 120);
+});
+
+test('read-only Redis audit estimates impression marker counts and payload bytes from viewer rows', async () => {
+  const viewerA = 'a'.repeat(64);
+  const viewerB = 'b'.repeat(64);
+  const postIndex = {
+    'main-game:t3_main': JSON.stringify({ postType: 'main-game', postId: 't3_main', lastSeenAt: 1 }),
+    'orb-share:t3_share': JSON.stringify({ postType: 'orb-share', postId: 't3_share', lastSeenAt: 1 }),
+    'frenzy:t3_frenzy': JSON.stringify({ postType: 'frenzy', postId: 't3_frenzy', lastSeenAt: 1 }),
+  };
+  const viewerIndex = { [viewerA]: '1', [viewerB]: '1' };
+  const viewerRows: Record<string, string> = {
+    ['io:impressions:unique-v2:viewer:' + viewerA]: JSON.stringify({
+      uniquePostViews: 3,
+      byType: { 'main-game': 2, 'orb-share': 1, frenzy: 0 },
+    }),
+    ['io:impressions:unique-v2:viewer:' + viewerB]: JSON.stringify({
+      uniquePostViews: 2,
+      byType: { 'main-game': 0, 'orb-share': 0, frenzy: 2 },
+    }),
+  };
+  const fakeRedis = {
+    hGetAll: async (key: string) => {
+      if (key === 'io:impressions:unique-v2:post-index') return postIndex;
+      if (key === 'io:impressions:unique-v2:viewer-index') return viewerIndex;
+      return {};
+    },
+    mGet: async (keys: string[]) => keys.map(key => viewerRows[key] ?? null),
+    zCard: async () => 0,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.impressionPostIndexFields, 3);
+  assert.equal(report.impressionViewerIndexFields, 2);
+  assert.equal(report.impressionViewerIndexConfiguredCap, 2_000);
+  assert.equal(report.impressionViewerIndexOverCap, 0);
+  assert.equal(report.impressionViewerRecordsParsed, 2);
+  assert.equal(report.impressionViewerRecordsMissing, 0);
+  assert.equal(report.impressionViewerRecordsInvalid, 0);
+  assert.equal(report.impressionViewerCountMismatches, 0);
+  assert.equal(report.impressionViewerUniquePostViews, 5);
+  assert.deepEqual(report.impressionViewerUniquePostViewsByType, {
+    'main-game': 2,
+    'orb-share': 1,
+    frenzy: 2,
+  });
+  assert.equal(report.impressionSeenPostMarkerEstimatedCount, 5);
+  assert.equal(report.impressionSeenUserMarkerEstimatedCount, 2);
+  assert.equal(report.impressionSeenTypeMarkerEstimatedCount, 3);
+  assert.equal(report.impressionViewerMarkerEstimatedCount, 10);
+  assert.ok(report.impressionSeenPostMarkerEstimatedBytes > 0);
+  assert.ok(report.impressionViewerMarkerEstimatedBytes > report.impressionSeenPostMarkerEstimatedBytes);
+});
+
