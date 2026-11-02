@@ -103,6 +103,7 @@ import {
   guildComboCritChanceBonus,
   guildComboCritLuckBonus,
   isPremiumBoosterActive,
+  TIME_ENERGY_MAX_MS,
   type PlayerState,
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
@@ -2195,6 +2196,23 @@ debugRouter.post('/currency', async (req, res) => {
     res.json({ ok: true, state: s });
         });} catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * Deliberate single-player test preset. The debug router is server-gated to
+ * u/shadow_fen, and the grant fills the bank to its normal one-million-second cap.
+ */
+debugRouter.post('/time-energy/grant-test', async (_req, res) => {
+  try {
+    await withPlayerMutationLock(async () => {
+      const s = await loadRaw();
+      s.timeEnergy = TIME_ENERGY_MAX_MS;
+      await save(s);
+      res.json({ ok: true, grantedSeconds: TIME_ENERGY_MAX_MS / 1_000, state: s });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Could not grant test Time Energy.' });
   }
 });
 
