@@ -6,6 +6,7 @@ name: Deploy Devvit
 # Emergency diagnostic cleanup uses quota-safe DEL and preserves player saves.
 # v2.2.12 keeps the read-only production Redis audit enabled; this workflow still installs dev only.
 # v2.2.12 preflight retry: corrected escaped regexes in the Redis storage and Guild schema regression tests.
+# v2.2.12 preflight retry: synchronize the existing AppUpgrade test with the updated audit version.
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
