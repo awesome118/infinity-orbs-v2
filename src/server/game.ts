@@ -5925,6 +5925,7 @@ export async function roll(
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.
     const cd = cooldownMs(s, isAuto);
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, isAuto);
     if (useTimeEnergy && (isAuto || usingChainPatcher)) {
       throw new Error('Time Energy can only power a manual, non-patched activation.');
     }
@@ -6006,8 +6007,8 @@ export async function roll(
 
     s.lastRollAt = now;
     s.lastSeenAt = now;
-    if (!usingTimeEnergy && !usingFreeRoll) {
-      const reclaimed = cooldownReclaimerEnergyPerActivationMs(s, isAuto) * activations;
+    if (!usingTimeEnergy && !usingFreeRoll && !usingChainPatcher) {
+      const reclaimed = reclaimedPerActivation * activations;
       s.timeEnergy = Math.min(TIME_ENERGY_MAX_MS, Math.max(0, (s.timeEnergy ?? 0) + reclaimed));
     }
 
