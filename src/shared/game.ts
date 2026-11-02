@@ -165,8 +165,12 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
 };
 
 export const TIME_ENERGY_MAX_MS = 1_000_000_000;
-/** Bound one spend burst like a large Free Roll batch. */
-export const TIME_ENERGY_MAX_ACTIVATIONS_PER_USE = 5_000;
+/**
+ * Let one spend consume the full bank even at the 300ms live cooldown floor.
+ * The server still divides large spends into bounded 500,000-Orb chunks, and
+ * each chunk uses the shared weighted-sample compression in applyRolls().
+ */
+export const TIME_ENERGY_MAX_ACTIVATIONS_PER_USE = Math.floor(TIME_ENERGY_MAX_MS / 300);
 
 /** Number of complete roll activations a Time Energy balance can currently fund. */
 export function timeEnergyActivationsAvailable(timeEnergyMs: number, cooldownMs: number): number {
