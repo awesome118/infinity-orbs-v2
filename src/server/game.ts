@@ -998,8 +998,8 @@ export async function clearGlobalBoosterActivationLog(): Promise<void> {
  * Player saves, combat saves, Codex shards, and progression are never touched.
  */
 export async function clearAllDiagnosticLogs(): Promise<{
-  sharedLogKeys: number;
-  playerSpyLogs: number;
+  sharedLogKeysDeleted: number;
+  playerSpyLogsDeleted: number;
 }> {
   const sharedLogKeys = [
     SAVE_DEBUG_LOG_KEY,
@@ -1007,18 +1007,23 @@ export async function clearAllDiagnosticLogs(): Promise<{
     GLOBAL_BOOSTER_DEBUG_LOG_KEY,
     GLOBAL_BOOSTER_ACTIVATION_LOG_KEY,
   ];
-  await Promise.all(sharedLogKeys.map(keyName => redis.del(keyName)));
+  const sharedDeleteResults = await Promise.all(sharedLogKeys.map(keyName => redis.del(keyName)));
+  let playerSpyLogsDeleted = 0;
 
   // Redis does not support global key scans. The player registry is our known
   // index for the per-user Player Spy log keys, so delete only those exact keys.
   const userIds = await redis.hKeys(PLAYER_REGISTRY_KEY);
   for (let offset = 0; offset < userIds.length; offset += 25) {
-    await Promise.all(
+    const deleteResults = await Promise.all(
       userIds.slice(offset, offset + 25).map(userId => redis.del(playerSpyKey(userId))),
     );
+    playerSpyLogsDeleted += deleteResults.filter(Boolean).length;
   }
 
-  return { sharedLogKeys: sharedLogKeys.length, playerSpyLogs: userIds.length };
+  return {
+    sharedLogKeysDeleted: sharedDeleteResults.filter(Boolean).length,
+    playerSpyLogsDeleted,
+  };
 }
 export interface DeveloperAnnouncement {
   message: string;
