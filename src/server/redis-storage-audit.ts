@@ -383,12 +383,14 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     ['Arena profiles', 'infinity-orbs:combat:arena:profiles'],
     ['Impression post index', ANALYTICS_PREFIX + 'post-index'],
     ['Impression viewer index', ANALYTICS_PREFIX + 'viewer-index'],
+    ['Legacy impression post index', LEGACY_IMPRESSIONS_PREFIX + 'post-index'],
   ] as const;
   const hashes = await Promise.all(hashKeys.map(async ([family, key]) => {
     try { return { family, key, value: await redisClient.hGetAll(key) }; }
     catch (error) { errors.push(family + ' read failed: ' + String(error)); return { family, key, value: {} }; }
   }));
   const analyticsPostIndex: Array<{ postType: string; postId: string }> = [];
+  const legacyImpressionPosts: Array<{ postType: string; postId: string }> = [];
   const analyticsViewerHashes: string[] = [];
   for (const item of hashes) {
     addHash(item.family, item.key, item.value);
@@ -405,8 +407,21 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     if (item.family === 'Impression viewer index') {
       analyticsViewerHashes.push(...Object.keys(item.value ?? {}).filter(hash => /^[a-f0-9]{64}$/.test(hash)));
     }
+    if (item.family === 'Legacy impression post index') {
+      for (const raw of Object.values(item.value ?? {})) {
+        try {
+          const parsed = JSON.parse(String(raw)) as { postType?: unknown; postId?: unknown };
+          const postType = String(parsed.postType ?? '');
+          const postId = String(parsed.postId ?? '').trim();
+          if (['main-game', 'orb-share', 'frenzy'].includes(postType) && postId) {
+            legacyImpressionPosts.push({ postType, postId });
+          }
+        } catch { /* malformed legacy index values are already counted in the hash payload */ }
+      }
+    }
   }
   analyticsPostIndexFields = analyticsPostIndex.length;
+  legacyImpressionPostIndexFields = legacyImpressionPosts.length;
   analyticsViewerIndexFields = analyticsViewerHashes.length;
 
   const analyticsCounterKeys = [
