@@ -34,7 +34,8 @@
   },
   "triggers": {
     "onAppInstall": "/internal/on-app-install",
-    "onCommentCreate": "/internal/trigger/comment-create"
+    "onCommentCreate": "/internal/trigger/comment-create",
+    "onAppUpgrade": "/internal/on-app-upgrade"
   },
   "scripts": {
     "dev": "vite build --watch",
