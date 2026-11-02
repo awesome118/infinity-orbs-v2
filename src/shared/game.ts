@@ -140,7 +140,7 @@ export const MASTERY_SKILLS: Record<MasterySkillId, MasterySkillInfo> = {
   },
   cooldownReclaimer: {
     name: 'Cooldown Reclaimer',
-    desc: 'Recover 10% of cooldown shaved below 300ms as Time Energy per level. Bank it to buy multiple instant activations at your current roll cooldown.',
+    desc: 'Gain 1% of your current roll cooldown as Time Energy per level with each normal roll activation. Bank it to buy instant activations at your current cooldown.',
     maxLevel: 10,
     costMultiplier: 2,
   },
@@ -2568,15 +2568,15 @@ export function cooldownMs(s: PlayerState, isAuto = false): number {
 }
 
 /**
- * Recover 10% of the total theoretical cooldown below the 300ms live floor
- * per Cooldown Reclaimer level. At level 10, all underflow is recovered.
+ * Earn 1% of the current live roll cooldown per Cooldown Reclaimer level
+ * for each eligible completed activation. This works at the 300ms floor too.
  */
 export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false): number {
   const level = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.cooldownReclaimer ?? 0) || 0)));
   if (level <= 0) return 0;
 
-  const underflowMs = Math.max(0, 300 - theoreticalCooldownMs(s, isAuto));
-  return Math.min(TIME_ENERGY_MAX_MS, Math.floor(underflowMs * level * 0.10));
+  const currentCooldownMs = cooldownMs(s, isAuto);
+  return Math.min(TIME_ENERGY_MAX_MS, Math.floor(currentCooldownMs * level * 0.01));
 }
 
 // Multi roll upgrade is strictly LINEAR (+1 ball per level), plus multiple sources of +1 ball!
