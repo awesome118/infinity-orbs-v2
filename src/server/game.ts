@@ -7838,11 +7838,16 @@ export async function claimOrbFrenzy(options: {
     throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
   }
 
+  const frenzyRollsPerActivation = rollsPerActivation(s);
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
   const count = frenzyClaimCountForRarity(
     data.rarity,
-    rollsPerActivation(s),
+    frenzyRollsPerActivation,
     s.prestigeUpgrades?.frenzyVolley ?? 0,
   );
+  // Frenzy's payout is expressed as Orb count. Convert it back to completed
+  // activations so Multiball doesn't multiply Time Energy per Orb.
+  const frenzyActivations = Math.floor(count / Math.max(1, frenzyRollsPerActivation));
 
   // The post's Orb determines payout size only, never a guaranteed result rarity.
   if (
@@ -7911,6 +7916,7 @@ export async function claimOrbFrenzy(options: {
     throw new Error('Frenzy roll batch could not be completed exactly; claim was not saved.');
   }
 
+  grantCooldownReclaimerTimeEnergy(s, frenzyActivations, reclaimedPerActivation);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
   s.lastFrenzyClaimAt = now;
 
