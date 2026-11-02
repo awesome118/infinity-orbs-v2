@@ -410,6 +410,30 @@ function addStoredGroup(groups: StorageGroup[], label: string, keys: string[], v
  * fixed keys. Devvit does not expose a keyspace scan or server-side MEMORY USAGE,
  * so this is explicitly a lower-bound payload estimate, not exact Redis usage.
  */
+type PlayerSaveStorageManifest = {
+  token: string;
+  chunkCount: number;
+  length: number;
+};
+
+function parsePlayerSaveStorageManifest(value: unknown): PlayerSaveStorageManifest | null {
+  if (typeof value !== 'string' || !value.startsWith('{"__ioPlayerSaveManifest":1')) return null;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const token = String(parsed.token ?? '');
+    const chunkCount = Number(parsed.chunkCount);
+    const length = Number(parsed.length);
+    if (
+      !/^[a-zA-Z0-9-]{8,120}$/.test(token) ||
+      !Number.isSafeInteger(chunkCount) || chunkCount < 1 || chunkCount > 128 ||
+      !Number.isSafeInteger(length) || length < 1 || length > 8 * 1024 * 1024
+    ) return null;
+    return { token, chunkCount, length };
+  } catch {
+    return null;
+  }
+}
+
 export async function estimateKnownRedisStorage(redis: any) {
   const generatedAt = Date.now();
   const errors: string[] = [];
@@ -455,6 +479,20 @@ export async function estimateKnownRedisStorage(redis: any) {
       if (playerValue != null) {
         playerSaveBytes += byteLength(playerKey) + storedValueBytes(playerValue);
         playerSaveRecords += 1;
+        const manifest = parsePlayerSaveStorageManifest(playerValue);
+        if (manifest) {
+          // The manifest is only a tiny pointer. Include the current logical
+          // payload and the known chunk-key overhead in the Player saves group.
+          // The payload length is the serializer's character count, so this is
+          // an estimate rather than a byte-perfect Redis memory measurement.
+          playerSaveBytes += manifest.length;
+          for (let chunk = 0; chunk < manifest.chunkCount; chunk += 1) {
+            playerSaveBytes += byteLength(
+              'io:player-save-chunk:' + userIds[i] + ':' + manifest.token + ':' + chunk,
+            );
+          }
+          playerSaveRecords += manifest.chunkCount;
+        }
       }
       if (combatValue != null) {
         combatSaveBytes += byteLength(combatKey) + storedValueBytes(combatValue);
@@ -521,7 +559,7 @@ export async function estimateKnownRedisStorage(redis: any) {
     recordsCounted: groups.reduce((total, group) => total + group.records, 0),
     groups,
     partial: true,
-    note: 'Lower-bound estimate of indexed player/combat saves, the player registry, and selected shared/log keys. Unindexed per-player keys, per-user impression markers, Redis metadata, and provider overhead are not included; this is not the platform-reported total.',
+    note: 'Lower-bound estimate of indexed player/combat saves, including active chunked player-save payload sizes from their manifests, the player registry, and selected shared/log keys. Retired chunk generations, Codex shard hashes, unindexed per-player keys, per-user impression markers, Redis metadata, and provider overhead are not included; this is not the platform-reported total.',
     errors,
   };
 }
