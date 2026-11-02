@@ -5,8 +5,8 @@
 export const MAX_SIMULATED_ROLLS_PER_BATCH = 50_000;
 // Bound changed Codex fields included in one player-save transaction.
 export const MAX_SIMULATED_ROLLS_PER_REQUEST = 4_096;
-// Online roll chunks use bounded weighted samples but can now commit 10 million effective Orbs per pass.
-export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 10_000_000;
+// Online roll chunks use bounded weighted samples and can commit 100 million effective Orbs per pass.
+export const MAX_EFFECTIVE_ROLLS_PER_BATCH = 100_000_000;
 // Offline claims write their Codex back into the player save. Keep the number
 // of representative rarities low so a full vault cannot inflate one Redis save
 // request beyond Devvit's request-size budget.
