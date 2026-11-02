@@ -27,6 +27,10 @@ import {
   CHALLENGE_POOL,
   challengeForWeek,
   COMMUNITY_WORLD_EVENT,
+  MAX_GUILD_TASK_TIER,
+  normalizeGuildValueProgress,
+  addGuildValueProgress,
+  isGuildValueProgress,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
@@ -150,12 +154,8 @@ function normalizeRecoverableGuildMemberFields(guild: Record<string, unknown>): 
     // Contribution is non-authoritative progress metadata. Clamp fractional or
     // unsafe numbers, and reset non-numeric/negative corruption to zero rather than
     // blocking every Guild read. Identity and authorization fields remain strict.
-    if (
-      typeof member.contribution !== 'number' ||
-      !Number.isSafeInteger(member.contribution) ||
-      member.contribution < 0
-    ) {
-      member.contribution = capSafeGuildCounter(member.contribution);
+    if (!isGuildValueProgress(member.contribution)) {
+      member.contribution = normalizeGuildValueProgress(member.contribution);
     }
 
     // Malformed trust metadata must never grant privileges. Role authorization
@@ -216,11 +216,15 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
     if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
       delete guild.challenge;
     } else {
-      const target = clampInteger(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
+      const target = challenge.type === 'value'
+        ? Math.max(1, normalizeGuildValueProgress(challenge.target) || 1)
+        : clampInteger(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
       guild.challenge = {
         type: challenge.type,
         target,
-        progress: clampInteger(challenge.progress, 0, target, 0),
+        progress: challenge.type === 'value'
+          ? Math.min(target, normalizeGuildValueProgress(challenge.progress))
+          : clampInteger(challenge.progress, 0, target, 0),
         reward: clampInteger(challenge.reward, 1, Number.MAX_SAFE_INTEGER, 1),
         label: nonEmptyText(challenge.label, 'Recovered Guild challenge'),
       };
@@ -288,15 +292,19 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
         const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
           ? String(task.type) as GuildTask['type']
           : generatedFallbackTaskType(taskIndex);
-        const tier = clampInteger(task.tier, 1, 70, 1);
+        const tier = clampInteger(task.tier, 1, MAX_GUILD_TASK_TIER, 1);
         const generated = createGuildTask(type, tier);
-        const target = clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
+        const target = type === 'value'
+          ? Math.max(1, normalizeGuildValueProgress(task.target) || generated.target)
+          : clampInteger(task.target, 1, Number.MAX_SAFE_INTEGER, generated.target);
         return {
           id: nonEmptyText(task.id, generated.id),
           type,
           tier,
           target,
-          progress: clampInteger(task.progress, 0, Number.MAX_SAFE_INTEGER, 0),
+          progress: type === 'value'
+            ? Math.min(target, normalizeGuildValueProgress(task.progress))
+            : clampInteger(task.progress, 0, Number.MAX_SAFE_INTEGER, 0),
           reward: clampInteger(task.reward, 1, Number.MAX_SAFE_INTEGER, generated.reward),
           label: nonEmptyText(task.label, generated.label),
         };
@@ -463,7 +471,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
       ...member,
       username: nonEmptyString(member.username, 'recovered-member-' + (memberIndex + 1)),
       role,
-      contribution: clampInt(member.contribution, 0, Number.MAX_SAFE_INTEGER, 0),
+      contribution: normalizeGuildValueProgress(member.contribution),
       userId: typeof member.userId === 'string' ? member.userId : undefined,
       trusted: typeof member.trusted === 'boolean' ? member.trusted : role === 'owner',
       joinedAt: isSafeGuildInteger(member.joinedAt, 0) ? member.joinedAt : undefined,
@@ -475,11 +483,15 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
     delete guild.challenge;
   } else {
-    const target = clampInt(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
+    const target = challenge.type === 'value'
+      ? Math.max(1, normalizeGuildValueProgress(challenge.target) || 1)
+      : clampInt(challenge.target, 1, Number.MAX_SAFE_INTEGER, 1);
     guild.challenge = {
       type: challenge.type,
       target,
-      progress: Math.min(target, clampInt(challenge.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
+      progress: challenge.type === 'value'
+        ? Math.min(target, normalizeGuildValueProgress(challenge.progress))
+        : Math.min(target, clampInt(challenge.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
       reward: clampInt(challenge.reward, 1, Number.MAX_SAFE_INTEGER, 1),
       label: nonEmptyString(challenge.label, 'Recovered Guild challenge'),
     };
@@ -514,14 +526,20 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
       delete task.guildXpReward;
       const fallbackType = generatedFallbackTaskType(taskIndex);
       const type = ['rolls', 'value', 'rare'].includes(String(task.type)) ? task.type : fallbackType;
-      const target = clampInt(task.target, 1, Number.MAX_SAFE_INTEGER, 1);
+      const tier = clampInt(task.tier, 1, MAX_GUILD_TASK_TIER, 1);
+      const generated = createGuildTask(type, tier);
+      const target = type === 'value'
+        ? Math.max(1, normalizeGuildValueProgress(task.target) || generated.target)
+        : clampInt(task.target, 1, Number.MAX_SAFE_INTEGER, 1);
       return {
         ...task,
         id: nonEmptyString(task.id, 'recovered-task-' + (taskIndex + 1)),
         type,
-        tier: clampInt(task.tier, 1, 1_000_000, 1),
+        tier,
         target,
-        progress: Math.min(target, clampInt(task.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
+        progress: type === 'value'
+          ? Math.min(target, normalizeGuildValueProgress(task.progress))
+          : Math.min(target, clampInt(task.progress, 0, Number.MAX_SAFE_INTEGER, 0)),
         reward: clampInt(task.reward, 1, Number.MAX_SAFE_INTEGER, 1),
         label: nonEmptyString(task.label, 'Recovered task ' + (taskIndex + 1)),
       };
