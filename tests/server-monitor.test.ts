@@ -148,3 +148,32 @@ test('upgrade batch diagnostics distinguish server acceptance, partial purchase,
   assert.ok(rollback);
   assert.equal(rollback?.details?.stage, 'client-rollback');
 });
+
+
+test('storage estimate includes the payload represented by active chunked player-save manifests', async () => {
+  const userId = 'chunked-monitor-user';
+  const manifest = JSON.stringify({
+    __ioPlayerSaveManifest: 1,
+    token: 'playersave-test-token-1234',
+    chunkCount: 4,
+    length: 256 * 1024,
+    checksum: 'deadbeef',
+    projection: { username: 'ChunkedTester' },
+  });
+  const values: Record<string, string> = {
+    ['player:' + userId]: manifest,
+  };
+  const fakeRedis = {
+    hGetAll: async (key: string) => key === 'io:player-registry'
+      ? { [userId]: JSON.stringify({ username: 'ChunkedTester' }) }
+      : {},
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+  };
+
+  const estimate = await estimateKnownRedisStorage(fakeRedis);
+  const playerSaves = estimate.groups.find(group => group.label === 'Player saves');
+  assert.ok(playerSaves);
+  assert.ok(playerSaves.bytes >= 256 * 1024);
+  assert.equal(playerSaves.records, 5); // manifest plus four active chunks
+  assert.match(estimate.note, /Retired chunk generations/);
+});
