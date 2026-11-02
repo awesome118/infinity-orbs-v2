@@ -1,5 +1,10 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.3
+
+- **Auto Roll Cooldown Reliability:** Fixed Auto Roll occasionally retrying too early at very high speeds. It now waits for the server-reported remaining cooldown before trying again.
+- **Sonar Ping Menu:** Removed the duplicate Record alerts summary. Near-best and new-record trigger settings remain in the Sonar Ping options.
+
 ### New in 2.2.2
 
 - **Time Energy Generation:** Cooldown Reclaimer now earns 1% of your current roll cooldown per level with each normal manual or Auto Roll activation, including at the 300ms cooldown floor. Free Rolls, Chain Patcher rolls, and Time Energy-powered rolls do not generate more energy.
