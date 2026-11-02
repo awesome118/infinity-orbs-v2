@@ -5,6 +5,7 @@ name: Deploy Devvit
 # Retains iterative rarity bounds; production review/install remains separate.
 # Emergency diagnostic cleanup uses quota-safe DEL and preserves player saves.
 # v2.2.8 adds a read-only production Redis audit on AppUpgrade; this workflow still installs dev only.
+# Retry after updating the AppUpgrade source-contract test to assert the v2.2.8 audit branch.
 # The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.8.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
