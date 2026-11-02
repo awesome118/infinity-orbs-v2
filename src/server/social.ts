@@ -137,6 +137,12 @@ function capSafeGuildCounter(value: unknown): number {
   return Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(value)));
 }
 
+// Collection Value is an approximate Number-based magnitude. Preserve finite
+// values above MAX_SAFE_INTEGER; only discrete roll/token counters use the safe cap.
+function capGuildValue(value: unknown): number {
+  return normalizeGuildValueProgress(value);
+}
+
 function normalizeRecoverableGuildMemberFields(guild: Record<string, unknown>): void {
   if (!Array.isArray(guild.members)) return;
 
@@ -337,7 +343,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
       !isRecordValue(member) ||
       typeof member.username !== 'string' || !member.username.trim() ||
       !['owner', 'officer', 'member'].includes(String(member.role)) ||
-      !Number.isSafeInteger(member.contribution) || Number(member.contribution) < 0 ||
+      !isGuildValueProgress(member.contribution) ||
       (member.userId != null && typeof member.userId !== 'string') ||
       (member.trusted != null && typeof member.trusted !== 'boolean') ||
       (member.joinedAt != null && (!Number.isSafeInteger(member.joinedAt) || Number(member.joinedAt) < 0)) ||
@@ -352,8 +358,10 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
     if (
       !isRecordValue(challenge) ||
       !['rolls', 'value', 'rare'].includes(String(challenge.type)) ||
-      !Number.isSafeInteger(challenge.target) || Number(challenge.target) < 1 ||
-      !Number.isSafeInteger(challenge.progress) || Number(challenge.progress) < 0 ||
+      !(challenge.type === 'value'
+        ? isGuildValueProgress(challenge.target, 1) && isGuildValueProgress(challenge.progress)
+        : Number.isSafeInteger(challenge.target) && Number(challenge.target) >= 1 &&
+          Number.isSafeInteger(challenge.progress) && Number(challenge.progress) >= 0) ||
       !Number.isSafeInteger(challenge.reward) || Number(challenge.reward) < 1 ||
       typeof challenge.label !== 'string' || !challenge.label.trim()
     ) {
@@ -410,7 +418,11 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
           const value = task[field];
           if (value == null) continue;
           const minimum = field === 'progress' ? 0 : 1;
-          if (!Number.isSafeInteger(value) || Number(value) < minimum) throw invalid(`guild.tasks[].${field}`);
+          const validValueProgress = task.type === 'value' &&
+            (field === 'target' || field === 'progress') &&
+            isGuildValueProgress(value, minimum);
+          const validSafeInteger = Number.isSafeInteger(value) && Number(value) >= minimum;
+          if (!validValueProgress && !validSafeInteger) throw invalid(`guild.tasks[].${field}`);
         }
       }
     }
@@ -1540,7 +1552,7 @@ export async function leaveGuild() {
 
 export async function contribute(value: number, rollCount = 1, bestRarity?: number, rareOrbCount?: number) {
   try {
-    const safeValue = capSafeGuildCounter(value);
+    const safeValue = capGuildValue(value);
     if (safeValue <= 0) return;
     await updateGuilds(guilds => {
       const guild = currentGuild(guilds);
@@ -1557,7 +1569,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
         Math.floor(guild.perks?.comboRank ?? 0),
       ) * 0.05;
 
-      member.contribution = capSafeGuildCounter(member.contribution + safeValue);
+      member.contribution = addGuildValueProgress(member.contribution, safeValue);
       if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
       const taskProgressRolls = capSafeGuildCounter(rollCount);
@@ -1565,7 +1577,7 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
-        if (task.type === 'value') task.progress = capSafeGuildCounter(task.progress + safeValue);
+        if (task.type === 'value') task.progress = addGuildValueProgress(task.progress, safeValue);
         else if (task.type === 'rolls') task.progress = capSafeGuildCounter(task.progress + taskProgressRolls);
         else if (task.type === 'rare') task.progress = capSafeGuildCounter(task.progress + taskProgressRare);
         let completions = 0;
@@ -1578,7 +1590,9 @@ export async function contribute(value: number, rollCount = 1, bestRarity?: numb
           guild.taskCompletions = capSafeGuildCounter((guild.taskCompletions ?? 0) + 1);
           guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
           const replacement = createGuildTask(task.type, completedTier + 1);
-          replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
+          replacement.progress = task.type === 'value'
+            ? capGuildValue(overflow)
+            : Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
         }
@@ -1610,21 +1624,21 @@ export async function prepareGuildRollEffects(
   if (!guild) return pendingWrite ? { extraWrite: { key: GUILDS_KEY, ...pendingWrite } } : {};
 
   const capInteger = (value: number) => Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number.isFinite(value) ? Math.floor(value) : 0));
-  const safeValue = capInteger(value);
+  const safeValue = capGuildValue(value);
   const safeRolls = capInteger(rollCount);
   if (safeValue > 0) {
     const member = guild.members.find(candidate => memberMatches(candidate));
     if (member) {
       const taskBountyMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.taskBountyRank ?? guild.perks?.tokenYieldRank ?? 0)) * 0.05;
       const comboDurationMultiplier = 1 + Math.max(0, Math.floor(guild.perks?.comboRank ?? 0)) * 0.05;
-      member.contribution = capInteger(member.contribution + safeValue);
+      member.contribution = addGuildValueProgress(member.contribution, safeValue);
       if (!Array.isArray(guild.tasks) || guild.tasks.length < 3) guild.tasks = createInitialGuildTasks();
       const now = Date.now();
       const taskProgressRare = capInteger(rareOrbCount ?? ((bestRarity ?? 0) >= 100 ? 1 : 0));
       for (let i = 0; i < guild.tasks.length; i++) {
         let task = guild.tasks[i];
         if (!task) continue;
-        if (task.type === 'value') task.progress = capInteger(task.progress + safeValue);
+        if (task.type === 'value') task.progress = addGuildValueProgress(task.progress, safeValue);
         else if (task.type === 'rolls') task.progress = capInteger(task.progress + safeRolls);
         else if (task.type === 'rare') task.progress = capInteger(task.progress + taskProgressRare);
         let completions = 0;
