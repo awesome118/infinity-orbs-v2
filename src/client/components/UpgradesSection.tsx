@@ -55,15 +55,18 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 }) => {
   const [recentUpgradeId, setRecentUpgradeId] = useState<UpgradeId | null>(null);
   const [upgradingAll, setUpgradingAll] = useState(false);
-  const [upgradingId, setUpgradingId] = useState<UpgradeId | null>(null);
+  const [pendingUpgradeCounts, setPendingUpgradeCounts] = useState<Partial<Record<UpgradeId, number>>>({});
   const [activatingTurbo, setActivatingTurbo] = useState(false);
+  const pendingUpgradeCountRef = useRef(0);
+  const upgradeAllInFlightRef = useRef(false);
+  const pendingUpgradeCount = Object.values(pendingUpgradeCounts)
+    .reduce((total, count) => total + (count ?? 0), 0);
   const [autoBuyEnabled, setAutoBuyEnabled] = useState(() => {
     try { return window.localStorage.getItem('io-auto-buy-upgrades') === 'true'; }
     catch { return false; }
   });
   const autoBuyInFlightRef = useRef(false);
   const activatingTurboRef = useRef(false);
-  const upgradeActionLockRef = useRef(false);
   const recentUpgradeTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
     if (recentUpgradeTimerRef.current !== null) window.clearTimeout(recentUpgradeTimerRef.current);
@@ -85,9 +88,14 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   };
 
   const handleUpgradeClick = async (u: (typeof upgradesData)[0]) => {
-    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
-    upgradeActionLockRef.current = true;
-    setUpgradingId(u.id);
+    // Individual purchases are deliberately not locked: rapid clicks are
+    // accumulated by the parent and sent through its serialized batch queue.
+    if (busy || upgradeAllInFlightRef.current) return;
+    pendingUpgradeCountRef.current += 1;
+    setPendingUpgradeCounts(current => ({
+      ...current,
+      [u.id]: (current[u.id] ?? 0) + 1,
+    }));
 
     try {
       const purchased = await onBuyUpgrade(u.id);
@@ -111,14 +119,26 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
         }
       }
     } finally {
-      upgradeActionLockRef.current = false;
-      setUpgradingId(null);
+      pendingUpgradeCountRef.current = Math.max(0, pendingUpgradeCountRef.current - 1);
+      setPendingUpgradeCounts(current => {
+        const next = { ...current };
+        const remaining = (next[u.id] ?? 1) - 1;
+        if (remaining > 0) next[u.id] = remaining;
+        else delete next[u.id];
+        return next;
+      });
     }
   };
 
   const handleUpgradeAllClick = async () => {
-    if (busy || upgradeActionLockRef.current || autoBuyInFlightRef.current) return;
-    upgradeActionLockRef.current = true;
+    // Do not mix the all-at-once server mutation with individual queued clicks.
+    if (
+      busy ||
+      pendingUpgradeCountRef.current > 0 ||
+      upgradeAllInFlightRef.current ||
+      autoBuyInFlightRef.current
+    ) return;
+    upgradeAllInFlightRef.current = true;
     setUpgradingAll(true);
     try {
       const purchased = await onBuyAllUpgrades();
@@ -132,7 +152,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
         });
       }
     } finally {
-      upgradeActionLockRef.current = false;
+      upgradeAllInFlightRef.current = false;
       setUpgradingAll(false);
     }
   };
@@ -361,7 +381,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
 
   const affordableCount = upgradesData.filter(u => !u.locked && Number.isFinite(u.cost) && state.coins >= u.cost).length;
   useEffect(() => {
-    if (!autoBuyEnabled || busy || upgradingAll || upgradingId !== null || autoBuyInFlightRef.current) return;
+    if (!autoBuyEnabled || busy || upgradingAll || pendingUpgradeCount > 0 || autoBuyInFlightRef.current) return;
     const candidate = upgradesData
       .filter(u => {
         const maxLevel = standardUpgradeMaxLevels[u.id];
@@ -374,7 +394,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
     void onBuyUpgrade(candidate.id)
       .catch(() => { /* A failed purchase leaves Auto-buy enabled but retries only after the next state change. */ })
       .finally(() => { autoBuyInFlightRef.current = false; });
-  }, [autoBuyEnabled, busy, upgradingAll, upgradingId, state.coins, state.upgrades, onBuyUpgrade]);
+  }, [autoBuyEnabled, busy, upgradingAll, pendingUpgradeCount, state.coins, state.upgrades, onBuyUpgrade]);
   const turboNow = Date.now();
   const turboRemainingMs = Math.max(0, (state.turboRollUntil ?? 0) - turboNow);
   const isTurboActive = turboRemainingMs > 0;
@@ -416,7 +436,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             <button
               type="button"
               onClick={handleUpgradeAllClick}
-              disabled={affordableCount === 0 || busy || upgradingAll || upgradingId !== null}
+              disabled={affordableCount === 0 || busy || upgradingAll || pendingUpgradeCount > 0}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md ${
                 affordableCount > 0
                   ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 text-slate-950 hover:brightness-110 active:scale-95 cursor-pointer shadow-amber-500/20'
@@ -540,11 +560,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 ) : (
                   <button
                     type="button"
-                    aria-busy={upgradingId === u.id}
+                    aria-busy={(pendingUpgradeCounts[u.id] ?? 0) > 0}
                     onClick={() => {
                       void handleUpgradeClick(u);
                     }}
-                    disabled={!canAfford || busy || upgradingAll || upgradingId !== null}
+                    disabled={!canAfford || busy || upgradingAll}
                     className={`w-full font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all ${
                       canAfford
                         ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-900/20 active:scale-95 cursor-pointer'
@@ -552,7 +572,11 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                     }`}
                   >
                     <Coins className="w-3.5 h-3.5" />
-                    <span>{canAfford ? `Upgrade (${fmt(u.cost)} Coins)` : `Need ${fmt(Math.max(0, u.cost - state.coins))} more Coins`}</span>
+                    <span>{canAfford
+                      ? (pendingUpgradeCounts[u.id] ?? 0) > 0
+                        ? `Buy another · ${fmt(u.cost)} Coins`
+                        : `Upgrade (${fmt(u.cost)} Coins)`
+                      : `Need ${fmt(Math.max(0, u.cost - state.coins))} more Coins`}</span>
                   </button>
                 )}
               </div>
@@ -627,7 +651,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
             title="Spend 5 Shards to reduce roll cooldown; the duration and strength depend on your upgrades."
             aria-busy={activatingTurbo}
             onClick={async () => {
-              if (activatingTurboRef.current || busy || upgradingAll || upgradeActionLockRef.current) return;
+              if (activatingTurboRef.current || busy || upgradingAll || pendingUpgradeCountRef.current > 0 || upgradeAllInFlightRef.current) return;
               activatingTurboRef.current = true;
               setActivatingTurbo(true);
               sound.playClick();
@@ -638,7 +662,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
                 setActivatingTurbo(false);
               }
             }}
-            disabled={(state.shards ?? 0) < 5 || isTurboActive || activatingTurbo || busy || upgradingAll || upgradingId !== null}
+            disabled={(state.shards ?? 0) < 5 || isTurboActive || activatingTurbo || busy || upgradingAll || pendingUpgradeCount > 0}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
               isTurboActive
                 ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 cursor-default'

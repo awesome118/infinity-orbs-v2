@@ -108,8 +108,12 @@ export const RollSection: React.FC<RollSectionProps> = ({
   onNewBest,
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
-  const [quickUpgradeBusyId, setQuickUpgradeBusyId] = useState<UpgradeId | null>(null);
+  const [quickUpgradePendingCounts, setQuickUpgradePendingCounts] = useState<Partial<Record<UpgradeId, number>>>({});
   const [quickBuyAllBusy, setQuickBuyAllBusy] = useState(false);
+  const quickUpgradePendingCountRef = useRef(0);
+  const quickBuyAllBusyRef = useRef(false);
+  const quickUpgradePendingCount = Object.values(quickUpgradePendingCounts)
+    .reduce((total, count) => total + (count ?? 0), 0);
   const [now, setNow] = useState(() => Date.now());
   const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
 
@@ -484,20 +488,38 @@ export const RollSection: React.FC<RollSectionProps> = ({
     !(item.id === 'speed' && item.level >= 20)
   ).length;
   const buyQuickUpgrade = async (id: UpgradeId) => {
-    if (busy || quickUpgradeBusyId !== null || quickBuyAllBusy) return;
-    setQuickUpgradeBusyId(id);
+    if (busy || quickBuyAllBusyRef.current) return;
+    quickUpgradePendingCountRef.current += 1;
+    setQuickUpgradePendingCounts(current => ({
+      ...current,
+      [id]: (current[id] ?? 0) + 1,
+    }));
     try {
       await onBuyUpgrade(id);
     } finally {
-      setQuickUpgradeBusyId(null);
+      quickUpgradePendingCountRef.current = Math.max(0, quickUpgradePendingCountRef.current - 1);
+      setQuickUpgradePendingCounts(current => {
+        const next = { ...current };
+        const remaining = (next[id] ?? 1) - 1;
+        if (remaining > 0) next[id] = remaining;
+        else delete next[id];
+        return next;
+      });
     }
   };
   const buyAllQuickUpgrades = async () => {
-    if (busy || quickUpgradeBusyId !== null || quickBuyAllBusy || quickAffordableCount === 0) return;
+    if (
+      busy ||
+      quickUpgradePendingCountRef.current > 0 ||
+      quickBuyAllBusyRef.current ||
+      quickAffordableCount === 0
+    ) return;
+    quickBuyAllBusyRef.current = true;
     setQuickBuyAllBusy(true);
     try {
       await onBuyAllUpgrades();
     } finally {
+      quickBuyAllBusyRef.current = false;
       setQuickBuyAllBusy(false);
     }
   };
@@ -1162,7 +1184,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
             {quickUpgradeItems.map(item => {
               const maxed = !Number.isFinite(item.cost) || (item.id === 'speed' && item.level >= 20);
               const canAfford = !maxed && state.coins >= item.cost;
-              const isPending = quickUpgradeBusyId === item.id;
+              const pendingCount = quickUpgradePendingCounts[item.id] ?? 0;
+              const isPending = pendingCount > 0;
               return (
                 <div className="roll-quick-upgrade" key={item.id}>
                   <div className="roll-quick-upgrade-copy">
@@ -1179,13 +1202,13 @@ export const RollSection: React.FC<RollSectionProps> = ({
                   <button
                     type="button"
                     className="roll-quick-upgrade-buy"
-                    disabled={!canAfford || busy || quickUpgradeBusyId !== null || quickBuyAllBusy}
+                    disabled={!canAfford || busy || quickBuyAllBusy}
                     aria-busy={isPending}
                     aria-label={maxed ? item.title + ' fully upgraded' : 'Buy ' + item.title + ' for ' + formatNumber(item.cost) + ' Coins'}
                     title={maxed ? 'Fully upgraded' : canAfford ? 'Buy one level for ' + formatNumber(item.cost) + ' Coins' : 'Need ' + formatNumber(Math.max(0, item.cost - state.coins)) + ' more Coins'}
                     onClick={() => { void buyQuickUpgrade(item.id).catch(() => undefined); }}
                   >
-                    {isPending ? '…' : maxed ? 'MAX' : formatNumber(item.cost)}
+                    {isPending ? `×${pendingCount}` : maxed ? 'MAX' : formatNumber(item.cost)}
                   </button>
                 </div>
               );
@@ -1195,7 +1218,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
             <button
               type="button"
               className="roll-quick-buy-all"
-              disabled={quickAffordableCount === 0 || busy || quickUpgradeBusyId !== null || quickBuyAllBusy}
+              disabled={quickAffordableCount === 0 || busy || quickUpgradePendingCount > 0 || quickBuyAllBusy}
               aria-busy={quickBuyAllBusy}
               onClick={() => { void buyAllQuickUpgrades().catch(() => undefined); }}
             >
