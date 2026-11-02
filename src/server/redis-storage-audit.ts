@@ -583,6 +583,40 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     impressionViewerRecordsParsed * seenUserMarkerBytes +
     impressionSeenTypeMarkerEstimatedBytes;
 
+  // Look up durable post metadata for both current and retired indexed posts.
+  // Per-viewer claim receipts still cannot be enumerated without a global scan.
+  const indexedPostsForMetadata = new Map<string, { postType: string; postId: string }>();
+  for (const post of [...analyticsPostIndex, ...legacyImpressionPosts]) {
+    indexedPostsForMetadata.set(post.postType + ':' + post.postId, post);
+  }
+  const indexedPostMetadata: Array<{ family: string; key: string }> = [];
+  for (const post of indexedPostsForMetadata.values()) {
+    const bareId = post.postId.replace(/^t3_/i, '');
+    const normalizedId = /^t3_/i.test(post.postId) ? post.postId : 't3_' + post.postId;
+    if (post.postType === 'orb-share') {
+      indexedPostMetadata.push({
+        family: 'Shared Orb post markers',
+        key: 'io:shared-orb:post:' + normalizedId,
+      });
+    }
+    if (post.postType === 'frenzy') {
+      for (const id of [...new Set([post.postId, bareId, normalizedId])]) {
+        indexedPostMetadata.push({ family: 'Frenzy post records', key: 'io:frenzy:post:' + id });
+      }
+      for (const id of [...new Set([post.postId, bareId])]) {
+        indexedPostMetadata.push({ family: 'Frenzy claimer projections', key: 'io:frenzy:claimers:v1:' + encodeURIComponent(id) });
+      }
+    }
+  }
+  const metadataByKey = new Map(indexedPostMetadata.map(item => [item.key, item.family]));
+  const metadataKeys = [...metadataByKey.keys()];
+  const metadataValues = await safeMGet(metadataKeys);
+  for (let i = 0; i < metadataKeys.length; i += 1) {
+    const value = metadataValues[i];
+    if (value != null) indexedPostMetadataKeysPresent += 1;
+    add(metadataByKey.get(metadataKeys[i]) ?? 'Indexed post metadata', metadataKeys[i], value);
+  }
+
   const diagnosticSharedKeys = [
     'io:save-debug:v1', 'io:payment-debug-log:v1',
     'io:global-booster-debug-log:v1', 'io:global-booster-activation-log:v1',
