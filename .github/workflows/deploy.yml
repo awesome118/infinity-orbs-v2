@@ -7,6 +7,7 @@ name: Deploy Devvit
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
+# Preflight includes Auto Roll cooldown retry timing and Sonar Ping menu regression tests.
 # Keep the tested authentication step title while writing the CLI credential files before whoami.
 # Requested by user on 2026-10-31: deploy the current 2.1.31 mobile usability build to r/infinity_orbs_dev only.
 on:
