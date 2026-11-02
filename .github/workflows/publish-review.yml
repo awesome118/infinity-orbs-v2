@@ -1,4 +1,5 @@
 name: Submit Devvit version for review
+# Release workflow changes are committed with the version marker to intentionally trigger review submission.
 
 on:
   push:
