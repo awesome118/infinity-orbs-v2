@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.24
+
+- **Time Energy HTTP 503 Prevention:** Increased the bounded online roll pass from 10 million to 100 million effective Orbs while keeping the 4,096 representative-sample limit. A 300-million-Orb claim now needs four passes instead of roughly 31, reducing repeated roll setup and progress writes; weighted counts remain exact.
+
 ### New in 2.2.23
 
 - **Large Roll Throughput:** Online roll processing now handles up to 10 million effective Orbs per server chunk instead of 500,000. The 4,096 representative-sample budget remains bounded, and a 300-million-Orb Time Energy batch is reduced from roughly 600 chunks to roughly 30.
