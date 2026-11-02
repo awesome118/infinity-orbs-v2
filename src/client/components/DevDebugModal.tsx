@@ -5219,6 +5219,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                 </button>
               </div>
             </section>
+          <section className={panelBase + ' border border-rose-500/30'}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-300">
