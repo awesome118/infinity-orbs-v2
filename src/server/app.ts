@@ -70,7 +70,6 @@ import {
   recordPlayerHeartbeat,
   hasCompletedFirstRollTutorial,
   markFirstRollTutorialSeen,
-  clearAllDiagnosticLogs,
 } from './game.js';
 import {
   createGuild,
@@ -765,27 +764,12 @@ export function createApp() {
     }
   });
 
-  // Keep the completed v2.2.6 recovery path for historical traceability.
   // The v2.2.8 production upgrade performs a strictly read-only storage audit.
-  const EMERGENCY_LOG_CLEANUP_VERSION = '2.2.6';
   const REDIS_STORAGE_AUDIT_VERSION = '2.2.8';
   app.post('/internal/on-app-upgrade', async (_req, res) => {
     const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
     if (subredditName !== 'infinityorbs') {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
-    }
-    if (APP_VERSION === EMERGENCY_LOG_CLEANUP_VERSION) {
-      try {
-        const result = await clearAllDiagnosticLogs();
-        console.warn('[Redis Recovery] Deleted diagnostic logs during the one-time production app upgrade:', result);
-        return res.status(200).json({ status: 'success', ...result });
-      } catch (error) {
-        console.error('[Redis Recovery] Diagnostic cleanup during app upgrade failed:', error);
-        return res.status(200).json({
-          status: 'error',
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
     }
     if (APP_VERSION !== REDIS_STORAGE_AUDIT_VERSION) {
       return res.status(200).json({ status: 'skipped', version: APP_VERSION, subredditName });
