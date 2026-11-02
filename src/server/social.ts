@@ -59,6 +59,8 @@ const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
 const GUILD_UPGRADE_RESET_KEY = key('guild-upgrade-reset:v1');
 const LEADERBOARDS_CACHE_KEY = key('leaderboards:cache:v1');
 const LEADERBOARDS_CACHE_TTL_MS = 10_000;
+// Leaderboards are display projections; one durable refresh per player per minute is sufficient.
+const LEADERBOARD_PROJECTION_INTERVAL_MS = 60_000;
 let leaderboardSnapshotInFlight: Promise<LeaderboardBoards> | null = null;
 /** Create collision-resistant IDs for guild, chat, and moderation receipts. */
 function createSecureId(): string {
@@ -557,8 +559,6 @@ function parseGuildListRaw(raw: unknown): Guild[] {
       typeof (item as any).id !== 'string' ||
       typeof (item as any).name !== 'string' ||
       typeof (item as any).tag !== 'string' ||
-      !Number.isFinite((item as any).level) || Number((item as any).level) < 1 ||
-      !Number.isFinite((item as any).xp) || Number((item as any).xp) < 0 ||
       !Number.isFinite((item as any).tokens) || Number((item as any).tokens) < 0 ||
       !Array.isArray((item as any).members) ||
       !(item as any).members.every((member: unknown) =>
@@ -2762,6 +2762,7 @@ export async function recordLeaderboard(s: PlayerState) {
   if (!(source.lastShareAt && Number(source.lastShareAt) > 0)) return;
 
   const leaderboardKey = key('leaderboard');
+  const throttleKey = key('leaderboard:projection-throttle:v1:' + encodeURIComponent(userId));
   const name = username();
   const registry = parseStoredJson<{ playtimeMs?: unknown }>(await redis.hGet(PLAYER_REGISTRY_KEY, userId));
   const next: LeaderboardEntry = {
@@ -2779,12 +2780,17 @@ export async function recordLeaderboard(s: PlayerState) {
   };
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const txn = await redis.watch(leaderboardKey);
+    const txn = await redis.watch(leaderboardKey, throttleKey);
     let transactionClosed = false;
     let writeCommitted = false;
     let storedRaw: string | null = null;
     let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
     try {
+      if (await redis.get(throttleKey) != null) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return;
+      }
       storedRaw = await redis.get(leaderboardKey);
       const raw = await readRedisLargeValue(leaderboardKey, storedRaw);
       const board: LeaderboardEntry[] = parseLeaderboardList(raw);
@@ -2795,17 +2801,22 @@ export async function recordLeaderboard(s: PlayerState) {
       );
       if (existing) {
         const existingRevision = Number(existing.stateRevision);
-        // WATCH protects list writes, not source freshness. An earlier async
-        // projection can finish later, so never replace a newer saved revision.
-        if (!Number.isSafeInteger(existingRevision) || existingRevision <= next.stateRevision!) {
-          Object.assign(existing, next);
+        // A stale or duplicate callback must not rewrite an unchanged large snapshot.
+        if (Number.isSafeInteger(existingRevision) && existingRevision >= next.stateRevision!) {
+          await txn.unwatch();
+          transactionClosed = true;
+          return;
         }
+        Object.assign(existing, next);
       } else board.push(next);
       board.sort((a, b) => b.value - a.value);
       const serialized = JSON.stringify(board.slice(0, 5000));
       writePlan = await createRedisLargeValueWritePlan(leaderboardKey, serialized);
       await txn.multi();
       await txn.set(leaderboardKey, writePlan.storedValue);
+      await txn.set(throttleKey, String(Date.now()), {
+        expiration: new Date(Date.now() + LEADERBOARD_PROJECTION_INTERVAL_MS),
+      });
       const committed = await txn.exec();
       transactionClosed = true;
       if (committed !== null) {

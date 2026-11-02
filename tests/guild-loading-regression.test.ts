@@ -94,3 +94,19 @@ test('Guild page is named in the main navigation', () => {
   assert.match(main, /renderNavItem\('social', 'Guilds', Users, false, 'io-nav-mobile-only'\)/);
   assert.match(main, /social: 'Guilds'/);
 });
+
+
+test('Production Guild parser accepts current level-free Guild records', () => {
+  const social = source('src/server/social.ts');
+  const parserStart = social.indexOf('function parseGuildListRaw(');
+  const parserEnd = social.indexOf('function parseLeaderboardList(', parserStart);
+  assert.ok(parserStart >= 0 && parserEnd > parserStart, 'raw Guild parser must exist');
+  const parser = social.slice(parserStart, parserEnd);
+  assert.doesNotMatch(parser, /Number\\.isFinite\\(\\(item as any\\)\\.level\\)/);
+  assert.doesNotMatch(parser, /Number\\.isFinite\\(\\(item as any\\)\\.xp\\)/);
+  assert.match(parser, /Number\\.isFinite\\(\\(item as any\\)\\.tokens\\)/);
+  const createStart = social.indexOf('export async function createGuild(');
+  const createEnd = social.indexOf('export async function joinGuild(', createStart);
+  assert.ok(createStart >= 0 && createEnd > createStart, 'Guild creator must exist');
+  assert.doesNotMatch(social.slice(createStart, createEnd), /\\blevel\\s*:|\\bxp\\s*:/);
+});

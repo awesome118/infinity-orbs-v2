@@ -4,11 +4,11 @@ name: Deploy Devvit
 # Uses a 25,000-sample cap for up to 2.5 million effective Orbs in one weighted Frenzy roll pass.
 # Retains iterative rarity bounds; production review/install remains separate.
 # Emergency diagnostic cleanup uses quota-safe DEL and preserves player saves.
-# v2.2.11 adds a read-only production Redis audit on AppUpgrade; this workflow still installs dev only.
+# v2.2.12 keeps the read-only production Redis audit enabled; this workflow still installs dev only.
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.11.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.12.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -36,7 +36,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.11]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.12]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -108,6 +108,7 @@ jobs:
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/combat-runes.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
+          node --import tsx --test tests/redis-storage-retention.test.ts
           # Cover Guild combo timer persistence and weighted rare-Orb task progress.
           node --import tsx --test tests/guild-combo-progress.test.ts
           # Guard legacy Guild combo timer normalization and existing Guild loading behavior.

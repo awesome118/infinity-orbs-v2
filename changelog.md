@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.12
+
+- **Redis Storage Protection:** Leaderboard projections now refresh at most once per player per minute, and duplicate or stale callbacks are skipped. Retired shared large-value snapshots expire after 60 seconds instead of 10 minutes.
+- **Guild Data Compatibility:** Fixed production Guild validation so current Guild records without the retired level and XP fields load correctly.
+
+
 ### New in 2.2.3
 
 - **Auto Roll Cooldown Reliability:** Fixed Auto Roll occasionally retrying too early at very high speeds. It now waits for the server-reported remaining cooldown before trying again.

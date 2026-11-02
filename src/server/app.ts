@@ -765,7 +765,7 @@ export function createApp() {
   });
 
   // The v2.2.11 production upgrade performs a strictly read-only storage audit.
-  const REDIS_STORAGE_AUDIT_VERSION = '2.2.11';
+  const REDIS_STORAGE_AUDIT_VERSION = '2.2.12';
   app.post('/internal/on-app-upgrade', async (_req, res) => {
     const subredditName = String(context.subredditName ?? '').trim().replace(/^r\//i, '').toLowerCase();
     if (subredditName !== 'infinityorbs') {
