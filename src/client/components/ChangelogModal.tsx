@@ -11,6 +11,13 @@ const sections: Array<{
   entries: Array<{ title: string; description: string }>;
 }> = [
   {
+    title: "New in 2.2.3",
+    entries: [
+      { title: "Auto Roll Cooldown Reliability", description: "Fixed Auto Roll occasionally retrying too early at very high speeds. It now waits for the server-reported remaining cooldown before trying again." },
+      { title: "Sonar Ping Menu", description: "Removed the duplicate Record alerts summary. Near-best and new-record trigger settings remain in the Sonar Ping options." },
+    ],
+  },
+  {
     title: "New in 2.2.2",
     entries: [
       { title: "Time Energy Generation", description: "Cooldown Reclaimer now earns 1% of your current roll cooldown per level with each normal manual or Auto Roll activation, including at the 300ms cooldown floor. Free Rolls, Chain Patcher rolls, and Time Energy-powered rolls do not generate more energy." },
