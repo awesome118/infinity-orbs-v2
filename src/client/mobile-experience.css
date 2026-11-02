@@ -976,6 +976,11 @@
     background: linear-gradient(180deg,rgba(3,7,18,0),rgba(3,7,18,.98) 24%);
   }
 
+  .io-ui .io-chat-window {
+    right: 11px !important;
+    bottom: calc(88px + env(safe-area-inset-bottom,0px)) !important;
+  }
+
   .io-ui .io-chat-launcher {
     right: 11px !important;
     bottom: calc(88px + env(safe-area-inset-bottom,0px)) !important;
