@@ -71,19 +71,28 @@ test('Guild combo time bar communicates the remaining-to-earned ratio accessibly
   assert.ok(ui.includes('Guild combo time remaining relative to total time earned'));
 });
 
-test('Guild Collection Value tasks retain finite targets above MAX_SAFE_INTEGER', () => {
-  const task = createGuildTask('value', 71);
-  assert.equal(task.tier, 71);
-  assert.ok(Number.isFinite(task.target));
-  assert.ok(Number.isInteger(task.target));
-  assert.ok(task.target > Number.MAX_SAFE_INTEGER);
-  assert.match(task.label, /9,879,390,699,563,258|9,879,390,699,563,2/);
+test('Guild Collection Value task targets scale to roughly 1e85 by Tier 100', () => {
+  const tier71 = createGuildTask('value', 71);
+  const tier100 = createGuildTask('value', 100);
+  assert.equal(tier100.tier, 100);
+  assert.ok(Number.isFinite(tier100.target));
+  assert.ok(Number.isInteger(tier100.target));
+  assert.ok(tier71.target > Number.MAX_SAFE_INTEGER);
+  assert.ok(Math.log10(tier100.target) >= 85 && Math.log10(tier100.target) < 86,
+    `expected a Tier 100 target around 1e85, got ${tier100.target.toExponential(3)}`);
+  assert.match(tier100.label, /Accumulate .* collection value/);
 
-  const progress = addGuildValueProgress(Number.MAX_SAFE_INTEGER, task.target);
+  const progress = addGuildValueProgress(Number.MAX_SAFE_INTEGER, tier100.target);
   assert.ok(progress > Number.MAX_SAFE_INTEGER);
   assert.equal(isGuildValueProgress(progress), true);
   assert.equal(isGuildValueProgress(Number.POSITIVE_INFINITY), false);
   assert.equal(MAX_GUILD_TASK_TIER, 100);
+});
+
+test('Guild parser upgrades legacy value-task targets to the new tier curve without discarding progress', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  assert.match(social, /Math\.max\(generated\.target, existingValueTarget\)/);
+  assert.match(social, /label: type === 'value' && target === generated\.target/);
 });
 
 test('Guild parser and both contribution writers preserve large Collection Value progress', () => {
