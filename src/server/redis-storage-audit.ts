@@ -12,6 +12,7 @@ const PLAYER_CHUNK_PREFIX = 'io:player-save-chunk:';
 const LARGE_CHUNK_PREFIX = 'io:large-value-chunk:v1:';
 const ANALYTICS_PREFIX = 'io:impressions:unique-v2:';
 const MAX_AUDIT_USERS = 100;
+const MAX_PLAYER_CHUNK_PAYLOAD_READ_BYTES = 32 * 1024 * 1024;
 const MAX_TOP_VALUES = 25;
 
 function valueBytes(value: unknown): number {
@@ -70,6 +71,9 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   const largest: Array<{ family: string; bytes: number; keyBytes: number; valueBytes: number }> = [];
   const errors: string[] = [];
   let missingPlayerChunks = 0;
+  let playerChunkPayloadBytesEstimated = 0;
+  let playerChunkPayloadBytesRead = 0;
+  let playerChunkKeysSkipped = 0;
   let missingLargeValueChunks = 0;
   let playerManifestCount = 0;
   let codexUsersAudited = 0;
@@ -147,7 +151,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   }
 
   const playerStates = new Map<string, { saveGeneration: number; collectionStorageVersion: number; raw: string }>();
-  const chunkPlans: Array<{ userId: string; keys: string[] }> = [];
+  const chunkPlans: Array<{ userId: string; keys: string[]; length: number }> = [];
   for (let index = 0; index < userIds.length; index += 1) {
     const userId = userIds[index];
     const raw = playerValues[index];
@@ -159,6 +163,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
         chunkPlans.push({
           userId,
           keys: Array.from({ length: manifest.chunkCount }, (_, chunk) => playerChunkKey(userId, manifest.token, chunk)),
+          length: manifest.length,
         });
       } else {
         try {
@@ -175,12 +180,30 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     if (generationValues[index] != null) add('Player generation markers', generationKeys[index], generationValues[index]);
   }
 
-  const flatPlayerChunkKeys = chunkPlans.flatMap(plan => plan.keys);
+  const chunkReadPlans: typeof chunkPlans = [];
+  let remainingChunkReadBytes = MAX_PLAYER_CHUNK_PAYLOAD_READ_BYTES;
+  for (const plan of chunkPlans) {
+    playerChunkPayloadBytesEstimated += plan.length;
+    if (plan.length <= remainingChunkReadBytes) {
+      chunkReadPlans.push(plan);
+      remainingChunkReadBytes -= plan.length;
+    } else {
+      playerChunkKeysSkipped += plan.keys.length;
+      const estimated = groups.get('Player save chunks (manifest estimate)') ?? {
+        label: 'Player save chunks (manifest estimate)', bytes: 0, keys: 0, records: 0,
+      };
+      estimated.bytes += plan.length + plan.keys.reduce((total, key) => total + byteLength(key), 0);
+      estimated.keys += plan.keys.length;
+      estimated.records += plan.keys.length;
+      groups.set(estimated.label, estimated);
+    }
+  }
+  const flatPlayerChunkKeys = chunkReadPlans.flatMap(plan => plan.keys);
   if (flatPlayerChunkKeys.length) {
     try {
       const chunkValues = await safeMGet(flatPlayerChunkKeys);
       let offset = 0;
-      for (const plan of chunkPlans) {
+      for (const plan of chunkReadPlans) {
         const chunks = chunkValues.slice(offset, offset + plan.keys.length);
         offset += plan.keys.length;
         let joined = '';
@@ -191,17 +214,20 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
             continue;
           }
           add('Player save chunks', plan.keys[i], value);
+          playerChunkPayloadBytesRead += valueBytes(value);
           joined += value;
         }
-        try {
-          const parsed = JSON.parse(joined) as Record<string, unknown>;
-          playerStates.set(plan.userId, {
-            saveGeneration: Math.max(0, Math.floor(Number(parsed.saveGeneration) || 0)),
-            collectionStorageVersion: Math.floor(Number(parsed.collectionStorageVersion) || 0),
-            raw: joined,
-          });
-        } catch {
-          if (chunks.some(value => value != null)) errors.push('A chunked player save could not be parsed for one indexed account.');
+        if (chunks.every(value => typeof value === 'string')) {
+          try {
+            const parsed = JSON.parse(joined) as Record<string, unknown>;
+            playerStates.set(plan.userId, {
+              saveGeneration: Math.max(0, Math.floor(Number(parsed.saveGeneration) || 0)),
+              collectionStorageVersion: Math.floor(Number(parsed.collectionStorageVersion) || 0),
+              raw: joined,
+            });
+          } catch {
+            errors.push('A chunked player save could not be parsed for one indexed account.');
+          }
         }
       }
     } catch (error) {
@@ -394,6 +420,9 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     onlinePlayersCurrentCount: currentOnlinePlayers,
     playerAuditTruncated: truncatedUsers > 0,
     playerManifestCount,
+    playerChunkPayloadBytesEstimated,
+    playerChunkPayloadBytesRead,
+    playerChunkKeysSkipped,
     activeCodexUsersAudited: codexUsersAudited,
     activeCodexShardKeysPresent: codexKeysPresent,
     missingPlayerSaveChunks: missingPlayerChunks,
@@ -406,6 +435,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
       'This is a payload-size estimate from known/indexed keys, not Redis MEMORY USAGE or the platform quota meter.',
       'Devvit does not expose global key scanning; retired player-save generations, old Codex generations, unindexed large-value chunks, and orphaned keys cannot be enumerated.',
       'Only the first ' + MAX_AUDIT_USERS + ' indexed players are inspected per audit to keep the request bounded.',
+      'Player-save chunk payload reads are capped at ' + MAX_PLAYER_CHUNK_PAYLOAD_READ_BYTES + ' bytes per audit; skipped chunk payload sizes are estimated from manifests.',
       'Per-post/per-viewer impression marker combinations are not exhaustively enumerated; viewer/post index rows and indexed viewer values are counted.',
       'Redis key metadata, hash-table overhead, allocator overhead, and provider accounting are not included.',
     ],
