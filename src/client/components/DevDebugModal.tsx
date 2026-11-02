@@ -2817,7 +2817,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
               { supernova: 5 },
               { totalRolls: 10, upgrades: { ...zeroUpgrades, critChance: 20 } },
             );
-            const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0, exactRarity: false });
+            // The inverse-CDF sampler maps low values to no procs; a high value
+// deterministically selects both the critical and Supernova procs.
+const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValue: 0.999999, exactRarity: false });
             if (Number(result.orb?.rarity) <= 45 || !result.orb?.isCrit) {
               throw new Error('Supernova should magnify deterministic critical strength beyond 1/45, got 1/' + result.orb?.rarity + ', crit=' + result.orb?.isCrit + '.');
             }
