@@ -164,3 +164,15 @@ test('emergency diagnostic cleanup uses quota-safe DEL and never deletes player 
   assert.match(ui, /Clear All Diagnostic Logs/);
   assert.match(ui, /Player saves, combat saves, Codex, leaderboards, and player progression/);
 });
+
+
+test('quota recovery runs from the one-time production AppUpgrade trigger before UI access', () => {
+  const app = source('src/server/app.ts');
+  const config = JSON.parse(source('devvit.json')) as { triggers?: Record<string, string> };
+  assert.equal(config.triggers?.onAppUpgrade, '/internal/on-app-upgrade');
+  assert.match(app, /EMERGENCY_LOG_CLEANUP_VERSION = '2\.2\.6'/);
+  assert.match(app, /app\.post\('\/internal\/on-app-upgrade'/);
+  assert.match(app, /APP_VERSION !== EMERGENCY_LOG_CLEANUP_VERSION/);
+  assert.match(app, /subredditName !== 'infinityorbs'/);
+  assert.match(app, /await clearAllDiagnosticLogs\(\)/);
+});
