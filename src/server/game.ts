@@ -827,7 +827,8 @@ export async function getPaymentDebugLogs(limit = PAYMENT_DEBUG_LOG_LIMIT): Prom
 }
 
 export async function clearPaymentDebugLogs(): Promise<void> {
-  await redis.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify([]));
+  // DEL is allowed during Redis storage-quota enforcement; SET is not.
+  await redis.del(PAYMENT_DEBUG_LOG_KEY);
 }
 
 const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v4';
@@ -906,7 +907,8 @@ export async function getGlobalBoosterDebugLogs(
 }
 
 export async function clearGlobalBoosterDebugLogs(): Promise<void> {
-  await redis.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify([]));
+  // DEL is allowed during Redis storage-quota enforcement; SET is not.
+  await redis.del(GLOBAL_BOOSTER_DEBUG_LOG_KEY);
 }
 
 const GLOBAL_BOOSTER_ACTIVATION_LOG_KEY = 'io:global-booster-activation-log:v1';
@@ -986,7 +988,37 @@ export async function getGlobalBoosterActivationLog(limit = 100): Promise<Global
 }
 
 export async function clearGlobalBoosterActivationLog(): Promise<void> {
-  await redis.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify([]));
+  // DEL is allowed during Redis storage-quota enforcement; SET is not.
+  await redis.del(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY);
+}
+
+/**
+ * Emergency cleanup for diagnostic history only. Uses DEL (quota-safe) and
+ * the existing player registry to remove per-player Player Spy traces.
+ * Player saves, combat saves, Codex shards, and progression are never touched.
+ */
+export async function clearAllDiagnosticLogs(): Promise<{
+  sharedLogKeys: number;
+  playerSpyLogs: number;
+}> {
+  const sharedLogKeys = [
+    SAVE_DEBUG_LOG_KEY,
+    PAYMENT_DEBUG_LOG_KEY,
+    GLOBAL_BOOSTER_DEBUG_LOG_KEY,
+    GLOBAL_BOOSTER_ACTIVATION_LOG_KEY,
+  ];
+  await Promise.all(sharedLogKeys.map(keyName => redis.del(keyName)));
+
+  // Redis does not support global key scans. The player registry is our known
+  // index for the per-user Player Spy log keys, so delete only those exact keys.
+  const userIds = await redis.hKeys(PLAYER_REGISTRY_KEY);
+  for (let offset = 0; offset < userIds.length; offset += 25) {
+    await Promise.all(
+      userIds.slice(offset, offset + 25).map(userId => redis.del(playerSpyKey(userId))),
+    );
+  }
+
+  return { sharedLogKeys: sharedLogKeys.length, playerSpyLogs: userIds.length };
 }
 export interface DeveloperAnnouncement {
   message: string;
