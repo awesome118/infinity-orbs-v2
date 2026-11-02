@@ -259,6 +259,13 @@ test('read-only Redis audit estimates impression marker counts and payload bytes
       uniquePostViews: 2,
       byType: { 'main-game': 0, 'orb-share': 0, frenzy: 2 },
     }),
+    ['io:impressions:unique-v2:seen-user:' + viewerA]: '1',
+    ['io:impressions:unique-v2:seen-user:' + viewerB]: '1',
+    ['io:impressions:unique-v2:seen-type-user:main-game:' + viewerA]: '1',
+    ['io:impressions:unique-v2:seen-type-user:orb-share:' + viewerA]: '1',
+    ['io:impressions:unique-v2:seen-type-user:frenzy:' + viewerB]: '1',
+    ['io:impressions:unique-v2:source-eligible-user:orb-share:' + viewerA]: '1',
+    ['io:impressions:unique-v2:source-eligible-user:frenzy:' + viewerB]: '1',
   };
   const fakeRedis = {
     hGetAll: async (key: string) => {
@@ -290,6 +297,11 @@ test('read-only Redis audit estimates impression marker counts and payload bytes
   assert.equal(report.impressionSeenUserMarkerEstimatedCount, 2);
   assert.equal(report.impressionSeenTypeMarkerEstimatedCount, 3);
   assert.equal(report.impressionViewerMarkerEstimatedCount, 10);
+  assert.equal(report.impressionMarkerKeysAudited, 13);
+  assert.equal(report.impressionMarkerKeysPresent, 7);
+  assert.ok(report.groups.some(group => group.label === 'Impression unique-user markers' && group.keys === 2));
+  assert.ok(report.groups.some(group => group.label === 'Impression unique-type markers' && group.keys === 3));
+  assert.ok(report.groups.some(group => group.label === 'Impression source-eligibility markers' && group.keys === 2));
   assert.ok(report.impressionSeenPostMarkerEstimatedBytes > 0);
   assert.ok(report.impressionViewerMarkerEstimatedBytes > report.impressionSeenPostMarkerEstimatedBytes);
 });
@@ -350,5 +362,42 @@ test('read-only Redis audit finds retired impression namespace and indexed Frenz
   assert.equal(report.indexedPostMetadataKeysPresent, 2);
   assert.ok(report.groups.some(group => group.label === 'Frenzy post records' && group.keys === 1));
   assert.ok(report.groups.some(group => group.label === 'Frenzy claimer projections' && group.keys === 1));
+});
+
+test('read-only Redis audit follows retained Global Booster credit operation IDs', async () => {
+  const operationId = 'audit-credit-operation-001';
+  const recipientId = 'audit-credit-recipient';
+  const batchKey = 'io:admin-global-booster-credit-batch:' + operationId;
+  const receiptKey = 'io:admin-global-booster-credit-grant:' + operationId + ':' + recipientId;
+  const values: Record<string, string> = {
+    'io:global-booster-debug-log:v1': JSON.stringify([{
+      stage: 'admin:grant-credits',
+      operationId,
+      affectedUsers: 1,
+    }]),
+    [batchKey]: JSON.stringify({
+      version: 1,
+      operationId,
+      scope: 'all',
+      amount: 10,
+      createdAt: Date.now(),
+      userIds: [{ userId: recipientId, username: 'Recipient' }],
+    }),
+    [receiptKey]: JSON.stringify({ amount: 10, before: 0, after: 10, createdAt: Date.now() }),
+  };
+  const fakeRedis = {
+    get: async (key: string) => values[key] ?? null,
+    hGetAll: async () => ({}),
+    mGet: async (keys: string[]) => keys.map(key => values[key] ?? null),
+    zCard: async () => 0,
+  };
+
+  const report = await auditKnownRedisStorage(fakeRedis);
+  assert.equal(report.adminCreditOperationsFound, 1);
+  assert.equal(report.adminCreditOperationsAudited, 1);
+  assert.equal(report.adminCreditOperationsSkipped, 0);
+  assert.equal(report.adminCreditGrantReceiptsPresent, 1);
+  assert.ok(report.groups.some(group => group.label === 'Admin Global Booster credit manifests' && group.keys === 1));
+  assert.ok(report.groups.some(group => group.label === 'Admin Global Booster credit receipts' && group.keys === 1));
 });
 
