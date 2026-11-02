@@ -11,7 +11,7 @@ const byteLength = (value: string): number => encoder.encode(value).length;
 const PLAYER_CHUNK_PREFIX = 'io:player-save-chunk:';
 const LARGE_CHUNK_PREFIX = 'io:large-value-chunk:v1:';
 const ANALYTICS_PREFIX = 'io:impressions:unique-v2:';
-const MAX_AUDIT_USERS = 250;
+const MAX_AUDIT_USERS = 100;
 const MAX_TOP_VALUES = 25;
 
 function valueBytes(value: unknown): number {
@@ -223,8 +223,8 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   });
   try {
     const codexHashes = await readInBatches(
-      codexRequests,
-      async batch => Promise.all(batch.map(item => redisClient.hGetAll(item.key))),
+      codexRequests.map(item => item.key),
+      async batch => Promise.all(batch.map(key => redisClient.hGetAll(key))),
       8,
       4,
     );
@@ -241,8 +241,8 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
 
   const sharedStringKeys = [
     'io:leaderboard', 'io:guilds', 'io:community_event', 'io:community_event_tick',
-    'io:global-chat:v1', 'io:global-game-post-id', 'io:chat-reports:v1',
-    'io:game-bans', 'io:online:players', 'io:ccu:all-time',
+    'io:global-chat:v1', 'io:global-game-post-id',
+    'io:game-bans', 'io:ccu:all-time', 'io:follow-prompt-actions:v2', 'io:popup-config:v1',
     'io:developer-announcement', 'io:global-booster-announcement',
     'io:global-boosters:v4', 'io:daily-streak-community',
     'io:leaderboards:cache:v1', 'io:guild-token-reset:v1', 'io:guild-upgrade-reset:v1',
@@ -270,6 +270,21 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     }
   } catch (error) {
     errors.push('Shared string-key audit failed: ' + String(error));
+  }
+
+  const currentOnlinePlayers = Number(await redisClient.zCard('io:online:players').catch((error: unknown) => {
+    errors.push('Online-player sorted-set count failed: ' + String(error));
+    return 0;
+  })) || 0;
+
+  const hourlyCcuKeys = Array.from({ length: 720 }, (_, index) =>
+    'io:ccu:hour:' + String(Math.floor(now / 3_600_000) - index),
+  );
+  try {
+    const hourlyCcuValues = await safeMGet(hourlyCcuKeys);
+    for (let i = 0; i < hourlyCcuKeys.length; i += 1) add('CCU history', hourlyCcuKeys[i], hourlyCcuValues[i]);
+  } catch (error) {
+    errors.push('Hourly CCU history read failed: ' + String(error));
   }
 
   const hashKeys = [
@@ -376,6 +391,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     knownRecords: orderedGroups.reduce((total, group) => total + group.records, 0),
     indexedPlayersTotal: allUserIds.length,
     indexedPlayersAudited: userIds.length,
+    onlinePlayersCurrentCount: currentOnlinePlayers,
     playerAuditTruncated: truncatedUsers > 0,
     playerManifestCount,
     activeCodexUsersAudited: codexUsersAudited,
