@@ -1651,7 +1651,9 @@ export async function prepareGuildRollEffects(
           guild.taskCompletions = capInteger((guild.taskCompletions ?? 0) + 1);
           guild.combo = activateGuildComboStack(guild.combo, now, GUILD_COMBO_MAX_TIER, comboDurationMultiplier);
           const replacement = createGuildTask(task.type, completedTier + 1);
-          replacement.progress = Math.min(Number.MAX_SAFE_INTEGER, overflow);
+          replacement.progress = task.type === 'value'
+            ? capGuildValue(overflow)
+            : Math.min(Number.MAX_SAFE_INTEGER, overflow);
           guild.tasks[i] = replacement;
           task = replacement;
         }
