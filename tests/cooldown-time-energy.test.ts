@@ -37,16 +37,29 @@ test('Chrono Flow can push theoretical cooldown below 300ms while live rolls ret
   assert.equal(cooldownMs(state), 300, 'actual activations must keep the 300ms safety floor');
 });
 
-test('Cooldown Reclaimer returns 10% of total underflow per level, up to 100% at level 10', () => {
+test('Cooldown Reclaimer earns 1% of live cooldown per level, even at the 300ms floor', () => {
   const state = buildSub300State();
-  const theoretical = theoreticalCooldownMs(state);
-  const underflow = Math.max(0, 300 - theoretical);
-  state.masterySkills!.cooldownReclaimer = 1;
-  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), Math.floor(underflow * 0.10));
-  state.masterySkills!.cooldownReclaimer = 10;
-  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), Math.floor(underflow));
-  assert.ok(cooldownReclaimerEnergyPerActivationMs(state) <= 300);
+  assert.equal(cooldownMs(state), 300);
 
+  state.masterySkills!.cooldownReclaimer = 1;
+  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 3);
+
+  state.masterySkills!.cooldownReclaimer = 5;
+  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 15);
+
+  state.masterySkills!.cooldownReclaimer = 10;
+  assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 30);
+});
+
+test('Cooldown Reclaimer scales from the actual cooldown when it is above the live floor', () => {
+  const state = createInitialState(NOW);
+  state.masterySkills!.cooldownReclaimer = 5;
+  const currentCooldown = cooldownMs(state);
+  assert.ok(currentCooldown > 300, `expected cooldown above the floor, got ${currentCooldown}ms`);
+  assert.equal(
+    cooldownReclaimerEnergyPerActivationMs(state),
+    Math.floor(currentCooldown * 0.05),
+  );
 });
 
 test('Cooldown Reclaimer does not award Time Energy unless the skill is purchased', () => {
@@ -54,7 +67,6 @@ test('Cooldown Reclaimer does not award Time Energy unless the skill is purchase
   state.masterySkills!.cooldownReclaimer = 0;
   assert.equal(cooldownReclaimerEnergyPerActivationMs(state), 0);
 });
-
 
 test('Time Energy funds as many whole activations as the current cooldown can afford', () => {
   assert.equal(timeEnergyActivationsAvailable(4_000, 2_000), 2);
@@ -74,5 +86,7 @@ test('Time Energy requests spend one current cooldown per activation and do not 
   assert.match(handler, /timeEnergyActivationsAvailable\(s\.timeEnergy \?\? 0, cd\)/);
   assert.match(handler, /const freeRollActivations = usingTimeEnergy\s*\? timeEnergyActivations/);
   assert.match(handler, /s\.timeEnergy = Math\.max\(0, \(s\.timeEnergy \?\? 0\) - \(cd \* freeRollActivations\)\)/);
-  assert.match(handler, /if \(!usingTimeEnergy && !usingFreeRoll\)/);
+  assert.match(handler, /if \(!usingTimeEnergy && !usingFreeRoll && !usingChainPatcher\)/);
+  assert.match(handler, /const reclaimed = reclaimedPerActivation \* activations/);
+  assert.match(handler, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s, isAuto\)/);
 });
