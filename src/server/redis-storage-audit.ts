@@ -25,6 +25,11 @@ function valueBytes(value: unknown): number {
   catch { return byteLength(String(value)); }
 }
 
+function auditCount(value: unknown): number {
+  const count = Number(value ?? 0);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
 function parsePlayerManifest(value: unknown): PlayerManifest | null {
   if (typeof value !== 'string' || !value.startsWith('{"__ioPlayerSaveManifest":1')) return null;
   try {
@@ -81,9 +86,27 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   let missingLargeValueChunks = 0;
   let playerManifestCount = 0;
   let codexUsersAudited = 0;
+  let codexUsersEligible = 0;
+  let codexUsersSkipped = 0;
   let codexKeysPresent = 0;
   let analyticsPostIndexFields = 0;
   let analyticsViewerIndexFields = 0;
+  let impressionViewerRecordsParsed = 0;
+  let impressionViewerRecordsMissing = 0;
+  let impressionViewerRecordsInvalid = 0;
+  let impressionViewerCountMismatches = 0;
+  let impressionViewerUniquePostViews = 0;
+  const impressionViewerUniquePostViewsByType: Record<(typeof IMPRESSION_POST_TYPES)[number], number> = {
+    'main-game': 0,
+    'orb-share': 0,
+    frenzy: 0,
+  };
+  let impressionSeenUserMarkerEstimatedCount = 0;
+  let impressionSeenTypeMarkerEstimatedCount = 0;
+  let impressionSeenTypeMarkerEstimatedBytes = 0;
+  let impressionSeenPostMarkerEstimatedCount = 0;
+  let impressionSeenPostMarkerEstimatedBytes = 0;
+  let impressionViewerMarkerEstimatedBytes = 0;
 
   const add = (family: string, key: string, value: unknown): void => {
     if (value == null) return;
