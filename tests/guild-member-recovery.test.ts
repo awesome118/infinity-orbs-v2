@@ -23,10 +23,8 @@ test('Guild parsing repairs only recoverable member metadata before strict valid
 
   const normalizer = social.slice(normalizeStart, normalizeEnd);
   assert.match(normalizer, /member\.username = trimmed \|\|/);
-  assert.match(normalizer, /member\.contribution = capSafeGuildCounter\(member\.contribution\)/);
-  assert.match(normalizer, /typeof member\.contribution !== 'number'/);
-  assert.match(normalizer, /!Number\.isSafeInteger\(member\.contribution\)/);
-  assert.match(normalizer, /member\.contribution < 0/);
+  assert.match(normalizer, /member\.contribution = normalizeGuildValueProgress\(member\.contribution\)/);
+  assert.match(normalizer, /!isGuildValueProgress\(member\.contribution\)/);
   assert.match(normalizer, /member\.trusted = member\.role === 'owner'/);
   assert.match(normalizer, /delete member\.joinedAt/);
   assert.match(normalizer, /delete member\.lastLoginAt/);
@@ -42,8 +40,9 @@ test('legacy Guild contribution writer cannot create unsafe member counters', ()
   const end = social.indexOf('export async function prepareGuildRollEffects(', start);
   assert.ok(start >= 0 && end > start, 'legacy contribution writer boundary must exist');
   const body = social.slice(start, end);
-  assert.match(body, /const safeValue = capSafeGuildCounter\(value\)/);
-  assert.match(body, /member\.contribution = capSafeGuildCounter\(member\.contribution \+ safeValue\)/);
+  assert.match(body, /const safeValue = capGuildValue\(value\)/);
+  assert.match(body, /member\.contribution = addGuildValueProgress\(member\.contribution, safeValue\)/);
+  assert.match(body, /task\.type === 'value'\) task\.progress = addGuildValueProgress\(task\.progress, safeValue\)/);
   assert.doesNotMatch(body, /member\.contribution \+= value/);
   assert.match(body, /guild\.tokens = capSafeGuildCounter\(\(guild\.tokens \?\? 0\) \+ reward\)/);
   assert.doesNotMatch(body, /guild\.boss|guildXpReward|guildXpRank|guild\.level|guild\.xp|taxRate/);
