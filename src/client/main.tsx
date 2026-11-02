@@ -77,6 +77,7 @@ import {
 
 } from '../shared/game.js';
 import { sound } from './sound.js';
+import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
 import type { CombatPage } from '../shared/combat.js';
@@ -778,6 +779,9 @@ function App() {
     predictions: Array<{ index: number; orb: Orb }>;
   }> | null>(null);
   const rollActionLockRef = useRef(false);
+  // A server cooldown rejection carries a relative delay; keep it separate from
+  // state-derived timestamps so refreshes cannot shorten the retry backoff.
+  const autoRollCooldownRetryUntilRef = useRef(0);
   const combatBeatActiveRef = useRef(false);
   const autoRollDisableForCombatRef = useRef(false);
   const pendingMutationCountRef = useRef(0);
@@ -2053,6 +2057,7 @@ function App() {
         }),
       }));
 
+      if (isAutoRoll) autoRollCooldownRetryUntilRef.current = 0;
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
         setNewBestModalData({ orb: res.orb, prevBest: previousBest });
@@ -2102,6 +2107,9 @@ function App() {
           else reportJourneyProgress(0.15, 'first_roll');
           if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) reportJourneyInteraction('personal_best_found', 'new_rarity');
     } catch (error: any) {
+      const autoCooldownRetryDelay = isAutoRoll
+        ? autoRollCooldownRetryDelayMs(error)
+        : null;
       rollTicketRef.current = null;
       setFrenzyArmed(false);
       mutationResyncNeededRef.current = true;
@@ -2109,7 +2117,16 @@ function App() {
       // authoritative state before the next roll attempt, for either path.
       await refreshAll().catch(() => null);
       mutationResyncNeededRef.current = false;
-      showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
+      if (autoCooldownRetryDelay !== null) {
+        // Cooldown errors are expected around very short Auto Roll intervals.
+        // Wait for the server-reported remainder plus a buffer instead of
+        // retrying on a fixed 150ms loop and repeatedly colliding with the lock.
+        const retryAt = Date.now() + autoCooldownRetryDelay;
+        autoRollCooldownRetryUntilRef.current = retryAt;
+        setReadyAt(retryAt);
+      } else {
+        showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
+      }
     } finally {
       setIsRolling(false);
       rollActionLockRef.current = false;
@@ -2136,7 +2153,8 @@ function App() {
       ...state,
       alignmentActiveInstances: activeInstances,
     };
-    setReadyAt(lastRollAt + cooldownMs(timingState, true));
+    const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true);
+    setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current));
   }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto Roll uses a single scheduled wake-up, not a state-captured polling
@@ -2182,7 +2200,7 @@ function App() {
       const authoritativeReadyAt = lastRollAt > 0
         ? lastRollAt + cooldownMs(latest, true)
         : 0;
-      const nextReadyAt = Math.max(readyAt, authoritativeReadyAt);
+      const nextReadyAt = Math.max(readyAt, authoritativeReadyAt, autoRollCooldownRetryUntilRef.current);
       const remaining = nextReadyAt - Date.now();
       if (remaining > 0) {
         schedule(remaining);
