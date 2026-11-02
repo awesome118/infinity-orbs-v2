@@ -556,12 +556,34 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
         impressionViewerRecordsParsed += 1;
         impressionViewerUniquePostViews += uniquePostViews;
         if (byTypeTotal !== uniquePostViews) impressionViewerCountMismatches += 1;
+        impressionViewerMarkerProbes.push({
+          family: 'Impression unique-user markers',
+          key: ANALYTICS_PREFIX + 'seen-user:' + analyticsViewerHashes[i],
+        });
+        impressionViewerMarkerProbes.push({
+          family: 'Impression source-touch markers',
+          key: ANALYTICS_PREFIX + 'source-touch:' + analyticsViewerHashes[i],
+        });
+        impressionViewerMarkerProbes.push({
+          family: 'Impression conversion markers',
+          key: ANALYTICS_PREFIX + 'converted-user:' + analyticsViewerHashes[i],
+        });
+        for (const sourceType of IMPRESSION_SOURCE_TYPES) {
+          impressionViewerMarkerProbes.push({
+            family: 'Impression source-eligibility markers',
+            key: ANALYTICS_PREFIX + 'source-eligible-user:' + sourceType + ':' + analyticsViewerHashes[i],
+          });
+        }
         for (const type of IMPRESSION_POST_TYPES) {
           impressionViewerUniquePostViewsByType[type] += byType[type];
           if (byType[type] > 0) {
             impressionSeenTypeMarkerEstimatedCount += 1;
             impressionSeenTypeMarkerEstimatedBytes +=
               byteLength(ANALYTICS_PREFIX + 'seen-type-user:' + type + ':') + 64 + 1;
+            impressionViewerMarkerProbes.push({
+              family: 'Impression unique-type markers',
+              key: ANALYTICS_PREFIX + 'seen-type-user:' + type + ':' + analyticsViewerHashes[i],
+            });
           }
         }
       } catch {
@@ -573,6 +595,22 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   }
 
   impressionSeenUserMarkerEstimatedCount = impressionViewerRecordsParsed;
+  // Probe the durable/no-TTL marker families whose user hashes are discoverable
+  // through the viewer index. These are actual key reads, not inferred counts.
+  const uniqueViewerMarkerProbes = new Map(
+    impressionViewerMarkerProbes.map(item => [item.key, item.family]),
+  );
+  const viewerMarkerKeys = [...uniqueViewerMarkerProbes.keys()];
+  impressionMarkerKeysAudited += viewerMarkerKeys.length;
+  try {
+    const markerValues = await safeMGetWide(viewerMarkerKeys);
+    for (let i = 0; i < viewerMarkerKeys.length; i += 1) {
+      if (markerValues[i] != null) impressionMarkerKeysPresent += 1;
+      add(uniqueViewerMarkerProbes.get(viewerMarkerKeys[i]) ?? 'Impression viewer markers', viewerMarkerKeys[i], markerValues[i]);
+    }
+  } catch (error) {
+    errors.push('Indexed impression-marker audit failed: ' + String(error));
+  }
   impressionSeenPostMarkerEstimatedCount = IMPRESSION_POST_TYPES.reduce(
     (total, type) => total + impressionViewerUniquePostViewsByType[type],
     0,
