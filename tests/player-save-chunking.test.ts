@@ -172,7 +172,9 @@ test('quota recovery runs from the one-time production AppUpgrade trigger before
   assert.equal(config.triggers?.onAppUpgrade, '/internal/on-app-upgrade');
   assert.match(app, /EMERGENCY_LOG_CLEANUP_VERSION = '2\.2\.6'/);
   assert.match(app, /app\.post\('\/internal\/on-app-upgrade'/);
-  assert.match(app, /APP_VERSION !== EMERGENCY_LOG_CLEANUP_VERSION/);
+  assert.match(app, /APP_VERSION === EMERGENCY_LOG_CLEANUP_VERSION/);
+  assert.match(app, /REDIS_STORAGE_AUDIT_VERSION = '2\\.2\\.8'/);
+  assert.match(app, /await auditKnownRedisStorage\\(redis\\)/);
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.match(app, /await clearAllDiagnosticLogs\(\)/);
 });
