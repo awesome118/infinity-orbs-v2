@@ -32,7 +32,7 @@ export function nextCodexRarityBucket(rarityValue: unknown): number | null {
 export function previousCodexRarityBucket(rarityValue: unknown): number | null {
   const rarity = codexRarityBucket(rarityValue);
   if (rarity <= 2) return null;
-  if (rarity <= CODEX_EXACT_RARITY_LIMIT + 1) return rarity - 1;
+  if (rarity <= CODEX_EXACT_RARITY_LIMIT) return rarity - 1;
   const exponent = Math.floor(Math.log10(rarity));
   const decade = Math.pow(10, exponent);
   const step = Math.pow(10, exponent - (CODEX_SIGNIFICANT_DIGITS - 1));
