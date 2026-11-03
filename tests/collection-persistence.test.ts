@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { nextCodexChainRarity } from '../src/shared/game.js';
 import {
   CODEX_MIGRATION_BATCH_SIZE,
   CODEX_SHARD_COUNT,
@@ -39,6 +40,7 @@ test('Codex preserves exact rarities through 1/10,000 and uses four significant 
   assert.equal(nextCodexRarityBucket(99_990), 100_000);
   assert.equal(nextCodexRarityBucket(100_000), 100_100);
   assert.equal(nextCodexRarityBucket(329_300_000), 329_400_000);
+  assert.equal(nextCodexChainRarity({ '329300000': 1 }), 329_400_000);
   assert.equal(previousCodexRarityBucket(10_010), 10_000);
   assert.equal(previousCodexRarityBucket(100_000), 99_990);
   assert.equal(previousCodexRarityBucket(329_400_000), 329_300_000);
