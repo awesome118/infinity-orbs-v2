@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.26
+
+- **Devvit Review Release:** Reissues the v2.2.25 storage and Codex optimization build as a new patch version for Reddit review. No gameplay changes from v2.2.25.
+
 ### New in 2.2.25
 
 - **Redis Storage Reduction:** Player, combat, Guild, and leaderboard JSON now use backward-compatible DEFLATE compression. Redundant player projections are no longer duplicated in durable saves, diagnostic logs have smaller limits and a 14-day expiry, and the legacy leaderboard recovery index stores a compact account-ID projection.
