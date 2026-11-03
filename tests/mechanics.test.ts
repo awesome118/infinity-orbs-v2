@@ -176,11 +176,11 @@ test('Chain Patcher chooses the lowest adjacent rarity and prices 1/900 at 10 Sh
   assert.equal(CHAIN_PATCHER_COOLDOWN_MS, 24 * 60 * 60 * 1_000);
 });
 
-test('Chain Patcher extends the cheapest edge of the longest Codex chain', () => {
+test('Chain Patcher advances from the upper end of the longest Codex chain', () => {
   const collection: Record<string, number> = {};
   for (let rarity = 900; rarity <= 905; rarity += 1) collection[String(rarity)] = 1;
   assert.equal(bestCodexChain(collection).length, 6);
-  assert.equal(nextCodexChainRarity(collection), 899);
+  assert.equal(nextCodexChainRarity(collection), 906);
 });
 
 test('collection value accumulation uses the full finite Number range without overflowing', () => {
