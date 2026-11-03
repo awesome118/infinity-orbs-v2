@@ -1841,7 +1841,8 @@ async function prepareFrenzyOwnerRewardWrites(
     redis.get(ownerGenerationKey),
   ]);
   if (raw == null) throw new Error('Frenzy owner save was not found.');
-  const ownerState = parsePlayerStateValue(raw);
+  const ownerSave = await readStoredPlayerSave(safeOwnerId, raw);
+  const ownerState = ownerSave == null ? null : parsePlayerStateValue(ownerSave);
   if (!ownerState) throw new Error('Frenzy owner save could not be read safely.');
 
   const generationText = generationRaw == null ? '0' : String(generationRaw);
@@ -7737,7 +7738,8 @@ export async function startOrbFrenzy(options: {
           // revision have not moved. Never rebase rewards or roll state onto a
           // newer save, and never retry after a wipe.
           const playerRaw = await redis.get(key());
-          const persistedPlayer = playerRaw == null ? null : parsePlayerStateValue(playerRaw);
+          const decodedPlayerRaw = playerRaw == null ? null : await readStoredPlayerSave(currentUserId(), playerRaw);
+          const persistedPlayer = decodedPlayerRaw == null ? null : parsePlayerStateValue(decodedPlayerRaw);
           const generationRaw = await redis.get(saveGenerationKeyFor(currentUserId()));
           const currentGeneration = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
           const currentRevision = playerRaw == null
