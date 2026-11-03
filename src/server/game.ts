@@ -5625,7 +5625,8 @@ export async function processOfflineFullNotification(
   }
   const expectedJobValue = String(jobRaw);
 
-  const raw = await redis.get('player:' + userId);
+  const storedRaw = await redis.get('player:' + userId);
+  const raw = await readStoredPlayerSave(userId, storedRaw);
   if (!raw) {
     await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
     return;
