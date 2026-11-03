@@ -2853,7 +2853,7 @@ export async function recordLeaderboard(s: PlayerState) {
       } else board.push(next);
       board.sort((a, b) => b.value - a.value);
       const compactBoard = board.slice(0, 5000).map(entry => {
-        const usernameValue = String(entry.username ?? '').replace(/^u\\//i, '').slice(0, 100);
+        const usernameValue = String(entry.username ?? '').replace(/^u\//i, '').slice(0, 100);
         if (entry.userId) {
           return {
             username: usernameValue, userId: entry.userId,
