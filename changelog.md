@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.25
+
+- **Redis Storage Reduction:** Player, combat, Guild, and leaderboard JSON now use backward-compatible DEFLATE compression. Redundant player projections are no longer duplicated in durable saves, diagnostic logs have smaller limits and a 14-day expiry, and the legacy leaderboard recovery index stores a compact account-ID projection.
+- **Codex Precision:** Rarities at or below 1/10,000 remain exact. Higher rarities share four-significant-digit Codex buckets, and Codex devotion advances through those bucket steps. Existing Codex data migrates to a verified versioned shard namespace before old shards are retired.
+- **100 MB Storage Reporting:** Admin storage diagnostics now calculate capacity against the unapproved-app 100 MB allowance. Impression analytics retention is unchanged.
+
 ### New in 2.2.24
 
 - **Time Energy HTTP 503 Prevention:** Increased the bounded online roll pass from 10 million to 100 million effective Orbs while keeping the 4,096 representative-sample limit. A 300-million-Orb claim now needs four passes instead of roughly 31, reducing repeated roll setup and progress writes; weighted counts remain exact.

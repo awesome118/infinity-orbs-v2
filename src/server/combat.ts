@@ -1,5 +1,6 @@
 import { context, redis } from './devvit-mock.js';
 import { loadRaw } from './game.js';
+import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
 import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneRarityFromRoll, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
@@ -220,7 +221,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   if(typeof raw!=='string'||!raw.trim())throw new Error('Combat state is corrupted; refusing to overwrite it.');
   let p:Partial<CombatState>;
   try {
-    const parsed:unknown=JSON.parse(raw);
+    const parsed:unknown=JSON.parse(decompressStorageString(raw));
     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('invalid combat-state root');
     p=parsed as Partial<CombatState>;
   } catch {
@@ -482,7 +483,7 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   const key=combatKey();
   for(let i=0;i<MAX_CAS_ATTEMPTS;i++){
     const txn=await redis.watch(key);let closed=false;
-    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,JSON.stringify(s));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
+    try { const s=normalizeState(await redis.get(key)),result=fn(s);await txn.multi();await txn.set(key,compressStorageString(JSON.stringify(s)));const commit=await txn.exec();closed=true;if(commit!==null)return result; }
     finally { if(!closed)await txn.unwatch().catch(()=>undefined); }
   }
   throw new Error('Combat state changed repeatedly. Please retry.');

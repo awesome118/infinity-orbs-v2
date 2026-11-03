@@ -1,4 +1,5 @@
 import { redis } from './devvit-mock.js';
+import { compressStorageString, decompressStorageString } from './storage-compression.js';
 
 const LARGE_VALUE_CHUNK_PREFIX = 'io:large-value-chunk:v1:';
 const LARGE_VALUE_CHUNK_CHARS = 64 * 1024;
@@ -101,62 +102,43 @@ export async function createRedisLargeValueWritePlan(
   namespaceKey: string,
   serialized: string,
 ): Promise<RedisLargeValueWritePlan> {
-  if (serialized.length <= LARGE_VALUE_INLINE_CHARS) {
-    return { storedValue: serialized, chunkKeys: [] };
-  }
   if (serialized.length > LARGE_VALUE_MAX_CHARS) {
     throw new Error('Shared data exceeds the supported 8 MiB logical size; no changes were written.');
   }
-
+  const storedPayload = compressStorageString(serialized);
+  if (storedPayload.length <= LARGE_VALUE_INLINE_CHARS) return { storedValue: storedPayload, chunkKeys: [] };
+  if (storedPayload.length > LARGE_VALUE_MAX_CHARS) {
+    throw new Error('Shared data exceeds the supported 8 MiB stored size; no changes were written.');
+  }
   const chunks: string[] = [];
-  for (let offset = 0; offset < serialized.length;) {
-    let end = Math.min(serialized.length, offset + LARGE_VALUE_CHUNK_CHARS);
-    // Do not split a UTF-16 surrogate pair across Redis records.
-    if (
-      end < serialized.length &&
-      serialized.charCodeAt(end - 1) >= 0xd800 &&
-      serialized.charCodeAt(end - 1) <= 0xdbff
-    ) {
-      end -= 1;
-    }
-    chunks.push(serialized.slice(offset, end));
+  for (let offset = 0; offset < storedPayload.length;) {
+    let end = Math.min(storedPayload.length, offset + LARGE_VALUE_CHUNK_CHARS);
+    if (end < storedPayload.length && storedPayload.charCodeAt(end - 1) >= 0xd800 &&
+        storedPayload.charCodeAt(end - 1) <= 0xdbff) end -= 1;
+    chunks.push(storedPayload.slice(offset, end));
     offset = end;
   }
   if (chunks.length < 1 || chunks.length > LARGE_VALUE_MAX_CHUNKS) {
     throw new Error('Shared data requires too many Redis records; no changes were written.');
   }
-
   const token = secureLargeValueToken();
   const namespaceHash = hashText(namespaceKey);
   const manifest: LargeValueManifest = {
-    __ioLargeValueManifest: 1,
-    namespaceHash,
-    token,
-    chunkCount: chunks.length,
-    length: serialized.length,
-    checksum: checksum(serialized),
+    __ioLargeValueManifest: 1, namespaceHash, token,
+    chunkCount: chunks.length, length: storedPayload.length, checksum: checksum(storedPayload),
   };
   const chunkKeys = chunkKeysFor(namespaceKey, manifest);
-
   try {
-    // Eight independent SETs stay far below the platform's per-request limit
-    // while avoiding a serial round trip for every 64 KiB record.
     for (let offset = 0; offset < chunks.length; offset += 8) {
-      await Promise.all(
-        chunks.slice(offset, offset + 8).map((chunk, localIndex) =>
-          redis.set(chunkKeys[offset + localIndex], chunk),
-        ),
-      );
+      await Promise.all(chunks.slice(offset, offset + 8).map((chunk, localIndex) =>
+        redis.set(chunkKeys[offset + localIndex], chunk),
+      ));
     }
   } catch (error) {
     await discardRedisLargeValueWritePlan({ storedValue: '', chunkKeys });
     throw error;
   }
-
-  return {
-    storedValue: JSON.stringify(manifest),
-    chunkKeys,
-  };
+  return { storedValue: JSON.stringify(manifest), chunkKeys };
 }
 
 export async function readRedisLargeValue(
@@ -168,7 +150,7 @@ export async function readRedisLargeValue(
     throw new Error('A shared-data record has an unsupported Redis value type.');
   }
   const manifest = parseLargeValueManifest(namespaceKey, storedValue);
-  if (!manifest) return storedValue;
+  if (!manifest) return decompressStorageString(storedValue);
 
   const keys = chunkKeysFor(namespaceKey, manifest);
   const chunks: string[] = [];
@@ -189,7 +171,7 @@ export async function readRedisLargeValue(
   if (joined.length !== manifest.length || checksum(joined) !== manifest.checksum) {
     throw new Error('A shared-data record failed its length/checksum validation.');
   }
-  return joined;
+  return decompressStorageString(joined);
 }
 
 /** Keep old chunks readable briefly for requests that fetched the prior pointer. */

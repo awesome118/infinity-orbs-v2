@@ -54,6 +54,7 @@ import {
   discardRedisLargeValueWritePlan,
 } from './redis-large-values.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
+import { decompressStorageString } from './storage-compression.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -1936,7 +1937,7 @@ debugRouter.get('/stat-spy', async (req, res) => {
     let storedPlayerSave: unknown = null;
     if (typeof rawPlayerSave === 'string' && rawPlayerSave.trim()) {
       try {
-        storedPlayerSave = JSON.parse(rawPlayerSave) as unknown;
+        storedPlayerSave = JSON.parse(decompressStorageString(rawPlayerSave)) as unknown;
       } catch {
         storedPlayerSave = { error: 'Could not parse the stored player save.' };
       }

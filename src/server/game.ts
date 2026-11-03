@@ -2,7 +2,8 @@ import { redis, context, reddit } from './devvit-mock.js';
 import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
 import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
-import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, groupCodexFields } from '../shared/collection-storage.js';
+import { compressStorageString, decompressStorageString } from './storage-compression.js';
+import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey, groupCodexFields, normalizeCodexCollection } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 
@@ -292,27 +293,56 @@ export function markCodexRarityWrite(state: PlayerState, rarityKey: string): voi
   pendingCodexRarityWrites.set(state, pending);
 }
 
-async function readCodexShards(userId: string, generation: number): Promise<Record<string, number>> {
-  const shardRecords = await Promise.all(
-    Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) => redis.hGetAll(codexShardKey(userId, generation, shard))),
+async function readCodexShardsFromKeys(
+  userId: string,
+  generation: number,
+  keyForShard: (id: string, gen: number, shard: number) => string,
+): Promise<Record<string, number>> {
+  const records = await Promise.all(
+    Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) => redis.hGetAll(keyForShard(userId, generation, shard))),
   );
-  const collection: Record<string, number> = {};
-  for (const record of shardRecords) {
+  const rawCollection: Record<string, number> = {};
+  for (const record of records) {
     if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
     for (const [rarityKey, rawCount] of Object.entries(record as Record<string, unknown>)) {
       const rarity = Number(rarityKey);
       const count = Number(rawCount);
       if ((rarityKey !== 'Infinity' && (!Number.isFinite(rarity) || !Number.isInteger(rarity) || rarity < 2)) ||
           !Number.isSafeInteger(count) || count < 0) continue;
-      collection[rarityKey] = count;
+      rawCollection[rarityKey] = Math.min(Number.MAX_SAFE_INTEGER, (rawCollection[rarityKey] ?? 0) + count);
     }
   }
-  return collection;
+  return normalizeCodexCollection(rawCollection);
 }
 
-async function migrateLegacyCodex(userId: string, generation: number, collection: Record<string, number>): Promise<void> {
+async function readCodexShards(userId: string, generation: number): Promise<Record<string, number>> {
+  return readCodexShardsFromKeys(userId, generation, codexShardKey);
+}
+
+async function readLegacyCodexShards(userId: string, generation: number): Promise<Record<string, number>> {
+  return readCodexShardsFromKeys(userId, generation, legacyCodexShardKey);
+}
+
+async function deleteLegacyCodexShards(userId: string, generation: number): Promise<void> {
+  try {
+    await Promise.all(Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) =>
+      redis.del(legacyCodexShardKey(userId, generation, shard)),
+    ));
+  } catch (error) {
+    console.warn('[Codex] Legacy shard cleanup will retry on a later load.', error);
+  }
+}
+
+async function migrateLegacyCodex(
+  userId: string,
+  generation: number,
+  collection: Record<string, number>,
+): Promise<void> {
+  const normalizedCollection = normalizeCodexCollection(collection);
+  // v1 remains authoritative until the v2 player-save pointer commits. HSET is
+  // idempotent, so an interrupted migration is safe to retry.
   const queued: Array<{ key: string; fields: Record<string, string> }> = [];
-  for (const { shard, fields } of groupCodexFields(Object.entries(collection))) {
+  for (const { shard, fields } of groupCodexFields(Object.entries(normalizedCollection))) {
     const entries = Object.entries(fields);
     for (let offset = 0; offset < entries.length; offset += CODEX_MIGRATION_BATCH_SIZE) {
       queued.push({
@@ -321,24 +351,39 @@ async function migrateLegacyCodex(userId: string, generation: number, collection
       });
     }
   }
-  // HSET is idempotent: a partial migration can safely retry while the old
-  // player save remains authoritative.
   for (let offset = 0; offset < queued.length; offset += 4) {
     await Promise.all(queued.slice(offset, offset + 4).map(write => redis.hSet(write.key, write.fields)));
   }
+  const verified = await readCodexShards(userId, generation);
+  const expected = JSON.stringify(Object.entries(normalizedCollection).sort(([a], [b]) => a.localeCompare(b)));
+  const actual = JSON.stringify(Object.entries(verified).sort(([a], [b]) => a.localeCompare(b)));
+  if (expected !== actual) throw new Error('Codex migration verification failed; the previous Codex was retained.');
 }
 
 async function ensureCodexStorageVersion(userId: string, generation: number, state: PlayerState): Promise<void> {
   if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) return;
-  const legacyCollection = isValidCollection(state.collection) ? state.collection : {};
-  await migrateLegacyCodex(userId, generation, legacyCollection);
-  state.collection = legacyCollection;
+  let sourceCollection: Record<string, number>;
+  if (state.collectionStorageVersion === 1) {
+    sourceCollection = await readLegacyCodexShards(userId, generation);
+    if (Object.keys(sourceCollection).length === 0 && isValidCollection(state.collection)) {
+      sourceCollection = normalizeCodexCollection(state.collection);
+    }
+  } else {
+    sourceCollection = normalizeCodexCollection(isValidCollection(state.collection) ? state.collection : {});
+  }
+  await migrateLegacyCodex(userId, generation, sourceCollection);
+  state.collection = normalizeCodexCollection(sourceCollection);
   state.collectionStorageVersion = CODEX_STORAGE_VERSION;
 }
 
+const NON_PERSISTED_PLAYER_FIELDS = new Set([
+  'collection', 'codexChain', 'codexDevotionLuckPercent', 'guildPerks', 'guildCombo',
+  'globalBoosters', 'dailyStreakCommunity', 'onlinePlayers',
+]);
+
 function serializePlayerStateForRedis(state: PlayerState): string {
   const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
-    ? Object.fromEntries(Object.entries(state).filter(([field]) => field !== 'collection'))
+    ? Object.fromEntries(Object.entries(state).filter(([field]) => !NON_PERSISTED_PLAYER_FIELDS.has(field)))
     : state;
   return JSON.stringify(persistedState);
 }
@@ -392,7 +437,7 @@ function playerSaveChunkKey(userId: string, token: string, index: number): strin
 async function readStoredPlayerSave(userId: string, storedValue: string | null | undefined): Promise<string | null> {
   if (storedValue == null) return null;
   const manifest = parsePlayerSaveManifest(storedValue);
-  if (!manifest) return storedValue;
+  if (!manifest) return decompressStorageString(storedValue);
   const keys = Array.from({ length: manifest.chunkCount }, (_, index) => playerSaveChunkKey(userId, manifest.token, index));
   const chunks: string[] = [];
   for (let offset = 0; offset < keys.length; offset += 8) {
@@ -406,19 +451,24 @@ async function readStoredPlayerSave(userId: string, storedValue: string | null |
   if (joined.length !== manifest.length || playerSaveChecksum(joined) !== manifest.checksum) {
     throw new Error('Your Infinity Orbs save failed its integrity check. No changes were applied.');
   }
-  return joined;
+  return decompressStorageString(joined);
 }
+
 async function createPlayerSaveWritePlan(userId: string, serialized: string): Promise<PlayerSaveWritePlan> {
-  if (serialized.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: serialized, chunkKeys: [] };
   if (serialized.length > PLAYER_SAVE_MAX_CHARS) {
     throw new Error('Player save exceeds the supported 8 MiB logical size. No changes were written.');
   }
+  const storedPayload = compressStorageString(serialized);
+  if (storedPayload.length <= PLAYER_SAVE_INLINE_CHARS) return { storedValue: storedPayload, chunkKeys: [] };
+  if (storedPayload.length > PLAYER_SAVE_MAX_CHARS) {
+    throw new Error('Player save exceeds the supported 8 MiB stored size. No changes were written.');
+  }
   const token = secureServerToken('playersave');
   const chunks: string[] = [];
-  for (let offset = 0; offset < serialized.length;) {
-    let end = Math.min(serialized.length, offset + PLAYER_SAVE_CHUNK_CHARS);
-    if (end < serialized.length && serialized.charCodeAt(end - 1) >= 0xd800 && serialized.charCodeAt(end - 1) <= 0xdbff) end -= 1;
-    chunks.push(serialized.slice(offset, end));
+  for (let offset = 0; offset < storedPayload.length;) {
+    let end = Math.min(storedPayload.length, offset + PLAYER_SAVE_CHUNK_CHARS);
+    if (end < storedPayload.length && storedPayload.charCodeAt(end - 1) >= 0xd800 && storedPayload.charCodeAt(end - 1) <= 0xdbff) end -= 1;
+    chunks.push(storedPayload.slice(offset, end));
     offset = end;
   }
   if (chunks.length > PLAYER_SAVE_MAX_CHUNKS) throw new Error('Player save requires too many Redis records. No changes were written.');
@@ -446,10 +496,10 @@ async function createPlayerSaveWritePlan(userId: string, serialized: string): Pr
       ...(Number.isFinite(state.coins) ? { coins: Number(state.coins) } : {}),
       ...(Number.isFinite(state.shards) ? { shards: Number(state.shards) } : {}),
     };
-  } catch { /* chunk bytes remain authoritative; the projection is for admin lists only */ }
+  } catch { /* chunks remain authoritative; projection only feeds admin lists */ }
   const manifest: PlayerSaveManifest = {
     __ioPlayerSaveManifest: 1, token, chunkCount: chunks.length,
-    length: serialized.length, checksum: playerSaveChecksum(serialized), projection,
+    length: storedPayload.length, checksum: playerSaveChecksum(storedPayload), projection,
   };
   return { storedValue: JSON.stringify(manifest), chunkKeys };
 }
@@ -489,7 +539,7 @@ export async function createPlayerSaveWritePlanForUser(userId: string, state: Pl
 function playerSaveProjection(raw: string | null | undefined): Partial<PlayerState> | null {
   if (raw == null) return null;
   const manifest = parsePlayerSaveManifest(raw);
-  return manifest ? manifest.projection as Partial<PlayerState> : parseStoredJson<Partial<PlayerState>>(raw);
+  return manifest ? manifest.projection as Partial<PlayerState> : parseStoredJson<Partial<PlayerState>>(decompressStorageString(raw));
 }
 const GAME_BANS_KEY = 'io:game-bans';
 const ONLINE_PLAYERS_KEY = 'io:online:players';
@@ -510,7 +560,9 @@ const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 50;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
 const PLAYER_SPY_LOG_KEY_PREFIX = 'io:player-spy:v1:';
-const PLAYER_SPY_LOG_LIMIT = 160;
+const PLAYER_SPY_LOG_LIMIT = 40;
+const DIAGNOSTIC_LOG_MAX_BYTES = 64_000;
+const DIAGNOSTIC_LOG_TTL_MS = 14 * 24 * 60 * 60_000;
 const FOLLOW_SUBSCRIBED_KEY_PREFIX = 'io:follow-prompt-subscribed:v2:';
 const FOLLOW_REWARD_KEY_PREFIX = 'io:follow-prompt-reward:v1:';
 const FOLLOW_ACTION_COUNT_KEY = 'io:follow-prompt-actions:v2';
@@ -522,7 +574,7 @@ const POPUP_EVENTS: GamePopupEvent[] = ['shown', 'accepted', 'dismissed'];
 const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
 const SAVE_DEBUG_LOG_KEY = 'io:save-debug:v1';
-const SAVE_DEBUG_LOG_LIMIT = 180;
+const SAVE_DEBUG_LOG_LIMIT = 40;
 
 export interface SaveDebugLog {
   timestamp: number;
@@ -559,7 +611,7 @@ function saveStatesMatchIgnoringRevision(a: PlayerState, b: PlayerState): boolea
   const normalize = (state: PlayerState): string => {
     const copy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
     delete copy.stateRevision;
-    if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) delete copy.collection;
+    for (const field of NON_PERSISTED_PLAYER_FIELDS) delete copy[field];
     return JSON.stringify(copy);
   };
   return normalize(a) === normalize(b);
@@ -605,10 +657,10 @@ async function appendSaveDebugLog(
       }
 
       entries.push(entry);
-      while (entries.length > 0 && (entries.length > SAVE_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
+      while (entries.length > 0 && (entries.length > SAVE_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > DIAGNOSTIC_LOG_MAX_BYTES)) entries.shift();
 
       await txn.multi();
-      await txn.set(SAVE_DEBUG_LOG_KEY, JSON.stringify(entries));
+      await txn.set(SAVE_DEBUG_LOG_KEY, JSON.stringify(entries), { expiration: new Date(Date.now() + DIAGNOSTIC_LOG_TTL_MS) });
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -722,10 +774,10 @@ export async function appendPlayerSpyLog(
       }
 
       entries.push(entry);
-      while (entries.length > 0 && (entries.length > PLAYER_SPY_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
+      while (entries.length > 0 && (entries.length > PLAYER_SPY_LOG_LIMIT || JSON.stringify(entries).length > DIAGNOSTIC_LOG_MAX_BYTES)) entries.shift();
 
       await txn.multi();
-      await txn.set(logKey, JSON.stringify(entries));
+      await txn.set(logKey, JSON.stringify(entries), { expiration: new Date(Date.now() + DIAGNOSTIC_LOG_TTL_MS) });
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -767,7 +819,7 @@ export async function clearPlayerSpyLogs(userId: string): Promise<void> {
 }
 
 const PAYMENT_DEBUG_LOG_KEY = 'io:payment-debug-log:v1';
-const PAYMENT_DEBUG_LOG_LIMIT = 200;
+const PAYMENT_DEBUG_LOG_LIMIT = 40;
 
 export async function appendPaymentDebugLog(stage: string, details: Record<string, unknown> = {}): Promise<void> {
   const entry = {
@@ -798,10 +850,10 @@ export async function appendPaymentDebugLog(stage: string, details: Record<strin
       }
 
       entries.push(entry);
-      while (entries.length > 0 && (entries.length > PAYMENT_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
+      while (entries.length > 0 && (entries.length > PAYMENT_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > DIAGNOSTIC_LOG_MAX_BYTES)) entries.shift();
 
       await txn.multi();
-      await txn.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify(entries));
+      await txn.set(PAYMENT_DEBUG_LOG_KEY, JSON.stringify(entries), { expiration: new Date(Date.now() + DIAGNOSTIC_LOG_TTL_MS) });
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -834,7 +886,7 @@ export async function clearPaymentDebugLogs(): Promise<void> {
 
 const GLOBAL_BOOSTERS_KEY = 'io:global-boosters:v4';
 const GLOBAL_BOOSTER_DEBUG_LOG_KEY = 'io:global-booster-debug-log:v1';
-const GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 120;
+const GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 40;
 
 function summarizeGlobalBoosterRaw(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
@@ -873,10 +925,10 @@ export async function appendGlobalBoosterDebugLog(
       }
 
       entries.push(entry);
-      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
+      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_DEBUG_LOG_LIMIT || JSON.stringify(entries).length > DIAGNOSTIC_LOG_MAX_BYTES)) entries.shift();
 
       await txn.multi();
-      await txn.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify(entries));
+      await txn.set(GLOBAL_BOOSTER_DEBUG_LOG_KEY, JSON.stringify(entries), { expiration: new Date(Date.now() + DIAGNOSTIC_LOG_TTL_MS) });
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -913,7 +965,7 @@ export async function clearGlobalBoosterDebugLogs(): Promise<void> {
 }
 
 const GLOBAL_BOOSTER_ACTIVATION_LOG_KEY = 'io:global-booster-activation-log:v1';
-const GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 180;
+const GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 40;
 
 export interface GlobalBoosterActivationLogEntry {
   timestamp: number;
@@ -954,10 +1006,10 @@ export async function appendGlobalBoosterActivationLog(
       }
 
       entries.push(entry);
-      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT || JSON.stringify(entries).length > 700_000)) entries.shift();
+      while (entries.length > 0 && (entries.length > GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT || JSON.stringify(entries).length > DIAGNOSTIC_LOG_MAX_BYTES)) entries.shift();
 
       await txn.multi();
-      await txn.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify(entries));
+      await txn.set(GLOBAL_BOOSTER_ACTIVATION_LOG_KEY, JSON.stringify(entries), { expiration: new Date(Date.now() + DIAGNOSTIC_LOG_TTL_MS) });
       const committed = await txn.exec();
       if (committed !== null) return;
     }
@@ -1071,7 +1123,7 @@ function parseStoredJson<T>(raw: unknown): T | null {
   if (typeof raw === 'object') return raw as T;
   if (typeof raw !== 'string') return null;
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(decompressStorageString(raw)) as T;
   } catch {
     return null;
   }
@@ -2848,6 +2900,7 @@ return withPlayerMutationLockFor(userId, async () => {
       if (committed !== null) {
         writeCommitted = true;
         await cleanupPreviousPlayerSave(userId, storedRaw);
+        if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) await deleteLegacyCodexShards(userId, generation);
         await appendPaymentDebugLog('grant:success', {
         userId,
         sku,
@@ -2987,6 +3040,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
         if (committed !== null) {
           writeCommitted = true;
           await cleanupPreviousPlayerSave(userId, storedRaw);
+          if (state.collectionStorageVersion === CODEX_STORAGE_VERSION) await deleteLegacyCodexShards(userId, generation);
           return;
         }
       } finally {
@@ -3075,11 +3129,22 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   }
 
   const base = createInitialState();
-  const needsCodexMigration = parsed.collectionStorageVersion !== CODEX_STORAGE_VERSION;
-  const restoredCollection = needsCodexMigration
-    ? (isValidCollection(parsed.collection) ? parsed.collection : base.collection)
-    : await readCodexShards(userId, generation);
-  if (needsCodexMigration) await migrateLegacyCodex(userId, generation, restoredCollection);
+  const storedCodexVersion = Number(parsed.collectionStorageVersion ?? 0);
+  const needsCodexMigration = storedCodexVersion !== CODEX_STORAGE_VERSION;
+  let restoredCollection: Record<string, number>;
+  if (storedCodexVersion === CODEX_STORAGE_VERSION) {
+    restoredCollection = await readCodexShards(userId, generation);
+    await deleteLegacyCodexShards(userId, generation);
+  } else if (storedCodexVersion === 1) {
+    restoredCollection = await readLegacyCodexShards(userId, generation);
+    if (Object.keys(restoredCollection).length === 0 && isValidCollection(parsed.collection)) {
+      restoredCollection = normalizeCodexCollection(parsed.collection);
+    }
+    await migrateLegacyCodex(userId, generation, restoredCollection);
+  } else {
+    restoredCollection = normalizeCodexCollection(isValidCollection(parsed.collection) ? parsed.collection : base.collection);
+    await migrateLegacyCodex(userId, generation, restoredCollection);
+  }
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
   const normalizedPurchasedShards = Math.min(
     normalizeSafeInteger(parsed.purchasedShards, base.purchasedShards ?? 0),
@@ -4028,6 +4093,7 @@ export async function save(
     if (committed !== null) {
       saveCommitted = true;
       await cleanupPreviousPlayerSave(userId, latestRaw);
+      if (latest?.collectionStorageVersion === 1) await deleteLegacyCodexShards(userId, generation);
       for (let index = 0; index < extraWrites.length; index += 1) {
         const write = extraWrites[index];
         if (extraWritePlans.has(write.key)) {
