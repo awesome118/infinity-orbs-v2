@@ -1,4 +1,4 @@
-import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket, previousCodexRarityBucket } from './collection-storage.js';
+import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
 
 export type UpgradeId =
   | 'speed'
@@ -2681,10 +2681,8 @@ export function highestCodexChain(collection: Record<string, number> | null | un
 export const CHAIN_PATCHER_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
 /**
- * Return the cheapest rarity that directly extends the player's longest
- * consecutive Codex chain by one entry. With an empty Codex, start at 1/2.
- * If the best chain touches both ends of the supported rarity range, there
- * is no valid extension.
+ * Return the next upper-end rarity bucket after the player's longest Codex
+ * chain. With an empty Codex, start at 1/2. Returns null when no bucket remains.
  */
 export function nextCodexChainRarity(
   collection: Record<string, number> | null | undefined,
