@@ -1,5 +1,5 @@
 name: Submit Devvit version for review
-# Release workflow changes are committed with the version marker to intentionally trigger 2.2.24 review submission.
+# v2.2.25 storage optimization: submit the current build for Reddit review, then install the candidate to r/infinity_orbs_dev only.
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   submit:
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.24]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.25]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,11 +40,11 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          test "$VERSION" = "2.2.24" || {
-            echo "Expected package version 2.2.24, got $VERSION."
+          test "$VERSION" = "2.2.25" || {
+            echo "Expected package version 2.2.25, got $VERSION."
             exit 1
           }
-          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.24'||p.packages?.['']?.version!=='2.2.24') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.24'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.25'||p.packages?.['']?.version!=='2.2.25') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.25'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
           echo "Preparing infinity-orbs@$VERSION for unlisted review."
 
       - name: Review preflight
@@ -55,6 +55,8 @@ jobs:
           node --import tsx --test tests/mobile-layout.test.ts tests/large-number-economy.test.ts tests/cooldown-time-energy.test.ts tests/guild-combo-progress.test.ts tests/guild-loading-regression.test.ts tests/guild-member-recovery.test.ts
           node --import tsx --test tests/combat-mobile-skills.test.ts
           node --import tsx --test tests/roll-batching.test.ts
+          # Exercise the storage, Codex precision/sharding, and migration-safe save paths in this release.
+          node --import tsx --test tests/storage-compression.test.ts tests/player-save-chunking.test.ts tests/collection-persistence.test.ts tests/redis-storage-retention.test.ts
           npm run build
 
       - name: Verify Devvit CLI authentication
@@ -92,13 +94,13 @@ jobs:
           DEVVIT_ALLOW_SOURCE_UPLOAD: "1"
           CI: true
         timeout-minutes: 15
-        run: npx devvit publish --version 2.2.24
+        run: npx devvit publish --version 2.2.25
 
       - name: Install the submitted candidate to development subreddit only (r/infinity_orbs_dev)
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
-          VERSION: 2.2.24
+          VERSION: 2.2.25
         run: |
           set -euo pipefail
           npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
