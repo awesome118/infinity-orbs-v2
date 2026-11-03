@@ -1416,16 +1416,14 @@ type StatSpyStat = {
 };
 
 async function loadPlayerForStatSpy(userId: string, username: string): Promise<PlayerState> {
-  const raw = await redis.get('player:' + userId);
+  const raw = await readPlayerSaveForUser(userId, await redis.get('player:' + userId));
   if (raw == null) throw new Error('No Infinity Orbs save exists for u/' + username + '.');
 
-  let parsed: unknown = raw;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      throw new Error('The stored save for u/' + username + ' is not valid player data.');
-    }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('The stored save for u/' + username + ' is not valid player data.');
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('The stored save for u/' + username + ' is not valid player data.');
@@ -1925,7 +1923,7 @@ debugRouter.get('/stat-spy', async (req, res) => {
       getFakeCcuBonus(userId),
       getCommunityEvent(),
       getCombatSnapshotForUser(userId),
-      redis.get('player:' + userId),
+      readPlayerSaveForUser(userId, await redis.get('player:' + userId)),
     ]);
     // No active event means neutral ×1 Luck, not the old fallback +15%.
     const communityLuckBonus = Math.max(0, Number(communityEvent?.buffMultiplier ?? 1) - 1);
@@ -2072,11 +2070,11 @@ debugRouter.get('/moderation/save', async (req, res) => {
     const name = targetUsername(req.query?.username);
     const userId = await resolveUserId(name);
     const generationRaw = await redis.get('player-generation:' + userId);
-    const raw = await redis.get('player:' + userId);
+    const raw = await readPlayerSaveForUser(userId, await redis.get('player:' + userId));
     let save: Record<string, unknown> | null = null;
     if (raw) {
       try {
-        save = JSON.parse(String(raw)) as Record<string, unknown>;
+        save = JSON.parse(raw) as Record<string, unknown>;
       } catch {
         save = null;
       }

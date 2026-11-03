@@ -2648,7 +2648,7 @@ test('legacy Guild contribution advances each task once and rewards Tokens witho
   assert.ok(start >= 0 && end > start);
   const contribution = social.slice(start, end);
   for (const field of [
-    'task.progress = capSafeGuildCounter(task.progress + safeValue)',
+    'task.progress = addGuildValueProgress(task.progress, safeValue)',
     'task.progress = capSafeGuildCounter(task.progress + taskProgressRolls)',
     'task.progress = capSafeGuildCounter(task.progress + taskProgressRare)',
   ]) {

@@ -1,7 +1,7 @@
 {
   "name": "infinity-orbs",
   "private": true,
-  "version": "2.2.24",
+  "version": "2.2.25",
   "type": "module",
   "scripts": {
     "dev": "devvit playtest",
@@ -26,6 +26,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
+    "fflate": "^0.8.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

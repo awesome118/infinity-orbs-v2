@@ -1,4 +1,5 @@
 import { context, redis, reddit } from './devvit-mock.js';
+import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { readInBatches } from './redis-batches.js';
 import { combatHighestDepthReached } from '../shared/combat.js';
 import { withPlayerMutationLockFor } from './player-lock.js';
@@ -96,7 +97,7 @@ function parseStoredJson<T>(raw: unknown): T | null {
 
   if (typeof raw === 'string') {
     try {
-      return JSON.parse(raw) as T;
+      return JSON.parse(decompressStorageString(raw)) as T;
     } catch {
       return null;
     }
@@ -2270,7 +2271,7 @@ export async function recordGlobalChatComment(input: {
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
       await txn.multi();
-      await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+      await txn.set(GLOBAL_CHAT_KEY, compressStorageString(JSON.stringify(messages.slice(-GLOBAL_CHAT_MAX_MESSAGES))));
       const committed = await txn.exec();
       closed = true;
       if (committed !== null) return message;
@@ -2308,7 +2309,7 @@ async function purgeChatMessagesForUser(userId: string, targetUsername: string):
       .map(message => ({ ...message, text: message.text.slice(0, GLOBAL_CHAT_MAX_TEXT_CHARS) }));
 
     await txn.multi();
-    await txn.set(GLOBAL_CHAT_KEY, JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES)));
+    await txn.set(GLOBAL_CHAT_KEY, compressStorageString(JSON.stringify(retained.slice(-GLOBAL_CHAT_MAX_MESSAGES))));
     const committed = await txn.exec();
     if (committed !== null) return;
   }
@@ -2635,7 +2636,7 @@ export async function leaderboards(options: { fresh?: boolean } = {}): Promise<L
   leaderboardSnapshotInFlight = snapshotRequest;
   try {
     const boards = await snapshotRequest;
-    await redis.set(LEADERBOARDS_CACHE_KEY, JSON.stringify(boards), {
+    await redis.set(LEADERBOARDS_CACHE_KEY, compressStorageString(JSON.stringify(boards)), {
       expiration: new Date(Date.now() + LEADERBOARDS_CACHE_TTL_MS),
     }).catch(error => {
       console.error('[Leaderboard] Could not cache the current snapshot:', error);
@@ -2676,6 +2677,10 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ])
     : [[], []];
 
+  const decodedPlayerSaves = await Promise.all(userIds.map((userId, index) =>
+    saves[index] == null ? Promise.resolve(null) : readPlayerSaveForUser(userId, String(saves[index])),
+  ));
+
   const missingRegistryCount = userIds.filter(userId =>
     !Object.prototype.hasOwnProperty.call(registry, userId),
   ).length;
@@ -2690,7 +2695,7 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
   for (let index = 0; index < userIds.length; index += 1) {
     const userId = userIds[index];
     const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
-    const save = saves[index] ? parseStoredJson<Partial<PlayerState>>(saves[index]) : null;
+    const save = decodedPlayerSaves[index] ? parseStoredJson<Partial<PlayerState>>(decodedPlayerSaves[index]) : null;
     if (!save) continue;
     const combatSave = combatSaves[index] ? parseStoredJson<unknown>(combatSaves[index]) : null;
     const legacy = legacyById.get(userId);
@@ -2847,7 +2852,24 @@ export async function recordLeaderboard(s: PlayerState) {
         Object.assign(existing, next);
       } else board.push(next);
       board.sort((a, b) => b.value - a.value);
-      const serialized = JSON.stringify(board.slice(0, 5000));
+      const compactBoard = board.slice(0, 5000).map(entry => {
+        const usernameValue = String(entry.username ?? '').replace(/^u\//i, '').slice(0, 100);
+        if (entry.userId) {
+          return {
+            username: usernameValue, userId: entry.userId,
+            value: entry.value, highestRarity: entry.highestRarity,
+            totalRolls: entry.totalRolls, level: entry.level,
+            sharedAt: entry.sharedAt, stateRevision: entry.stateRevision,
+            title: entry.title, guildTag: entry.guildTag,
+          };
+        }
+        return {
+          username: usernameValue, value: entry.value,
+          highestRarity: entry.highestRarity, totalRolls: entry.totalRolls,
+          level: entry.level, sharedAt: entry.sharedAt,
+        };
+      });
+      const serialized = JSON.stringify(compactBoard);
       writePlan = await createRedisLargeValueWritePlan(leaderboardKey, serialized);
       await txn.multi();
       await txn.set(leaderboardKey, writePlan.storedValue);

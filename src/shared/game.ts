@@ -1,3 +1,5 @@
+import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
+
 export type UpgradeId =
   | 'speed'
   | 'multi'
@@ -1995,7 +1997,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     collectionValue: 0,
     lifetimeCollectionValue: 0,
     collection: {},
-    collectionStorageVersion: 1,
+    collectionStorageVersion: CODEX_STORAGE_VERSION,
     runeConstellationCharge: 0,
     runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,
@@ -2644,41 +2646,31 @@ export function bestCodexChain(collection: Record<string, number> | null | undef
         const value = Number(rarity);
         return Number.isFinite(value) && value >= 2 && count > 0;
       })
-      .map(([rarity]) => Math.floor(Number(rarity)))
+      .map(([rarity]) => codexRarityBucket(Number(rarity)))
       .filter(Number.isFinite),
   )].sort((a, b) => a - b);
-
   if (rarities.length === 0) return { start: 0, end: 0, length: 0 };
 
-  let bestStart = rarities[0];
-  let bestEnd = rarities[0];
-  let currentStart = rarities[0];
-
-  for (let i = 1; i <= rarities.length; i++) {
-    const previous = rarities[i - 1];
-    const current = rarities[i];
-    if (i < rarities.length && current === previous + 1) continue;
-
-    const currentEnd = previous;
-    const currentLength = currentEnd - currentStart + 1;
-    const bestLength = bestEnd - bestStart + 1;
-
-    if (
-      currentLength > bestLength ||
-      (currentLength === bestLength && currentEnd > bestEnd)
-    ) {
-      bestStart = currentStart;
-      bestEnd = currentEnd;
+  let bestStart = rarities[0]!;
+  let bestEnd = rarities[0]!;
+  let bestLength = 1;
+  let currentStart = rarities[0]!;
+  let currentLength = 1;
+  for (let index = 1; index < rarities.length; index += 1) {
+    const previous = rarities[index - 1]!;
+    const current = rarities[index]!;
+    if (nextCodexRarityBucket(previous) === current) currentLength += 1;
+    else {
+      currentStart = current;
+      currentLength = 1;
     }
-
-    currentStart = current;
+    if (currentLength > bestLength || (currentLength === bestLength && current > bestEnd)) {
+      bestStart = currentStart;
+      bestEnd = current;
+      bestLength = currentLength;
+    }
   }
-
-  return {
-    start: bestStart,
-    end: bestEnd,
-    length: bestEnd - bestStart + 1,
-  };
+  return { start: bestStart, end: bestEnd, length: bestLength };
 }
 
 export function highestCodexChain(collection: Record<string, number> | null | undefined): number {
@@ -2689,28 +2681,16 @@ export function highestCodexChain(collection: Record<string, number> | null | un
 export const CHAIN_PATCHER_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 
 /**
- * Return the cheapest rarity that directly extends the player's longest
- * consecutive Codex chain by one entry. With an empty Codex, start at 1/2.
- * If the best chain touches both ends of the supported rarity range, there
- * is no valid extension.
+ * Return the next upper-end rarity bucket after the player's longest Codex
+ * chain. With an empty Codex, start at 1/2. Returns null when no bucket remains.
  */
 export function nextCodexChainRarity(
   collection: Record<string, number> | null | undefined,
 ): number | null {
   const chain = bestCodexChain(collection);
-  if (chain.length <= 0) {
-    return (collection?.['2'] ?? 0) > 0 ? null : 2;
-  }
-
-  const candidates: number[] = [];
-  const owned = (rarity: number) => Number(collection?.[String(rarity)] ?? 0) > 0;
-  const lower = chain.start - 1;
-  const higher = chain.end + 1;
-  // Integer-by-integer chain extension is only meaningful while rarities remain
-  // exactly representable by JavaScript numbers.
-  if (chain.start > 2 && Number.isSafeInteger(lower) && !owned(lower)) candidates.push(lower);
-  if (chain.end < MAX_ORB_RARITY && Number.isSafeInteger(higher) && !owned(higher)) candidates.push(higher);
-  return candidates.length ? Math.min(...candidates) : null;
+  if (chain.length <= 0) return (collection?.['2'] ?? 0) > 0 ? null : 2;
+  const next = nextCodexRarityBucket(chain.end);
+  return next != null && next <= MAX_ORB_RARITY ? next : null;
 }
 
 /**
@@ -2719,7 +2699,7 @@ export function nextCodexChainRarity(
  */
 export function chainPatcherShardCost(targetRarity: number): number {
   if (
-    !Number.isSafeInteger(targetRarity) ||
+    !Number.isFinite(targetRarity) || !Number.isInteger(targetRarity) ||
     targetRarity < 2 ||
     targetRarity > MAX_ORB_RARITY
   ) {
@@ -2987,7 +2967,7 @@ export function predictRollActivation(
       : rolledRarity;
 
     const finalVal = Math.min(MAX_ORB_RARITY, Math.round(rarity * valueMul));
-    const rarityKey = isInfinityOrb ? 'Infinity' : String(rarity);
+    const rarityKey = isInfinityOrb ? 'Infinity' : String(codexRarityBucket(rarity));
     const isNew = !s.collection[rarityKey];
     if (rarity > bestRarity || (isInfinityOrb && !bestIsInfinity)) {
       bestRarity = rarity;

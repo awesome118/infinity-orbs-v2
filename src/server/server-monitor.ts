@@ -29,7 +29,7 @@ type SecondBucket = {
 };
 
 const REDIS_COMMANDS_PER_SECOND_LIMIT = 40_000;
-const REDIS_STORAGE_LIMIT_BYTES = 5_000_000_000;
+const REDIS_STORAGE_LIMIT_BYTES = 100_000_000;
 const BUCKET_COUNT = 120;
 const EVENT_LIMIT = 250;
 const buckets: SecondBucket[] = Array.from({ length: BUCKET_COUNT }, () => ({

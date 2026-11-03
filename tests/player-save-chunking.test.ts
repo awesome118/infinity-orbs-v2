@@ -28,7 +28,7 @@ test('player save chunks are verified and the manifest is swapped atomically', (
 test('legacy inline saves remain readable and the next oversized save migrates safely', () => {
   const game = source('src/server/game.ts');
   assert.match(game, /if \(storedValue == null\) return null/);
-  assert.match(game, /if \(!manifest\) return storedValue/);
+  assert.match(game, /if \(!manifest\) return decompressStorageString\(storedValue\)/);
   assert.match(game, /createPlayerSaveWritePlan\(userId, serializePlayerStateForRedis\(nextState\)\)/);
   assert.match(game, /const storedSave = saves\[index\]/);
   assert.match(game, /playerSaveProjection\(typeof storedSave === 'string' \? storedSave : null\)/);
@@ -79,12 +79,12 @@ test('legacy leaderboard and admin batch recipient manifests use chunked Redis r
 test('diagnostic and activation logs are bounded by count and serialized size', () => {
   const game = source('src/server/game.ts');
   for (const limit of [
-    'PLAYER_SPY_LOG_LIMIT = 160',
-    'SAVE_DEBUG_LOG_LIMIT = 180',
-    'GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 120',
-    'GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 180',
+    'PLAYER_SPY_LOG_LIMIT = 40',
+    'SAVE_DEBUG_LOG_LIMIT = 40',
+    'GLOBAL_BOOSTER_DEBUG_LOG_LIMIT = 40',
+    'GLOBAL_BOOSTER_ACTIVATION_LOG_LIMIT = 40',
   ]) assert.ok(game.includes(limit), limit);
-  assert.ok((game.match(/JSON\.stringify\(entries\)\.length > 700_000/g) ?? []).length >= 4);
+  assert.ok((game.match(/JSON\.stringify\(entries\)\.length > DIAGNOSTIC_LOG_MAX_BYTES/g) ?? []).length >= 4);
 });
 
 test('player lock admission failures are coded, and client retries only that response', () => {
@@ -171,7 +171,7 @@ test('read-only Redis storage audit runs from the production AppUpgrade trigger'
   const config = JSON.parse(source('devvit.json')) as { triggers?: Record<string, string> };
   assert.equal(config.triggers?.onAppUpgrade, '/internal/on-app-upgrade');
   assert.match(app, /app\.post\('\/internal\/on-app-upgrade'/);
-  assert.ok(app.includes("REDIS_STORAGE_AUDIT_VERSION = '2.2.12'"));
+  assert.ok(app.includes("REDIS_STORAGE_AUDIT_VERSION = '2.2.25'"));
   assert.ok(app.includes('await auditKnownRedisStorage(redis)'));
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.doesNotMatch(app, /clearAllDiagnosticLogs/);

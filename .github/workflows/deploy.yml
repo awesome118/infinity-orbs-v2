@@ -16,7 +16,7 @@ name: Deploy Devvit
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.18.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.25.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -44,7 +44,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.18]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.25]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -112,6 +112,7 @@ jobs:
           npm run preflight:guard
           node --import tsx --test tests/alignment-prompt-ui.test.ts
           node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts tests/inline-main-post-cta-layout.test.ts tests/game-ban-status.test.ts
+          node --import tsx --test tests/storage-compression.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/combat-runes.test.ts

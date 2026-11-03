@@ -1,6 +1,7 @@
 import { redis } from './devvit-mock.js';
 import { readInBatches } from './redis-batches.js';
-import { CODEX_SHARD_COUNT, codexShardKey } from '../shared/collection-storage.js';
+import { CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey } from '../shared/collection-storage.js';
+import { decompressStorageString } from './storage-compression.js';
 
 type StorageGroup = { label: string; bytes: number; keys: number; records: number };
 type PlayerManifest = { token: string; chunkCount: number; length: number };
@@ -239,7 +240,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
         });
       } else {
         try {
-          const parsed = JSON.parse(raw) as Record<string, unknown>;
+          const parsed = JSON.parse(decompressStorageString(raw)) as Record<string, unknown>;
           playerStates.set(userId, {
             saveGeneration: Math.max(0, Math.floor(Number(parsed.saveGeneration) || 0)),
             collectionStorageVersion: Math.floor(Number(parsed.collectionStorageVersion) || 0),
@@ -291,7 +292,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
         }
         if (chunks.every(value => typeof value === 'string')) {
           try {
-            const parsed = JSON.parse(joined) as Record<string, unknown>;
+            const parsed = JSON.parse(decompressStorageString(joined)) as Record<string, unknown>;
             playerStates.set(plan.userId, {
               saveGeneration: Math.max(0, Math.floor(Number(parsed.saveGeneration) || 0)),
               collectionStorageVersion: Math.floor(Number(parsed.collectionStorageVersion) || 0),
@@ -323,7 +324,10 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
     return Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) => ({
       userId,
       shard,
-      key: codexShardKey(userId, state.saveGeneration, shard),
+      key: state.collectionStorageVersion >= CODEX_STORAGE_VERSION
+        ? codexShardKey(userId, state.saveGeneration, shard)
+        : legacyCodexShardKey(userId, state.saveGeneration, shard),
+      label: state.collectionStorageVersion >= CODEX_STORAGE_VERSION ? 'Active Codex shards' : 'Legacy Codex shards',
     }));
   });
   try {
@@ -337,7 +341,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
       const value = codexHashes[index];
       if (value && typeof value === 'object' && Object.keys(value).length) {
         codexKeysPresent += 1;
-        addHash('Active Codex shards', codexRequests[index].key, value);
+        addHash(codexRequests[index].label, codexRequests[index].key, value);
       }
     }
   } catch (error) {
@@ -789,7 +793,7 @@ export async function auditKnownRedisStorage(redisClient: any = redis) {
   largest.sort((a, b) => b.bytes - a.bytes);
   return {
     generatedAt: new Date().toISOString(),
-    installationStorageLimitBytes: 5_000_000_000,
+    installationStorageLimitBytes: 100_000_000,
     platformReportedTotalAvailable: false,
     knownIndexedPayloadBytes: orderedGroups.reduce((total, group) => total + group.bytes, 0),
     knownIndexedKeys: orderedGroups.reduce((total, group) => total + group.keys, 0),
