@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/server/game.ts"
+      - "src/server/social.ts"
       - "src/shared/roll-batching.ts"
       - "src/client/main.tsx"
       - "tests/**"
