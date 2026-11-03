@@ -2691,19 +2691,8 @@ export function nextCodexChainRarity(
 ): number | null {
   const chain = bestCodexChain(collection);
   if (chain.length <= 0) return (collection?.['2'] ?? 0) > 0 ? null : 2;
-  const owned = new Set(
-    Object.entries(collection ?? {})
-      .filter(([, count]) => Number(count) > 0)
-      .map(([rarity]) => Number(rarity))
-      .filter(value => Number.isFinite(value) && value >= 2)
-      .map(value => String(codexRarityBucket(value))),
-  );
-  const candidates: number[] = [];
-  const lower = previousCodexRarityBucket(chain.start);
-  const higher = nextCodexRarityBucket(chain.end);
-  if (lower != null && lower >= 2 && !owned.has(String(lower))) candidates.push(lower);
-  if (higher != null && higher <= MAX_ORB_RARITY && !owned.has(String(higher))) candidates.push(higher);
-  return candidates.length ? Math.min(...candidates) : null;
+  const next = nextCodexRarityBucket(chain.end);
+  return next != null && next <= MAX_ORB_RARITY ? next : null;
 }
 
 /**
