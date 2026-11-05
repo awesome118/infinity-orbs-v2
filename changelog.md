@@ -2,7 +2,7 @@
 
 ### New in 2.2.27
 
-- **Guild Name Approval:** Guild creators can privately request a custom name. Their guild uses its curated three-part public name until the administrator approves the request. An admin-only queue supports approval or rejection, and pending request text is not included in public Guild data.
+- **Guild Name Approval:** Guild creators can privately request a custom name. New guilds use curated three-part public names until the administrator approves custom names. Existing custom guild names are migrated to curated public fallbacks and placed in the private review queue. Only the administrator can approve or reject requests, and pending request text is excluded from public Guild data.
 
 ### New in 2.2.26
 
