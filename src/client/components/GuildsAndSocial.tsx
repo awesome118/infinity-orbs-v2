@@ -27,6 +27,11 @@ import type {
   GuildPerkId,
   LeaderboardBoards,
   LeaderboardId,
+  GUILD_NAME_FIRST_WORDS,
+  GUILD_NAME_SECOND_WORDS,
+  GUILD_NAME_NOUNS,
+  composeGuildName,
+  guildTagForName,
 } from '../../shared/social.js';
 import {
   formatRarity,
@@ -118,8 +123,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'guild' | 'leaderboard' | 'event'>('guild');
   const [now, setNow] = useState(Date.now());
-  const [createName, setCreateName] = useState('');
-  const [createTag, setCreateTag] = useState('');
+  const [createFirstWord, setCreateFirstWord] = useState<string>(GUILD_NAME_FIRST_WORDS[0]);
+  const [createSecondWord, setCreateSecondWord] = useState<string>(GUILD_NAME_SECOND_WORDS[0]);
+  const [createGuildNoun, setCreateGuildNoun] = useState<string>(GUILD_NAME_NOUNS[0]);
+  const createName = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
+  const createTag = guildTagForName(createName);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingGuild, setCreatingGuild] = useState(false);
   const createGuildInFlightRef = useRef(false);
@@ -203,14 +211,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
 
   const handleCreateGuild = async (e: React.FormEvent) => {
     e.preventDefault();
-    const name = createName.trim();
-    const tag = createTag.trim().toUpperCase();
-    if (!name || busy || creatingGuild || createGuildInFlightRef.current) return;
-    if (!/^[A-Z]{2,5}$/.test(tag)) {
-      setSocialError('Guild tags must contain 2–5 letters (A–Z).');
-      setSocialNotice('');
-      return;
-    }
+    const name = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
+    const tag = guildTagForName(name);
+    if (!name || !/^[A-Z]{3}$/.test(tag) || busy || creatingGuild || createGuildInFlightRef.current) return;
     createGuildInFlightRef.current = true;
     setCreatingGuild(true);
     setSocialError('');
@@ -219,8 +222,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     try {
       const created = await onCreateGuild(name, tag);
       if (created) {
-        setCreateName('');
-        setCreateTag('');
+        setCreateFirstWord(GUILD_NAME_FIRST_WORDS[0]);
+        setCreateSecondWord(GUILD_NAME_SECOND_WORDS[0]);
+        setCreateGuildNoun(GUILD_NAME_NOUNS[0]);
         setShowCreateModal(false);
         setSocialNotice('Guild created successfully.');
       } else {
@@ -872,38 +876,54 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               <div role="dialog" aria-modal="true" aria-labelledby="io-create-guild-title" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
                 <h3 id="io-create-guild-title" className="text-lg font-black text-white">Found a New Guild</h3>
                 <p className="text-xs text-slate-400">
-                  Choose a guild name and a 2-5 letter tag.
+                  Build a name from three curated parts. Your tag is generated automatically.
                 </p>
                 <form onSubmit={handleCreateGuild} className="space-y-3">
-                  <div>
-                    <label htmlFor="io-create-guild-name" className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
-                      Guild Name
-                    </label>
-                    <input
-                      id="io-create-guild-name"
-                      type="text"
-                      value={createName}
-                      onChange={e => setCreateName(e.target.value)}
-                      placeholder="Guild Name"
-                      maxLength={32}
-                      required
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                    />
+                  <div className="grid grid-cols-1 gap-2">
+                    <div>
+                      <label htmlFor="io-create-guild-first" className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                        First Part
+                      </label>
+                      <select
+                        id="io-create-guild-first"
+                        value={createFirstWord}
+                        onChange={e => setCreateFirstWord(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        {GUILD_NAME_FIRST_WORDS.map(word => <option key={word} value={word}>{word}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="io-create-guild-second" className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                        Second Part
+                      </label>
+                      <select
+                        id="io-create-guild-second"
+                        value={createSecondWord}
+                        onChange={e => setCreateSecondWord(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        {GUILD_NAME_SECOND_WORDS.map(word => <option key={word} value={word}>{word}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="io-create-guild-noun" className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                        Guild Type
+                      </label>
+                      <select
+                        id="io-create-guild-noun"
+                        value={createGuildNoun}
+                        onChange={e => setCreateGuildNoun(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        {GUILD_NAME_NOUNS.map(noun => <option key={noun} value={noun}>{noun}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="io-create-guild-tag" className="text-[11px] font-bold text-slate-400 uppercase block mb-1">
-                      Guild Tag (2-5 Letters)
-                    </label>
-                    <input
-                      id="io-create-guild-tag"
-                      type="text"
-                      value={createTag}
-                      onChange={e => setCreateTag(e.target.value.toUpperCase())}
-                      placeholder="TAG"
-                      maxLength={5}
-                      required
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-purple-500"
-                    />
+                  <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3">
+                    <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Name Preview</div>
+                    <div className="mt-1 text-base font-black text-white">{createName}</div>
+                    <div className="mt-1 text-[10px] font-bold text-slate-400">Guild Tag: <span className="text-purple-200">{createTag}</span></div>
                   </div>
                   <div className="flex gap-2 pt-2">
                     <button
