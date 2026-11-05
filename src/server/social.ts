@@ -972,7 +972,7 @@ async function applyGuildNameReviewMigration(): Promise<void> {
             usedNames.add(guild.name.toLowerCase());
             usedTags.add(guildTagForName(guild.name));
           } else if (status == null) {
-            const oldName = String(guild.name ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim();
+            const oldName = String(guild.name ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 32);
             if (oldName) usedNames.add(oldName.toLowerCase());
           }
         }
