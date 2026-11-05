@@ -30,6 +30,15 @@ test('shared large-value reader restores a compressed Combat leaderboard depth p
       'glass-labyrinth': 12_345,
     },
     dungeonBossesBeaten: { undercrypt: 20, 'cinder-vault': 400, 'glass-labyrinth': 1_234 },
+    inventory: Array.from({ length: 300 }, (_, index) => ({
+      id: 'gear-' + index,
+      name: 'Celestial Guardian Equipment ' + index,
+      slot: 'weapon',
+      quality: 100,
+      damageBonus: 1.25,
+      effect: 'A deliberately repetitive payload used to exercise compressed Combat saves.',
+      majorAbility: { id: 'chrono-surge', description: 'Shortens the global Combat beat timer.' },
+    })),
   };
   const serialized = JSON.stringify(combat);
   const compressed = compressStorageString(serialized);
