@@ -2994,9 +2994,23 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ])
     : [[], []];
 
-  const decodedPlayerSaves = await Promise.all(userIds.map((userId, index) =>
-    saves[index] == null ? Promise.resolve(null) : readPlayerSaveForUser(userId, String(saves[index])),
-  ));
+  const [decodedPlayerSaves, decodedCombatSaves] = await Promise.all([
+    Promise.all(userIds.map((userId, index) =>
+      saves[index] == null ? Promise.resolve(null) : readPlayerSaveForUser(userId, String(saves[index])),
+    )),
+    Promise.all(userIds.map(async (userId, index) => {
+      const storedValue = combatSaves[index];
+      if (storedValue == null) return null;
+      try {
+        return await readRedisLargeValue('infinity-orbs:combat:' + userId, storedValue);
+      } catch (error) {
+        // Combat depth is a secondary leaderboard metric. One missing or corrupt
+        // Combat save must not make the shared core-game leaderboard unavailable.
+        console.error('[Leaderboard] Combat save could not be decoded for depth ranking:', userId, error);
+        return null;
+      }
+    })),
+  ]);
 
   const missingRegistryCount = userIds.filter(userId =>
     !Object.prototype.hasOwnProperty.call(registry, userId),
@@ -3014,7 +3028,7 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
     const save = decodedPlayerSaves[index] ? parseStoredJson<Partial<PlayerState>>(decodedPlayerSaves[index]) : null;
     if (!save) continue;
-    const combatSave = combatSaves[index] ? parseStoredJson<unknown>(combatSaves[index]) : null;
+    const combatSave = decodedCombatSaves[index] ? parseStoredJson<unknown>(decodedCombatSaves[index]) : null;
     const legacy = legacyById.get(userId);
 
     // Prefer the authoritative save. Older saves lacking lastShareAt may use
