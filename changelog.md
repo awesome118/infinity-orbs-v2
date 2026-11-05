@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.27
+
+- **Guild Name Approval:** Guild creators can privately request a custom name. Their guild uses its curated three-part public name until the administrator approves the request. An admin-only queue supports approval or rejection, and pending request text is not included in public Guild data.
+
 ### New in 2.2.26
 
 - **Devvit Review Release:** Reissues the v2.2.25 storage and Codex optimization build as a new patch version for Reddit review. No gameplay changes from v2.2.25.
