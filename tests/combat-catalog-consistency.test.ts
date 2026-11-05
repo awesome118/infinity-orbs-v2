@@ -9,6 +9,7 @@ import {
   COMBAT_INTENTS,
   COMBAT_RUNE_RARITIES,
   COMBAT_RUNE_STATS,
+  COMBAT_RUNE_MAJOR_ABILITY_IDS,
   COMBAT_TRAITS,
   COMBAT_GEAR_SLOTS,
 } from '../src/shared/combat.js';
@@ -64,4 +65,15 @@ test('gear slot and trait types come from catalogs used by persisted gear normal
   assert.match(combat, /rawSlot==='chest'\?'armor'/);
   assert.deepEqual([...COMBAT_GEAR_SLOTS], ['weapon', 'armor', 'helmet', 'gloves', 'boots', 'ring', 'amulet']);
   assert.deepEqual([...COMBAT_TRAITS], ['bleed', 'keen', 'first-strike', 'bulwark', 'regeneration', 'desperation']);
+});
+
+test('Rune Major Ability IDs are shared by persisted-save normalization, generation, and admin tools', () => {
+  const shared = source('src/shared/combat.ts');
+  const combat = source('src/server/combat.ts');
+
+  assert.match(shared, /export type CombatRuneMajorAbilityId = \(typeof COMBAT_RUNE_MAJOR_ABILITY_IDS\)\[number\]/);
+  assert.match(combat, /COMBAT_RUNE_MAJOR_ABILITY_IDS\.includes\(raw\.id as CombatRuneMajorAbilityId\)/);
+  assert.match(combat, /pick\(\[\.\.\.COMBAT_RUNE_MAJOR_ABILITY_IDS\]\)/);
+  assert.doesNotMatch(combat, /const validIds=\['fateweaver'/);
+  assert.equal(COMBAT_RUNE_MAJOR_ABILITY_IDS.length, 17);
 });

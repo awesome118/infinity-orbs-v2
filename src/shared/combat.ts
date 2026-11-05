@@ -71,24 +71,26 @@ export function shouldAutoSacrificeRune(
   return combatRuneRarityAtOrBelow(rune.rarity, maxRarity) &&
     !(preserveSpecialEffects && Boolean(rune.majorAbility));
 }
-export type CombatRuneMajorAbilityId =
-  | 'fateweaver'
-  | 'midas-engine'
-  | 'memory-well'
-  | 'echo-chamber'
-  | 'paradox-engine'
-  | 'event-horizon'
-  | 'shard-constellation'
-  | 'temporal-loop'
-  | 'prismatic-fork'
-  | 'critical-convergence'
-  | 'rarity-ladder'
-  | 'stellar-dividend'
-  | 'shard-jackpot'
-  | 'milestone-engine'
-  | 'shard-tithe'
-  | 'discovery-oracle'
-  | 'dry-streak-refinery';
+export const COMBAT_RUNE_MAJOR_ABILITY_IDS = [
+  'fateweaver',
+  'midas-engine',
+  'memory-well',
+  'echo-chamber',
+  'paradox-engine',
+  'event-horizon',
+  'shard-constellation',
+  'temporal-loop',
+  'prismatic-fork',
+  'critical-convergence',
+  'rarity-ladder',
+  'stellar-dividend',
+  'shard-jackpot',
+  'milestone-engine',
+  'shard-tithe',
+  'discovery-oracle',
+  'dry-streak-refinery',
+] as const;
+export type CombatRuneMajorAbilityId = (typeof COMBAT_RUNE_MAJOR_ABILITY_IDS)[number];
 export interface CombatRuneMajorAbility {
   id: CombatRuneMajorAbilityId;
   name: string;
