@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.31
+
+- **Reddit Review Release:** Reissues the v2.2.30 post-flair reliability fix as a new version for Reddit review. No additional gameplay changes.
+
 ### New in 2.2.30
 
 - **Reddit Post Flair Reliability:** Share and Frenzy resolve existing subreddit flair-template IDs before applying labels. If no matching template exists or flair lookup fails, the post is created without flair instead of failing.
