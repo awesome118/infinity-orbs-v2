@@ -4421,7 +4421,13 @@ export async function applyRolls(
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
-    getGlobalBoosters(),
+    getGlobalBoosters().catch(error => {
+      // Global Boosters are shared bonuses, never a prerequisite for core rolling.
+      // Redis quota/availability issues should fall back to this player's last
+      // known snapshot (or an inactive snapshot for a new player).
+      console.error('[Global Boosters] Read failed; rolling with the last known/default state.', error);
+      return s.globalBoosters ?? createInitialGlobalBoosters(now);
+    }),
     getCommunityEvent().catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
       // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
@@ -4430,7 +4436,12 @@ export async function applyRolls(
       console.error('[Community Event] Read failed; rolling without the event bonus.', error);
       return null;
     }),
-    getFakeCcuBonus(),
+    getFakeCcuBonus().catch(error => {
+      // Fake CCU is an admin-only test offset. If its optional read fails,
+      // use real CCU rather than failing an ordinary player roll.
+      console.error('[Fake CCU] Read failed; rolling without the test offset.', error);
+      return 0;
+    }),
     redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
