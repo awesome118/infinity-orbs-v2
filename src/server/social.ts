@@ -1577,7 +1577,7 @@ export async function createGuild(name: string, tag: string, requestedName?: str
 export async function getGuildNameRequests(): Promise<Array<GuildNameRequest & { fallbackName: string; tag: string }>> {
   requireGuildNameAdmin();
   const [guilds, requests] = await Promise.all([loadGuilds(), readGuildNameRequests()]);
-  const byId = new Map(guilds.map(guild => [guild.id, guild]));
+  const byId = new Map<string, Guild>(guilds.map(guild => [guild.id, guild] as const));
   return requests
     .filter(request => byId.get(request.guildId)?.nameStatus === 'pending')
     .map(request => {
