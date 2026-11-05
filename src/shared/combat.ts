@@ -1,6 +1,8 @@
 export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'forge' | 'skills' | 'arena' | 'runes';
-export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
-export type CombatCommand = CombatIntent | 'auto' | 'ability';
+export const COMBAT_INTENTS = ['strike', 'heavy', 'guard', 'mend'] as const;
+export type CombatIntent = (typeof COMBAT_INTENTS)[number];
+export const COMBAT_COMMANDS = ['auto', ...COMBAT_INTENTS, 'ability'] as const;
+export type CombatCommand = (typeof COMBAT_COMMANDS)[number];
 export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
 export const COMBAT_ABILITY_SLOTS = 3;
 export const SKILL_GACHA_RANK_MAX = 30;
@@ -8,8 +10,10 @@ export const SKILL_GACHA_RANK_MAX = 30;
 export const COMBAT_BEAT_INTERVAL_MS = 30_000;
 /** Maximum supported PvE depth; reaching it ends the descent instead of farming a capped room. */
 export const COMBAT_MAX_DEPTH = 50_000;
-export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
-export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
+export const COMBAT_TACTICS = ['balanced', 'aggressive', 'defensive', 'recovery'] as const;
+export type CombatTactic = (typeof COMBAT_TACTICS)[number];
+export const COMBAT_DUNGEONS = ['undercrypt', 'cinder-vault', 'glass-labyrinth'] as const;
+export type CombatDungeonId = (typeof COMBAT_DUNGEONS)[number];
 export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number; }
 export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { enabled:false, maxQuality:20 };
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
@@ -1127,7 +1131,7 @@ export function combatBossesBeatenByDepth(bestDepthValue: unknown, finalBossClea
 export function combatTotalBossesBeaten(value: unknown): number {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
   const state = value as Record<string, unknown>;
-  const dungeonIds: CombatDungeonId[] = ['undercrypt', 'cinder-vault', 'glass-labyrinth'];
+  const dungeonIds: readonly CombatDungeonId[] = COMBAT_DUNGEONS;
   const activeDungeon: CombatDungeonId = dungeonIds.includes(state.dungeonId as CombatDungeonId)
     ? state.dungeonId as CombatDungeonId
     : 'undercrypt';
