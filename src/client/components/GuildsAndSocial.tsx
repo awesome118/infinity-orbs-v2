@@ -431,10 +431,10 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         {myGuild.members.length} / {10 + Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens
                       </p>
                       {myGuild.nameStatus === 'pending' && (
-                        <p className="mt-1 text-[10px] font-semibold text-amber-300">Your requested custom name is awaiting review. The temporary name is public until approved.</p>
+                        <p className="mt-1 text-[10px] font-semibold text-amber-300">This guild's custom name is awaiting review. The temporary name is public until approved.</p>
                       )}
                       {myGuild.nameStatus === 'rejected' && (
-                        <p className="mt-1 text-[10px] font-semibold text-slate-400">Your custom name request was not approved. The temporary name remains in use.</p>
+                        <p className="mt-1 text-[10px] font-semibold text-slate-400">This guild's custom name was not approved. The temporary name remains in use.</p>
                       )}
                     </div>
                   </div>
