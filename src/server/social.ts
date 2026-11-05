@@ -951,7 +951,8 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         const storedRaw = await redis.get(GUILDS_KEY);
         const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
         const guilds = parseGuildListRaw(decodedRaw);
-        const requests = await readGuildNameRequests();
+        const liveGuildIds = new Set(guilds.map(guild => guild.id));
+        const requests = (await readGuildNameRequests()).filter(request => liveGuildIds.has(request.guildId));
         const pendingByGuild = new Set(requests.map(request => request.guildId));
         const usedNames = new Set<string>();
         const usedTags = new Set<string>();
@@ -1667,6 +1668,7 @@ export async function createGuild(name: string, tag: string, requestedName?: str
   return updateGuilds(async (guilds, writes) => {
     const existingGuild = currentGuild(guilds);
     const adminGuildOverride = isAdminUsername(context.username);
+    let deletedGuildId: string | null = null;
     if (existingGuild && !adminGuildOverride) {
       throw new Error('Leave your current guild first.');
     }
@@ -1674,7 +1676,10 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       existingGuild.members = existingGuild.members.filter(member => !memberMatches(member));
       if (existingGuild.members.length === 0) {
         const index = guilds.indexOf(existingGuild);
-        if (index >= 0) guilds.splice(index, 1);
+        if (index >= 0) {
+          deletedGuildId = existingGuild.id;
+          guilds.splice(index, 1);
+        }
       }
     }
 
@@ -1684,7 +1689,13 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
     }
 
-    const pendingRequests = await readGuildNameRequests();
+    const storedPendingRequests = await readGuildNameRequests();
+    const pendingRequests = deletedGuildId
+      ? storedPendingRequests.filter(request => request.guildId !== deletedGuildId)
+      : storedPendingRequests;
+    if (pendingRequests.length !== storedPendingRequests.length) {
+      writes.setGuildNameRequests(pendingRequests);
+    }
     if (pendingRequests.some(request => request.requestedName.toLowerCase() === cleanFallbackName.toLowerCase())) {
       throw new Error('That temporary name is already requested by another guild. Choose a different combination.');
     }
@@ -1819,7 +1830,7 @@ export async function joinGuild(guildId: string) {
 }
 
 export async function leaveGuild() {
-  return updateGuilds(guilds => {
+  return updateGuilds(async (guilds, writes) => {
     const guildIndex = guilds.findIndex(g => g.members.some(m => memberMatches(m)));
     if (guildIndex === -1) throw new Error('You are not in a guild.');
     const guild = guilds[guildIndex];
@@ -1828,6 +1839,11 @@ export async function leaveGuild() {
 
     if (guild.members.length === 0) {
       guilds.splice(guildIndex, 1);
+      const requests = await readGuildNameRequests();
+      const remainingRequests = requests.filter(request => request.guildId !== guild.id);
+      if (remainingRequests.length !== requests.length) {
+        writes.setGuildNameRequests(remainingRequests);
+      }
     } else {
       if (oldMember?.role === 'owner') {
         const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
