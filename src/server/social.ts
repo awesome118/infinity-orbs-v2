@@ -903,13 +903,19 @@ function requireGuildNameAdmin(): void {
   if (!isAdminUsername(context.username)) throw new Error('Only the Infinity Orbs administrator can review guild names.');
 }
 
-async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
+type GuildMutationQueueWrites = {
+  setGuildNameRequests: (requests: StoredGuildNameRequest[]) => void;
+};
+
+async function updateGuilds<T>(
+  mutator: (guilds: Guild[], writes: GuildMutationQueueWrites) => Promise<T> | T,
+): Promise<T> {
   await ensureGuildMigrations();
   return withGuildDataMutationLock(async () => {
     await ensureRedisStringKey(GUILDS_KEY, '[]');
 
     for (let attempt = 0; attempt < 8; attempt++) {
-      const txn = await redis.watch(GUILDS_KEY);
+      const txn = await redis.watch(GUILDS_KEY, GUILD_NAME_REQUESTS_KEY);
       let transactionClosed = false;
       let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
       let writeCommitted = false;
@@ -917,11 +923,16 @@ async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Pr
         const storedRaw = await redis.get(GUILDS_KEY);
         const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
         const guilds: Guild[] = parseGuildList(decodedRaw);
-        const result = await mutator(guilds);
+        let nextNameRequestsRaw: string | null = null;
+        const writes: GuildMutationQueueWrites = {
+          setGuildNameRequests: requests => { nextNameRequestsRaw = JSON.stringify(requests); },
+        };
+        const result = await mutator(guilds, writes);
         writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
 
         await txn.multi();
         await txn.set(GUILDS_KEY, writePlan.storedValue);
+        if (nextNameRequestsRaw !== null) await txn.set(GUILD_NAME_REQUESTS_KEY, nextNameRequestsRaw);
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) {
@@ -1483,13 +1494,13 @@ export async function createGuild(name: string, tag: string, requestedName?: str
   }
 
   const cleanRequestedName = typeof requestedName === 'string'
-    ? requestedName.replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim()
+    ? requestedName.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
     : '';
   if (cleanRequestedName && (cleanRequestedName.length < 3 || cleanRequestedName.length > 32)) {
     throw new Error('Custom guild names must be 3–32 characters.');
   }
 
-  return updateGuilds(async guilds => {
+  return updateGuilds(async (guilds, writes) => {
     const existingGuild = currentGuild(guilds);
     const adminGuildOverride = isAdminUsername(context.username);
     if (existingGuild && !adminGuildOverride) {
@@ -1523,7 +1534,7 @@ export async function createGuild(name: string, tag: string, requestedName?: str
         submittedByUserId: user(),
         submittedAt: now,
       });
-      await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(pendingRequests));
+      writes.setGuildNameRequests(pendingRequests);
     }
 
     const guild: Guild = {
@@ -1586,7 +1597,7 @@ export async function reviewGuildNameRequest(
     throw new Error('Choose a valid guild name request decision.');
   }
 
-  return updateGuilds(async guilds => {
+  return updateGuilds(async (guilds, writes) => {
     const requests = await readGuildNameRequests();
     const index = requests.findIndex(request => request.requestId === cleanRequestId);
     if (index < 0) throw new Error('That guild name request no longer exists.');
@@ -1594,7 +1605,7 @@ export async function reviewGuildNameRequest(
     const guild = guilds.find(item => item.id === request.guildId);
     if (!guild || guild.nameStatus !== 'pending') {
       requests.splice(index, 1);
-      await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+      writes.setGuildNameRequests(requests);
       throw new Error('That guild no longer has a pending name request.');
     }
 
@@ -1610,7 +1621,7 @@ export async function reviewGuildNameRequest(
     }
 
     requests.splice(index, 1);
-    await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+    writes.setGuildNameRequests(requests);
     return { success: true, decision, guildName: guild.name };
   });
 }
