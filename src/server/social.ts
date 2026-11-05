@@ -1024,11 +1024,13 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         }
 
         normalizeGuilds(guilds);
+        const pendingGuildIds = new Set(guilds.filter(guild => guild.nameStatus === 'pending').map(guild => guild.id));
+        const activeRequests = requests.filter(request => pendingGuildIds.has(request.guildId));
         writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
 
         await txn.multi();
         await txn.set(GUILDS_KEY, writePlan.storedValue);
-        await txn.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+        await txn.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(activeRequests));
         await txn.set(GUILD_NAME_REVIEW_MIGRATION_KEY, '1');
         const committed = await txn.exec();
         transactionClosed = true;
@@ -1782,8 +1784,8 @@ export async function reviewGuildNameRequest(
     const request = requests[index]!;
     const guild = guilds.find(item => item.id === request.guildId);
     if (!guild || guild.nameStatus !== 'pending') {
-      requests.splice(index, 1);
-      writes.setGuildNameRequests(requests);
+      const remainingRequests = requests.filter(item => item.guildId !== request.guildId);
+      writes.setGuildNameRequests(remainingRequests);
       return { success: true, decision, guildName: '' };
     }
 
@@ -1798,8 +1800,10 @@ export async function reviewGuildNameRequest(
       guild.nameStatus = 'rejected';
     }
 
-    requests.splice(index, 1);
-    writes.setGuildNameRequests(requests);
+    // A guild should have only one request, but clear every duplicate/legacy
+    // entry for this Guild so none can remain invisible and reserve a name.
+    const remainingRequests = requests.filter(item => item.guildId !== guild.id);
+    writes.setGuildNameRequests(remainingRequests);
     return { success: true, decision, guildName: guild.name };
   });
 }
