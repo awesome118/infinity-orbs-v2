@@ -1520,8 +1520,8 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
     }
 
-    const pendingRequests = await readGuildNameRequests();
     if (cleanRequestedName) {
+      const pendingRequests = await readGuildNameRequests();
       if (guilds.some(g => g.name.toLowerCase() === cleanRequestedName.toLowerCase()) ||
           pendingRequests.some(request => request.requestedName.toLowerCase() === cleanRequestedName.toLowerCase())) {
         throw new Error('That guild name is already in use or awaiting review.');
@@ -1606,7 +1606,7 @@ export async function reviewGuildNameRequest(
     if (!guild || guild.nameStatus !== 'pending') {
       requests.splice(index, 1);
       writes.setGuildNameRequests(requests);
-      throw new Error('That guild no longer has a pending name request.');
+      return { success: true, decision, guildName: '' };
     }
 
     if (decision === 'approve') {
