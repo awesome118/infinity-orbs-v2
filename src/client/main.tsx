@@ -70,6 +70,7 @@ import {
   timeEnergyActivationsAvailable,
   upgradeCost,
   upgradeUnlockLevel,
+  MAX_UPGRADE_PURCHASES_PER_REQUEST,
   prestigeUpgradeCost,
   masterySkillCost,
   levelAdjustedXpReward,
@@ -2577,10 +2578,10 @@ function App() {
     let purchases = 0;
 
     let changed = true;
-    while (changed && purchases < 5_000) {
+    while (changed && purchases < MAX_UPGRADE_PURCHASES_PER_REQUEST) {
       changed = false;
       for (const id of ids) {
-        if (id === 'auto' || purchases >= 5_000 || next.level < upgradeUnlockLevel(id)) continue;
+        if (id === 'auto' || purchases >= MAX_UPGRADE_PURCHASES_PER_REQUEST || next.level < upgradeUnlockLevel(id)) continue;
         const level = next.upgrades[id] ?? 0;
         const cost = upgradeCost(id, level);
         if (!Number.isFinite(cost) || cost > next.coins) continue;
@@ -2604,7 +2605,12 @@ function App() {
     pendingMutationCountRef.current += 1;
     return enqueueMutation(async () => {
       try {
-        const res = await getJson<{ state: PlayerState; totalSpent: number; upgradedCount: number }>('/api/upgrade/all', {
+        const res = await getJson<{
+          state: PlayerState;
+          totalSpent: number;
+          upgradedCount: number;
+          purchaseLimitReached: boolean;
+        }>('/api/upgrade/all', {
           method: 'POST',
         });
 
@@ -2615,9 +2621,9 @@ function App() {
         }
         showToast(
           res.upgradedCount > 0
-            ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${formatNumber(res.totalSpent)} Coins.`
+            ? `Bought ${res.upgradedCount} upgrade level${res.upgradedCount === 1 ? '' : 's'} for ${formatNumber(res.totalSpent)} Coins.${res.purchaseLimitReached ? ` The ${MAX_UPGRADE_PURCHASES_PER_REQUEST.toLocaleString()}-purchase safety limit was reached; run Buy All again to continue.` : ''}`
             : 'No upgrades are currently affordable. Your wallet and levels were restored.',
-          res.upgradedCount > 0 ? 'success' : 'info',
+          res.purchaseLimitReached ? 'info' : res.upgradedCount > 0 ? 'success' : 'info',
         );
         return res.upgradedCount > 0;
       } catch (error: any) {

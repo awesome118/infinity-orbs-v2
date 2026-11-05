@@ -27,6 +27,7 @@ import {
   type RollResponse,
   type UpgradeId,
   UPGRADE_IDS,
+  MAX_UPGRADE_PURCHASES_PER_REQUEST,
   type PrestigeUpgradeId,
   type Orb,
   AUTO_UNLOCK_COST,
@@ -6720,7 +6721,12 @@ export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   return false;
 }
 
-export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent: number; upgradedCount: number }> {
+export async function buyAllUpgrades(): Promise<{
+  state: PlayerState;
+  totalSpent: number;
+  upgradedCount: number;
+  purchaseLimitReached: boolean;
+}> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const upgradeIds: UpgradeId[] = [
@@ -6731,17 +6737,14 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
 
   let totalSpent = 0;
   let upgradedCount = 0;
-  const MAX_PURCHASES_PER_REQUEST = 5_000;
-
   // Sweep one level across every affordable upgrade, then repeat until no upgrade
-  // can be bought. This makes the button genuinely "Upgrade All" rather than
-  // "buy the cheapest thing until the wallet is empty."
+  // can be bought or the shared safety limit is reached.
   let changed = true;
-  while (changed && upgradedCount < MAX_PURCHASES_PER_REQUEST) {
+  while (changed && upgradedCount < MAX_UPGRADE_PURCHASES_PER_REQUEST) {
     changed = false;
 
     for (const id of upgradeIds) {
-      if (upgradedCount >= MAX_PURCHASES_PER_REQUEST) break;
+      if (upgradedCount >= MAX_UPGRADE_PURCHASES_PER_REQUEST) break;
 
       const level = s.upgrades[id] ?? 0;
       if (s.level < upgradeUnlockLevel(id)) continue;
@@ -6763,7 +6766,14 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
     await save(s);
   }
 
-  return { state: s, totalSpent, upgradedCount };
+  const purchaseLimitReached = upgradedCount >= MAX_UPGRADE_PURCHASES_PER_REQUEST &&
+    upgradeIds.some(id => {
+      if (id === 'auto' || s.level < upgradeUnlockLevel(id)) return false;
+      const nextCost = upgradeCost(id, s.upgrades[id] ?? 0);
+      return Number.isFinite(nextCost) && nextCost <= s.coins;
+    });
+
+  return { state: s, totalSpent, upgradedCount, purchaseLimitReached };
   });
 }
 

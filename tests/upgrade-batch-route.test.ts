@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   UPGRADE_IDS,
   UPGRADE_UNLOCK_LEVELS,
+  MAX_UPGRADE_PURCHASES_PER_REQUEST,
   PRESTIGE_UPGRADES,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -71,4 +72,18 @@ test('Guild perk and Celestial Alignment routes and server stats share their cat
   assert.ok(CELESTIAL_ALIGNMENT_CHOICES.length >= 3);
   assert.ok(GUILD_PERK_IDS.includes('tokenYieldRank'));
   assert.ok(GUILD_PERK_IDS.includes('taskBountyRank'));
+});
+
+test('Buy All shares its safety cap and reports when more affordable upgrades remain', () => {
+  const server = source('src/server/game.ts');
+  const client = source('src/client/main.tsx');
+  const handler = server.slice(server.indexOf('export async function buyAllUpgrades'), server.indexOf('export async function claimDailyStreak'));
+
+  assert.equal(MAX_UPGRADE_PURCHASES_PER_REQUEST, 5_000);
+  assert.match(handler, /upgradedCount < MAX_UPGRADE_PURCHASES_PER_REQUEST/);
+  assert.match(handler, /purchaseLimitReached = upgradedCount >= MAX_UPGRADE_PURCHASES_PER_REQUEST/);
+  assert.match(handler, /return \{ state: s, totalSpent, upgradedCount, purchaseLimitReached \}/);
+  assert.match(client, /purchases < MAX_UPGRADE_PURCHASES_PER_REQUEST/);
+  assert.match(client, /res\.purchaseLimitReached/);
+  assert.match(client, /run Buy All again to continue/);
 });

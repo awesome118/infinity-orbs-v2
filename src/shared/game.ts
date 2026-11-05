@@ -20,6 +20,9 @@ export const UPGRADE_IDS = [
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
+/** Bound one Buy All request so large balances cannot monopolize a gameplay request. */
+export const MAX_UPGRADE_PURCHASES_PER_REQUEST = 5_000;
+
 /**
  * Minimum player levels for standard Coin upgrades.
  */
