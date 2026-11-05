@@ -34,6 +34,10 @@ import {
   isGuildValueProgress,
   isApprovedGuildName,
   guildTagForName,
+  composeGuildName,
+  GUILD_NAME_FIRST_WORDS,
+  GUILD_NAME_SECOND_WORDS,
+  GUILD_NAME_NOUNS,
   type GuildNameRequest,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
@@ -62,6 +66,7 @@ function isAdminUsername(value: unknown): boolean {
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
 const GUILD_NAME_REQUESTS_KEY = key('guild-name-requests:v1');
+const GUILD_NAME_REVIEW_MIGRATION_KEY = key('guild-name-review-migration:v1');
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
@@ -474,7 +479,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
 
   guild.id = nonEmptyString(guild.id, 'recovered-guild-' + (index + 1));
   guild.name = nonEmptyString(guild.name, 'Recovered Guild ' + (index + 1));
-  guild.nameStatus = ['pending', 'approved', 'rejected'].includes(String(guild.nameStatus)) ? guild.nameStatus : 'approved';
+  guild.nameStatus = ['pending', 'approved', 'rejected'].includes(String(guild.nameStatus)) ? guild.nameStatus : undefined;
   guild.tag = nonEmptyString(guild.tag, 'REC' + (index + 1));
   delete guild.level;
   delete guild.xp;
@@ -655,7 +660,7 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     delete (g as any).bossWeek;
     g.nameStatus = ['pending', 'approved', 'rejected'].includes(String(g.nameStatus))
       ? g.nameStatus
-      : 'approved';
+      : undefined;
     g.tokens ??= 0;
     if (!g.perks) {
       g.perks = {
@@ -878,6 +883,143 @@ async function ensureGuildMigrations(): Promise<void> {
   });
   await applyGuildMigration(GUILD_TOKEN_RESET_KEY, guilds => {
     for (const guild of guilds) guild.tokens = 0;
+  });
+  await applyGuildNameReviewMigration();
+}
+
+
+function uniqueGuildFallbackName(
+  seed: string,
+  usedNames: Set<string>,
+  usedTags: Set<string>,
+): { name: string; tag: string } {
+  const firstCount = GUILD_NAME_FIRST_WORDS.length;
+  const secondCount = GUILD_NAME_SECOND_WORDS.length;
+  const nounCount = GUILD_NAME_NOUNS.length;
+  const total = firstCount * secondCount * nounCount;
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = Math.imul(hash ^ seed.charCodeAt(index), 16777619) >>> 0;
+  }
+  const start = hash % total;
+  for (let offset = 0; offset < total; offset += 1) {
+    const combination = (start + offset) % total;
+    const first = GUILD_NAME_FIRST_WORDS[combination % firstCount]!;
+    const second = GUILD_NAME_SECOND_WORDS[Math.floor(combination / firstCount) % secondCount]!;
+    const noun = GUILD_NAME_NOUNS[Math.floor(combination / (firstCount * secondCount)) % nounCount]!;
+    const name = composeGuildName(first, second, noun);
+    const tag = guildTagForName(name);
+    if (name && tag && !usedNames.has(name.toLowerCase()) && !usedTags.has(tag)) {
+      return { name, tag };
+    }
+  }
+  throw new Error('There are no unused curated Guild fallback names left.');
+}
+
+/**
+ * Existing custom Guild names predate manual approval. Replace public names
+ * and tags with curated fallbacks while moving old names into the private
+ * administrator queue. Already curated names remain public.
+ */
+async function applyGuildNameReviewMigration(): Promise<void> {
+  const markerBeforeLock = await redis.get(GUILD_NAME_REVIEW_MIGRATION_KEY);
+  if (markerBeforeLock === '1') return;
+  if (markerBeforeLock != null) {
+    throw new Error('Guild name review migration marker is corrupted; refusing to rerun it.');
+  }
+
+  await ensureRedisStringKey(GUILDS_KEY, '[]');
+  return withGuildDataMutationLock(async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const txn = await redis.watch(GUILDS_KEY, GUILD_NAME_REQUESTS_KEY, GUILD_NAME_REVIEW_MIGRATION_KEY);
+      let transactionClosed = false;
+      let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
+      let writeCommitted = false;
+      try {
+        const marker = await redis.get(GUILD_NAME_REVIEW_MIGRATION_KEY);
+        if (marker === '1') {
+          await txn.unwatch();
+          transactionClosed = true;
+          return;
+        }
+        if (marker != null) {
+          await txn.unwatch();
+          transactionClosed = true;
+          throw new Error('Guild name review migration marker is corrupted; refusing to rerun it.');
+        }
+
+        const storedRaw = await redis.get(GUILDS_KEY);
+        const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
+        const guilds = parseGuildListRaw(decodedRaw);
+        const requests = await readGuildNameRequests();
+        const pendingByGuild = new Set(requests.map(request => request.guildId));
+        const usedNames = new Set<string>();
+        const usedTags = new Set<string>();
+
+        // Reserve safe names first so legacy custom names cannot take them as fallbacks.
+        for (const guild of guilds) {
+          if (isApprovedGuildName(guild.name)) {
+            usedNames.add(guild.name.toLowerCase());
+            usedTags.add(guildTagForName(guild.name));
+          }
+        }
+
+        const now = Date.now();
+        for (const guild of guilds) {
+          const originalName = guild.name;
+          const cleanOriginalName = String(originalName ?? '')
+            .replace(/[\u0000-\u001f\u007f]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 32);
+          const hasExistingRequest = pendingByGuild.has(guild.id);
+
+          if (isApprovedGuildName(originalName)) {
+            guild.nameStatus = hasExistingRequest ? 'pending' : 'approved';
+            guild.tag = guildTagForName(originalName);
+            continue;
+          }
+
+          const fallback = uniqueGuildFallbackName(guild.id, usedNames, usedTags);
+          guild.name = fallback.name;
+          guild.tag = fallback.tag;
+          guild.nameStatus = cleanOriginalName.length >= 3 || hasExistingRequest ? 'pending' : 'approved';
+          usedNames.add(fallback.name.toLowerCase());
+          usedTags.add(fallback.tag);
+
+          if (cleanOriginalName.length >= 3 && !hasExistingRequest) {
+            const owner = guild.members.find(member => member.role === 'owner') ?? guild.members[0];
+            requests.push({
+              requestId: secureSocialToken('guild-name'),
+              guildId: guild.id,
+              requestedName: cleanOriginalName,
+              submittedBy: owner?.username ?? 'unknown',
+              submittedByUserId: owner?.userId ?? '',
+              submittedAt: now,
+            });
+          }
+        }
+
+        normalizeGuilds(guilds);
+        writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
+
+        await txn.multi();
+        await txn.set(GUILDS_KEY, writePlan.storedValue);
+        await txn.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+        await txn.set(GUILD_NAME_REVIEW_MIGRATION_KEY, '1');
+        const committed = await txn.exec();
+        transactionClosed = true;
+        if (committed !== null) {
+          writeCommitted = true;
+          await retireRedisLargeValue(GUILDS_KEY, storedRaw);
+          return;
+        }
+      } finally {
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
+      }
+    }
+    throw new Error('Guild name review migration changed while applying an update. Please retry.');
   });
 }
 
