@@ -67,6 +67,7 @@ jobs:
           node --import tsx --test tests/large-number-economy.test.ts
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts tests/player-state-reconciliation.test.ts tests/upgrade-spam-ui.test.ts
           node --import tsx --test tests/altar-validation.test.ts
+          node --import tsx --test tests/roll-optional-reads.test.ts
           node --import tsx --test tests/roll-ticket-seeds.test.ts
           node --import tsx --test tests/admin-api-feature-fixture.test.ts
           node --import tsx --test tests/rarity-icon-visuals.test.ts
