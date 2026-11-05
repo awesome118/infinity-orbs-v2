@@ -6696,11 +6696,7 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
 export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   const reserve = Math.max(0, Math.floor(Number.isFinite(reserveCoins) ? reserveCoins : 0));
   const spendableCoins = Math.max(0, s.coins - reserve);
-  const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
-    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
-  ];
+  const upgradeIds: readonly UpgradeId[] = BUY_ALL_UPGRADE_ORDER;
   let bestId: UpgradeId | null = null;
   let lowestCost = Infinity;
 

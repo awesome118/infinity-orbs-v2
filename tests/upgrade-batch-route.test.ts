@@ -102,4 +102,6 @@ test('Buy All purchase priority is shared by client and server', () => {
   ]);
   assert.match(serverHandler, /upgradeIds: readonly UpgradeId\[\] = BUY_ALL_UPGRADE_ORDER/);
   assert.match(clientHandler, /ids: readonly UpgradeId\[\] = BUY_ALL_UPGRADE_ORDER/);
+  const autoBuyer = game.slice(game.indexOf('export function autoBuyCheapest'), game.indexOf('export async function buyAllUpgrades'));
+  assert.match(autoBuyer, /upgradeIds: readonly UpgradeId\[\] = BUY_ALL_UPGRADE_ORDER/);
 });
