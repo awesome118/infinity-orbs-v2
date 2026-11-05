@@ -1754,8 +1754,9 @@ export function createApp() {
   });
 
   app.post('/api/guilds/create', async (req, res) => {
-    try { res.json({ guild: await createGuild(req.body?.name ?? '', req.body?.tag ?? '') }); }
-    catch (e) { badRequest(res, e, 'Could not create guild.'); }
+    try {
+      res.json({ guild: await createGuild(req.body?.name ?? '', req.body?.tag ?? '', req.body?.requestedName ?? '') });
+    } catch (e) { badRequest(res, e, 'Could not create guild.'); }
   });
 
   app.get('/api/guilds/name-requests', async (_req, res) => {
