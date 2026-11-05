@@ -52,7 +52,8 @@ test('guild custom names are only exposed through an admin-only approval queue',
   assert.match(social, /function requireGuildNameAdmin\(\)[\s\S]*?isAdminUsername\(context\.username\)/);
   assert.match(createGuild, /name: cleanFallbackName/);
   assert.match(createGuild, /nameStatus: cleanRequestedName \? 'pending' : 'approved'/);
-  assert.doesNotMatch(createGuild, /requestedName:\s*cleanRequestedName/);
+  const publicGuildRecord = createGuild.match(/const guild: Guild = \{([\s\S]*?)\n    \};/);
+  assert.equal(publicGuildRecord?.[1]?.includes('requestedName'), false);
   assert.match(guildInfo, /\.map\(guild => \(\{/);
   assert.doesNotMatch(guildInfo, /requestedName/);
   assert.match(review, /guild\.name = request\.requestedName/);
