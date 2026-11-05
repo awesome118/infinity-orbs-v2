@@ -19,9 +19,10 @@ export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { ena
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 
 
-export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic' | 'Astral' | 'Celestial' | 'Transcendent';
-export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
-export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic', 'Astral', 'Celestial', 'Transcendent'];
+export const COMBAT_RUNE_RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic', 'Astral', 'Celestial', 'Transcendent'] as const;
+export type CombatRuneRarity = (typeof COMBAT_RUNE_RARITIES)[number];
+export const COMBAT_RUNE_STATS = ['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct'] as const;
+export type CombatRuneStat = (typeof COMBAT_RUNE_STATS)[number];
 /** Cumulative cryptographic drop thresholds; each new tier is exactly 10× rarer than the previous one. */
 export const COMBAT_RUNE_RARITY_ROLL_THRESHOLDS: Record<CombatRuneRarity, number> = {
   Common: 1,
@@ -407,7 +408,7 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
   const bonuses: CombatRuneBonuses = { luckPct: 0, coinGainPct: 0, shardChancePct: 0, xpGainPct: 0 };
   const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
   if (!equipped.size || !Array.isArray(runesValue)) return bonuses;
-  const validStats = new Set<CombatRuneStat>(['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
+  const validStats = new Set<CombatRuneStat>(COMBAT_RUNE_STATS);
   const safeAdd = (current: number, extra: number) => Math.min(Number.MAX_VALUE, current + Math.min(Number.MAX_VALUE, Math.max(0, extra)));
   for (const raw of runesValue) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;

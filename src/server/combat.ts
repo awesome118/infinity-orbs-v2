@@ -3,7 +3,7 @@ import { loadRaw } from './game.js';
 import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { COMBAT_DUNGEONS, COMBAT_TACTICS, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneRarityFromRoll, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { COMBAT_DUNGEONS, COMBAT_TACTICS, COMBAT_RUNE_STATS, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneRarityFromRoll, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -16,7 +16,7 @@ function secureRandom():number {
   // Uniform 53-bit fraction in [0, 1), built from cryptographically random bits.
   return (words[0]!*0x20_0000+(words[1]!>>>11))/0x20_0000_0000_0000;
 }
-function pick<T>(values:T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
+function pick<T>(values:readonly T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
 function finiteInt(value:unknown,fallback:number,min:number,max:number):number {
   const bounded=(n:number)=>Math.max(min,Math.min(max,Math.floor(n)));
   const n=Number(value);
@@ -144,7 +144,7 @@ function normalizeRune(value:unknown):CombatRune|null {
   const x=value as Record<string,unknown>,rarity=x.rarity,stat=x.stat,dungeon=x.sourceDungeon;
   if(typeof x.id!=='string'||!x.id.trim()||x.id.length>160)return null;
   if(!COMBAT_RUNE_RARITIES.includes(rarity as CombatRuneRarity))return null;
-  if(!(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as unknown[]).includes(stat))return null;
+  if(typeof stat!=='string'||!COMBAT_RUNE_STATS.includes(stat as CombatRuneStat))return null;
   const sourceDungeon:CombatDungeonId=COMBAT_DUNGEONS.includes(dungeon as CombatDungeonId)?dungeon as CombatDungeonId:'undercrypt';
   const sourceDepth=finiteInt(x.sourceDepth,0,0,COMBAT_MAX_DEPTH-1);
   const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:Number.MAX_VALUE;
@@ -206,7 +206,7 @@ function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRu
 function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,totalKills:number,sequence:number):CombatRune {
   const rarityRoll=secureRandom();
   const rarity:CombatRuneRarity=combatRuneRarityFromRoll(rarityRoll);
-  const stat=pick(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as CombatRuneStat[]);
+  const stat=pick(COMBAT_RUNE_STATS);
   const value=combatRuneValueFor(rarity,stat,sourceDepth);
   const rarityName:Record<CombatRuneRarity,string>={Common:'Fractured',Uncommon:'Polished',Rare:'Radiant',Epic:'Runed',Legendary:'Ascendant',Mythic:'Mythic',Cosmic:'Cosmic',Astral:'Astral',Celestial:'Celestial',Transcendent:'Transcendent'};
   const statName:Record<CombatRuneStat,string>={luckPct:'Fate',coinGainPct:'Hoard',shardChancePct:'Prism',xpGainPct:'Insight'};
@@ -1746,8 +1746,8 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       addCombatGearToInventory(state,item);state.equipment[slot]=item.id;synchronizeCombatStats(state);state.health=state.maxHealth;
       labMessage='Granted and equipped '+item.name+' ('+item.quality.toFixed(2)+'% quality)'+(item.majorAbility?' with '+item.majorAbility.name:'')+'.';
     }else if(action==='grant-rune'){
-      const rarities:CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
-      const stats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct'];
+      const rarities:readonly CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
+      const stats:readonly CombatRuneStat[]=COMBAT_RUNE_STATS;
       const rarity=String(payload.rarity??'Cosmic') as CombatRuneRarity;
       const stat=String(payload.stat??'luckPct') as CombatRuneStat;
       if(!rarities.includes(rarity)||!stats.includes(stat))throw new Error('Choose a valid Rune rarity and stat.');

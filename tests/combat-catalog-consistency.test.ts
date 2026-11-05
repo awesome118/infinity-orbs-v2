@@ -7,6 +7,8 @@ import {
   COMBAT_DUNGEONS,
   COMBAT_TACTICS,
   COMBAT_INTENTS,
+  COMBAT_RUNE_RARITIES,
+  COMBAT_RUNE_STATS,
 } from '../src/shared/combat.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -29,4 +31,20 @@ test('Combat command, tactic, and dungeon types share runtime catalogs', () => {
   assert.deepEqual([...COMBAT_COMMANDS], ['auto', 'strike', 'heavy', 'guard', 'mend', 'ability']);
   assert.deepEqual([...COMBAT_TACTICS], ['balanced', 'aggressive', 'defensive', 'recovery']);
   assert.deepEqual([...COMBAT_DUNGEONS], ['undercrypt', 'cinder-vault', 'glass-labyrinth']);
+});
+
+test('Rune rarity and stat types are derived from the arrays used by validators and RNG', () => {
+  const shared = source('src/shared/combat.ts');
+  const combat = source('src/server/combat.ts');
+
+  assert.match(shared, /export type CombatRuneRarity = \(typeof COMBAT_RUNE_RARITIES\)\[number\]/);
+  assert.match(shared, /export type CombatRuneStat = \(typeof COMBAT_RUNE_STATS\)\[number\]/);
+  assert.match(shared, /new Set<CombatRuneStat>\(COMBAT_RUNE_STATS\)/);
+  assert.match(combat, /COMBAT_RUNE_STATS\.includes\(stat as CombatRuneStat\)/);
+  assert.match(combat, /pick\(COMBAT_RUNE_STATS\)/);
+  assert.deepEqual([...COMBAT_RUNE_RARITIES], [
+    'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic',
+    'Cosmic', 'Astral', 'Celestial', 'Transcendent',
+  ]);
+  assert.deepEqual([...COMBAT_RUNE_STATS], ['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
 });
