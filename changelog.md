@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.29
+
+- **Guild Tag Safety:** The name picker hides a letter choice whenever it would complete a blocked or already-used three-letter tag, regardless of which name part is selected last. The server independently rejects blocked or duplicate tags.
+
 ### New in 2.2.28
 
 - **Guild Name Approval Reliability:** Correctly normalize and reserve legacy names during migration, recover pending approvals with missing queue records, and skip redundant requests for names identical to the public fallback.

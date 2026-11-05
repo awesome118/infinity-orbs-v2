@@ -34,6 +34,7 @@ import {
   isGuildValueProgress,
   isApprovedGuildName,
   guildTagForName,
+  isGuildTagAllowed,
   normalizeGuildName,
   guildMemberMatchesIdentity,
   promoteGuildOwnerIfNeeded,
@@ -909,7 +910,7 @@ function uniqueGuildFallbackName(
     const noun = GUILD_NAME_NOUNS[Math.floor(combination / (firstCount * secondCount)) % nounCount]!;
     const name = composeGuildName(first, second, noun);
     const tag = guildTagForName(name);
-    if (name && tag && !usedNames.has(name.toLowerCase()) && !usedTags.has(tag)) {
+    if (name && tag && isGuildTagAllowed(tag, usedTags) && !usedNames.has(name.toLowerCase())) {
       return { name, tag };
     }
   }
@@ -1662,6 +1663,9 @@ export async function createGuild(name: string, tag: string, requestedName?: str
   if (!isApprovedGuildName(cleanFallbackName) || cleanTag !== guildTagForName(cleanFallbackName)) {
     throw new Error('Choose a temporary guild name from the available three-part options.');
   }
+  if (!isGuildTagAllowed(cleanTag)) {
+    throw new Error('That Guild tag is blocked. Choose another combination.');
+  }
 
   const requestedNameCandidate = normalizeGuildName(requestedName);
   const cleanRequestedName = requestedNameCandidate.toLowerCase() === cleanFallbackName.toLowerCase()
@@ -1693,7 +1697,9 @@ export async function createGuild(name: string, tag: string, requestedName?: str
 
     const now = Date.now();
     const id = `${now}-${createSecureId()}`;
-    if (guilds.some(g => g.name.toLowerCase() === cleanFallbackName.toLowerCase() || g.tag === cleanTag)) {
+    const takenGuildTags = new Set(guilds.map(guild => String(guild.tag ?? '').trim().toUpperCase()));
+    if (guilds.some(g => g.name.toLowerCase() === cleanFallbackName.toLowerCase()) ||
+        !isGuildTagAllowed(cleanTag, takenGuildTags)) {
       throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
     }
 

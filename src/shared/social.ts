@@ -58,6 +58,51 @@ export function guildTagForName(name: string): string {
 }
 
 /** Apply the same bounded, control-safe normalization to every Guild name path. */
+/**
+ * Three-letter Guild tags that must never be assigned. Keep this list limited
+ * to unmistakable hate-group identifiers and common profanity/sexual slurs.
+ */
+export const BLOCKED_GUILD_TAGS = [
+  'ASS', 'CUM', 'FAG', 'FCK', 'FUC', 'FUK', 'KKK', 'NAZ', 'NIG', 'PIS', 'SHT', 'WTF',
+] as const;
+
+const BLOCKED_GUILD_TAG_SET: ReadonlySet<string> = new Set(BLOCKED_GUILD_TAGS);
+
+/** Check both the fixed safety blocklist and tags already used by other Guilds. */
+export function isGuildTagAllowed(tag: string, takenTags?: ReadonlySet<string>): boolean {
+  const normalizedTag = typeof tag === 'string' ? tag.trim().toUpperCase() : '';
+  if (!/^[A-Z]{3}$/.test(normalizedTag) || BLOCKED_GUILD_TAG_SET.has(normalizedTag)) return false;
+  if (takenTags && Array.from(takenTags).some(taken => String(taken).trim().toUpperCase() === normalizedTag)) return false;
+  return true;
+}
+
+/**
+ * Return only word choices whose initials remain safe and unused when paired
+ * with the other two currently selected Guild name parts.
+ */
+export function getAvailableGuildNameOptions(
+  part: 'first' | 'second' | 'noun',
+  firstWord: string,
+  secondWord: string,
+  noun: string,
+  takenTags?: ReadonlySet<string>,
+): string[] {
+  const options: readonly string[] = part === 'first'
+    ? GUILD_NAME_FIRST_WORDS
+    : part === 'second'
+      ? GUILD_NAME_SECOND_WORDS
+      : GUILD_NAME_NOUNS;
+
+  return options.filter(option => {
+    const name = composeGuildName(
+      part === 'first' ? option : firstWord,
+      part === 'second' ? option : secondWord,
+      part === 'noun' ? option : noun,
+    );
+    return isGuildTagAllowed(guildTagForName(name), takenTags);
+  });
+}
+
 export function normalizeGuildName(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value

@@ -30,11 +30,10 @@ import type {
   LeaderboardId,
 } from '../../shared/social.js';
 import {
-  GUILD_NAME_FIRST_WORDS,
-  GUILD_NAME_SECOND_WORDS,
-  GUILD_NAME_NOUNS,
   composeGuildName,
+  getAvailableGuildNameOptions,
   guildTagForName,
+  isGuildTagAllowed,
   normalizeGuildName,
 } from '../../shared/social.js';
 import {
@@ -133,6 +132,11 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [requestedGuildName, setRequestedGuildName] = useState('');
   const createName = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
   const createTag = guildTagForName(createName);
+  const takenGuildTags = new Set(guilds.map(guild => String(guild.tag ?? '').trim().toUpperCase()).filter(Boolean));
+  const availableFirstWords = getAvailableGuildNameOptions('first', createFirstWord, createSecondWord, createGuildNoun, takenGuildTags);
+  const availableSecondWords = getAvailableGuildNameOptions('second', createFirstWord, createSecondWord, createGuildNoun, takenGuildTags);
+  const availableNouns = getAvailableGuildNameOptions('noun', createFirstWord, createSecondWord, createGuildNoun, takenGuildTags);
+  const createTagAvailable = isGuildTagAllowed(createTag, takenGuildTags);
   const isGuildNameAdmin = playerUsername.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
   const [guildNameRequests, setGuildNameRequests] = useState<Array<GuildNameRequest & { fallbackName: string; tag: string }>>([]);
   const [guildNameRequestsLoading, setGuildNameRequestsLoading] = useState(false);
@@ -270,7 +274,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     const requestedName = requestedNameCandidate.toLowerCase() === name.toLowerCase()
       ? ''
       : requestedNameCandidate;
-    if (!name || !/^[A-Z]{3}$/.test(tag) || busy || creatingGuild || createGuildInFlightRef.current) return;
+    if (!name || !isGuildTagAllowed(tag, takenGuildTags) || busy || creatingGuild || createGuildInFlightRef.current) return;
     if (requestedName && (requestedName.length < 3 || requestedName.length > 32)) {
       setSocialError('Custom guild names must be 3–32 characters.');
       setSocialNotice('');
@@ -990,7 +994,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         onChange={e => setCreateFirstWord(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
                       >
-                        {GUILD_NAME_FIRST_WORDS.map(word => <option key={word} value={word}>{word}</option>)}
+                        {availableFirstWords.map(word => <option key={word} value={word}>{word}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1003,7 +1007,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         onChange={e => setCreateSecondWord(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
                       >
-                        {GUILD_NAME_SECOND_WORDS.map(word => <option key={word} value={word}>{word}</option>)}
+                        {availableSecondWords.map(word => <option key={word} value={word}>{word}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1016,7 +1020,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         onChange={e => setCreateGuildNoun(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
                       >
-                        {GUILD_NAME_NOUNS.map(noun => <option key={noun} value={noun}>{noun}</option>)}
+                        {availableNouns.map(noun => <option key={noun} value={noun}>{noun}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1038,7 +1042,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                   <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3">
                     <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Temporary Public Name</div>
                     <div className="mt-1 text-base font-black text-white">{createName}</div>
-                    <div className="mt-1 text-[10px] font-bold text-slate-400">Guild Tag: <span className="text-purple-200">{createTag}</span></div>
+                    <div className="mt-1 text-[10px] font-bold text-slate-400">Guild Tag: <span className={createTagAvailable ? "text-purple-200" : "text-rose-300"}>{createTagAvailable ? createTag : 'Unavailable'}</span></div>
                   </div>
                   <div className="flex gap-2 pt-2">
                     <button
@@ -1050,7 +1054,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     </button>
                     <button
                       type="submit"
-                      disabled={busy || creatingGuild}
+                      disabled={busy || creatingGuild || !createTagAvailable}
                       aria-busy={creatingGuild}
                       className="flex-1 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer disabled:cursor-wait disabled:opacity-60"
                     >

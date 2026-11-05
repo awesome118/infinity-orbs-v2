@@ -9,6 +9,8 @@ import {
   composeGuildName,
   isApprovedGuildName,
   guildTagForName,
+  isGuildTagAllowed,
+  getAvailableGuildNameOptions,
   normalizeGuildName,
   guildMemberMatchesIdentity,
   promoteGuildOwnerIfNeeded,
@@ -70,6 +72,27 @@ test('guild ownership moves to the highest-contribution member after owner depar
   assert.equal(members.filter(member => member.role === 'owner').length, 1);
 });
 
+
+test('offensive Guild tags are blocked and the completing letter disappears from every selector', () => {
+  assert.equal(isGuildTagAllowed('KKK'), false);
+  assert.equal(isGuildTagAllowed('kkk'), false);
+  assert.equal(isGuildTagAllowed('AAA'), true);
+
+  // The same forbidden K must disappear regardless of which of the three
+  // name parts is still being chosen.
+  assert.equal(getAvailableGuildNameOptions('first', 'Kindled', 'Kingsfall', 'Keep').includes('Kindled'), false);
+  assert.equal(getAvailableGuildNameOptions('second', 'Kindled', 'Kingsfall', 'Keep').includes('Kingsfall'), false);
+  assert.equal(getAvailableGuildNameOptions('noun', 'Kindled', 'Kingsfall', 'Keep').includes('Keep'), false);
+});
+
+test('a Guild tag already in use is hidden from the last selector in every position', () => {
+  const takenTags = new Set(['aaa']);
+  assert.equal(getAvailableGuildNameOptions('first', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Ashen'), false);
+  assert.equal(getAvailableGuildNameOptions('second', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Astral'), false);
+  assert.equal(getAvailableGuildNameOptions('noun', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Alliance'), false);
+  assert.equal(isGuildTagAllowed('AAA', takenTags), false);
+});
+
 test('guild custom names are only exposed through an admin-only approval queue', () => {
   const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
   const guildInfo = social.slice(social.indexOf('export async function guildInfo'), social.indexOf('export async function getPlayerGuildContext'));
@@ -80,6 +103,9 @@ test('guild custom names are only exposed through an admin-only approval queue',
   assert.match(social, /async function applyGuildNameReviewMigration/);
   assert.match(social, /await applyGuildNameReviewMigration\(\)/);
   assert.match(social, /function requireGuildNameAdmin\(\)[\s\S]*?isAdminUsername\(context\.username\)/);
+  assert.match(createGuild, /if \(!isGuildTagAllowed\(cleanTag\)\)/);
+  assert.match(createGuild, /!isGuildTagAllowed\(cleanTag, takenGuildTags\)/);
+  assert.match(social, /isGuildTagAllowed\(tag, usedTags\)/);
   assert.match(createGuild, /name: cleanFallbackName/);
   assert.match(createGuild, /nameStatus: cleanRequestedName \? 'pending' : 'approved'/);
   const publicGuildRecord = createGuild.match(/const guild: Guild = \{([\s\S]*?)\n    \};/);
@@ -113,6 +139,10 @@ test('guild custom names are only exposed through an admin-only approval queue',
   assert.doesNotMatch(queueReader, /Promise\.all/);
 
   const ui = readFileSync(resolve(process.cwd(), 'src/client/components/GuildsAndSocial.tsx'), 'utf8');
+  assert.match(ui, /getAvailableGuildNameOptions\('first'/);
+  assert.match(ui, /getAvailableGuildNameOptions\('second'/);
+  assert.match(ui, /getAvailableGuildNameOptions\('noun'/);
+  assert.match(ui, /disabled=\{busy \|\| creatingGuild \|\| !createTagAvailable\}/);
   assert.match(ui, /await refreshGuildNameRequests\(\)/);
   assert.match(ui, /requestedNameCandidate\.toLowerCase\(\) === name\.toLowerCase\(\)/);
   const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
