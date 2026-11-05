@@ -57,6 +57,17 @@ export function guildTagForName(name: string): string {
   return name.trim().split(/\s+/).map(part => part[0]?.toUpperCase() ?? '').join('');
 }
 
+/** Apply the same bounded, control-safe normalization to every Guild name path. */
+export function normalizeGuildName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 32)
+    .trim();
+}
+
 /** Normalize a non-negative Collection Value amount without a safe-integer ceiling. */
 export function normalizeGuildValueProgress(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -83,6 +94,27 @@ export interface GuildMember {
   trusted?: boolean;
   joinedAt?: number;
   lastLoginAt?: number;
+}
+
+/** Match an account by immutable Reddit ID whenever the saved member has one. */
+export function guildMemberMatchesIdentity(
+  member: Pick<GuildMember, 'username' | 'userId'>,
+  requestedUsername: string,
+  requestedUserId?: string,
+): boolean {
+  if (typeof member.userId === 'string' && member.userId.length > 0) {
+    return typeof requestedUserId === 'string' && requestedUserId.length > 0 && member.userId === requestedUserId;
+  }
+  return member.username === requestedUsername;
+}
+
+/** Ensure a guild still has an owner after its current owner departs. */
+export function promoteGuildOwnerIfNeeded(members: GuildMember[]): void {
+  if (members.length === 0 || members.some(member => member.role === 'owner')) return;
+  const successor = [...members].sort((a, b) => b.contribution - a.contribution)[0];
+  if (!successor) return;
+  successor.role = 'owner';
+  successor.trusted = true;
 }
 
 export interface GuildChallenge {

@@ -1,5 +1,11 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.28
+
+- **Guild Name Approval Reliability:** Correctly normalize and reserve legacy names during migration, recover pending approvals with missing queue records, and skip redundant requests for names identical to the public fallback.
+- **Guild Ownership & Identity:** Transfer ownership when the administrator moves between guilds, and use Reddit user IDs consistently when resolving guild perks and combo bonuses.
+- **Guild Approval Queue:** Refresh the complete admin queue after a review so duplicate or stale entries do not remain visible.
+
 ### New in 2.2.27
 
 - **Guild Name Approval:** Guild creators can privately request a custom name. New guilds use curated three-part public names until the administrator approves custom names. Existing custom guild names are migrated to curated public fallbacks and placed in the private review queue. Only the administrator can approve or reject requests, and pending request text is excluded from public Guild data.

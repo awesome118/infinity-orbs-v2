@@ -16,7 +16,7 @@ name: Deploy Devvit
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.25.
+# The version-specific push marker is reserved for explicitly requested development deployments. Current marker: 2.2.28.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
@@ -44,7 +44,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.25]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.28]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -122,6 +122,7 @@ jobs:
           node --import tsx --test tests/guild-combo-progress.test.ts
           # Guard legacy Guild combo timer normalization and existing Guild loading behavior.
           node --import tsx --test tests/cooldown-time-energy.test.ts tests/auto-roll-sonar-regressions.test.ts tests/guild-loading-regression.test.ts
+          node --import tsx --test tests/guild-name-approval.test.ts
           node --import tsx --test --test-name-pattern="Guild task set starts with one task of each type|Guild task difficulty and rewards scale upward by tier|Guild task difficulty is driven by tier alone and does not carry Guild XP|Guild task rewards remain capped|Guild tasks retain token rewards but do not model Titan or Guild XP rewards" tests/mechanics.test.ts
           node --import tsx --test --test-name-pattern="Guild parser preserves task/member data while removing legacy levels, XP, Titan, and tax|roll rewards commit atomically with Guild and community progress|corrupt optional Guild roll projections do not cancel normal or Frenzy player payouts|legacy Guild contribution advances each task once and rewards Tokens without XP or Titan" tests/audit-regressions.test.ts
           npm run type-check

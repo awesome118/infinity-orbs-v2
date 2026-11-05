@@ -34,6 +34,9 @@ import {
   isGuildValueProgress,
   isApprovedGuildName,
   guildTagForName,
+  normalizeGuildName,
+  guildMemberMatchesIdentity,
+  promoteGuildOwnerIfNeeded,
   composeGuildName,
   GUILD_NAME_FIRST_WORDS,
   GUILD_NAME_SECOND_WORDS,
@@ -773,10 +776,7 @@ function memberMatches(member: Guild['members'][number], requestedUsername?: str
   // records that predate user IDs; a stale username must not impersonate an
   // existing member whose stored ID belongs to another account.
   if (requestedUsername) return member.username === requestedUsername;
-  if (typeof member.userId === 'string' && member.userId.length > 0) {
-    return member.userId === user();
-  }
-  return member.username === username();
+  return guildMemberMatchesIdentity(member, username(), user());
 }
 
 function currentGuild(guilds: Guild[]): Guild | undefined {
@@ -972,7 +972,7 @@ async function applyGuildNameReviewMigration(): Promise<void> {
             usedNames.add(guild.name.toLowerCase());
             usedTags.add(guildTagForName(guild.name));
           } else if (status == null) {
-            const oldName = String(guild.name ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 32);
+            const oldName = normalizeGuildName(guild.name);
             if (oldName) usedNames.add(oldName.toLowerCase());
           }
         }
@@ -980,11 +980,7 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         const now = Date.now();
         for (const guild of guilds) {
           const originalName = guild.name;
-          const cleanOriginalName = String(originalName ?? '')
-            .replace(/[\u0000-\u001f\u007f]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 32);
+          const cleanOriginalName = normalizeGuildName(originalName);
           const hasExistingRequest = pendingByGuild.has(guild.id);
 
           const hasRecordedDecision = guild.nameStatus === 'approved' ||
@@ -997,6 +993,9 @@ async function applyGuildNameReviewMigration(): Promise<void> {
               isApprovedGuildName(originalName)) {
             // Previously generated fallback names are already safe to display.
             guild.tag = guildTagForName(originalName);
+            // A pending fallback with no surviving private request cannot be reviewed.
+            // Mark it resolved rather than leaving it stranded in a permanently pending state.
+            if (guild.nameStatus === 'pending' && !hasExistingRequest) guild.nameStatus = 'rejected';
             continue;
           }
 
@@ -1013,7 +1012,8 @@ async function applyGuildNameReviewMigration(): Promise<void> {
           usedNames.add(fallback.name.toLowerCase());
           usedTags.add(fallback.tag);
 
-          if (cleanOriginalName.length >= 3 && !hasExistingRequest && !hasRecordedDecision) {
+          if (cleanOriginalName.length >= 3 && !hasExistingRequest &&
+              (!hasRecordedDecision || guild.nameStatus === 'pending')) {
             const owner = guild.members.find(member => member.role === 'owner') ?? guild.members[0];
             requests.push({
               requestId: secureSocialToken('guild-name'),
@@ -1425,7 +1425,7 @@ export async function getPlayerGuildContext(
   combo: GuildComboState;
 }> {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  const mine = guilds.find(g => g.members.some(m => guildMemberMatchesIdentity(m, uname, uid)));
   const perks = mine?.perks ?? {
     luckRank: 0,
     speedRank: 0,
@@ -1448,7 +1448,7 @@ export async function getPlayerGuildContext(
 
 export async function getPlayerGuildPerks(uname: string, uid?: string) {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  const mine = guilds.find(g => g.members.some(m => guildMemberMatchesIdentity(m, uname, uid)));
   return mine?.perks ?? {
     luckRank: 0,
     speedRank: 0,
@@ -1466,7 +1466,7 @@ export async function getPlayerGuildPerks(uname: string, uid?: string) {
 
 export async function getPlayerGuildCombo(uname: string, uid?: string): Promise<GuildComboState> {
   const guilds = await loadGuilds();
-  const mine = guilds.find(g => g.members.some(m => (uid && m.userId === uid) || m.username === uname));
+  const mine = guilds.find(g => g.members.some(m => guildMemberMatchesIdentity(m, uname, uid)));
   return decayGuildComboState(mine?.combo);
 }
 
@@ -1663,9 +1663,10 @@ export async function createGuild(name: string, tag: string, requestedName?: str
     throw new Error('Choose a temporary guild name from the available three-part options.');
   }
 
-  const cleanRequestedName = typeof requestedName === 'string'
-    ? requestedName.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
-    : '';
+  const requestedNameCandidate = normalizeGuildName(requestedName);
+  const cleanRequestedName = requestedNameCandidate.toLowerCase() === cleanFallbackName.toLowerCase()
+    ? ''
+    : requestedNameCandidate;
   if (cleanRequestedName && (cleanRequestedName.length < 3 || cleanRequestedName.length > 32)) {
     throw new Error('Custom guild names must be 3–32 characters.');
   }
@@ -1678,7 +1679,9 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       throw new Error('Leave your current guild first.');
     }
     if (existingGuild && adminGuildOverride) {
+      const departingAdmin = existingGuild.members.find(member => memberMatches(member));
       existingGuild.members = existingGuild.members.filter(member => !memberMatches(member));
+      if (departingAdmin?.role === 'owner') promoteGuildOwnerIfNeeded(existingGuild.members);
       if (existingGuild.members.length === 0) {
         const index = guilds.indexOf(existingGuild);
         if (index >= 0) {
@@ -1855,11 +1858,7 @@ export async function leaveGuild() {
         writes.setGuildNameRequests(remainingRequests);
       }
     } else {
-      if (oldMember?.role === 'owner') {
-        const topMember = [...guild.members].sort((a, b) => b.contribution - a.contribution)[0];
-        topMember.role = 'owner';
-        topMember.trusted = true;
-      }
+      if (oldMember?.role === 'owner') promoteGuildOwnerIfNeeded(guild.members);
     }
 
     return { success: true };

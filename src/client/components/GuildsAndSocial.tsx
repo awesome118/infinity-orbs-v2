@@ -35,6 +35,7 @@ import {
   GUILD_NAME_NOUNS,
   composeGuildName,
   guildTagForName,
+  normalizeGuildName,
 } from '../../shared/social.js';
 import {
   formatRarity,
@@ -233,7 +234,9 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload.error ?? 'Could not review guild name request.'));
-      setGuildNameRequests(current => current.filter(request => request.requestId !== requestId));
+      // The server also clears duplicate/stale entries for this Guild; refresh the
+      // complete queue instead of removing only the clicked row from local state.
+      await refreshGuildNameRequests();
       if (onRefreshGuildData) await onRefreshGuildData().catch(() => undefined);
     } catch (error) {
       setGuildNameAdminError(error instanceof Error ? error.message : 'Could not review guild name request.');
@@ -263,7 +266,10 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     e.preventDefault();
     const name = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
     const tag = guildTagForName(name);
-    const requestedName = requestedGuildName.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+    const requestedNameCandidate = normalizeGuildName(requestedGuildName);
+    const requestedName = requestedNameCandidate.toLowerCase() === name.toLowerCase()
+      ? ''
+      : requestedNameCandidate;
     if (!name || !/^[A-Z]{3}$/.test(tag) || busy || creatingGuild || createGuildInFlightRef.current) return;
     if (requestedName && (requestedName.length < 3 || requestedName.length > 32)) {
       setSocialError('Custom guild names must be 3–32 characters.');
