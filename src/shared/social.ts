@@ -1,7 +1,8 @@
 import { weekKey, weekEndMs, type GuildComboState } from './game.js';
 
 export type GuildRole = 'owner' | 'officer' | 'member';
-export type ChallengeType = 'rolls' | 'value' | 'rare';
+export const GUILD_TASK_TYPES = ['rolls', 'value', 'rare'] as const;
+export type ChallengeType = (typeof GUILD_TASK_TYPES)[number];
 
 /**
  * Guild task targets grow exponentially. Keep the generated tier finite while

@@ -112,3 +112,14 @@ test('Production Guild parser accepts current level-free Guild records', () => {
   assert.ok(createStart >= 0 && createEnd > createStart, 'Guild creator must exist');
   assert.doesNotMatch(social.slice(createStart, createEnd), /\blevel\s*:|\bxp\s*:/);
 });
+
+test('Guild task type validators and recovery paths share the canonical task-type catalog', () => {
+  const shared = source('src/shared/social.ts');
+  const social = source('src/server/social.ts');
+
+  assert.match(shared, /export type ChallengeType = \(typeof GUILD_TASK_TYPES\)\[number\]/);
+  assert.match(social, /GUILD_TASK_TYPES,/);
+  assert.equal((social.match(/GUILD_TASK_TYPES\.includes/g) ?? []).length, 6);
+  assert.doesNotMatch(social, /\['rolls', 'value', 'rare'\]\.includes/);
+  assert.deepEqual(GUILD_TASK_TYPES, ['rolls', 'value', 'rare']);
+});
