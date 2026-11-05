@@ -116,7 +116,7 @@ jobs:
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/post-flair.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
-          node --import tsx --test tests/combat-runes.test.ts tests/combat-catalog-consistency.test.ts
+          node --import tsx --test tests/combat-runes.test.ts tests/combat-catalog-consistency.test.ts tests/combat-leaderboard-decode.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
           node --import tsx --test tests/redis-storage-retention.test.ts
           # Cover Guild combo timer persistence and weighted rare-Orb task progress.
