@@ -69,4 +69,7 @@ test('guild custom names are only exposed through an admin-only approval queue',
   assert.match(createGuild, /filter\(request => request\.guildId !== deletedGuildId\)/);
   assert.match(createGuild, /pendingRequests\.some\(request => request\.requestedName\.toLowerCase\(\) === cleanFallbackName\.toLowerCase\(\)\)/);
   assert.match(review, /filter\(item => item\.guildId !== guild\.id\)/);
+  const queueReader = social.slice(social.indexOf('export async function getGuildNameRequests'), social.indexOf('export async function reviewGuildNameRequest'));
+  assert.ok(queueReader.indexOf('await loadGuilds()') < queueReader.indexOf('await readGuildNameRequests()'));
+  assert.doesNotMatch(queueReader, /Promise\.all/);
 });
