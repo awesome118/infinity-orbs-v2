@@ -133,7 +133,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const createName = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
   const createTag = guildTagForName(createName);
   const isGuildNameAdmin = playerUsername.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
-  const [guildNameRequests, setGuildNameRequests] = useState<GuildNameRequest[]>([]);
+  const [guildNameRequests, setGuildNameRequests] = useState<Array<GuildNameRequest & { fallbackName: string; tag: string }>>([]);
   const [guildNameRequestsLoading, setGuildNameRequestsLoading] = useState(false);
   const [guildNameReviewBusy, setGuildNameReviewBusy] = useState<string | null>(null);
   const [guildNameAdminError, setGuildNameAdminError] = useState('');
@@ -234,7 +234,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload.error ?? 'Could not review guild name request.'));
       setGuildNameRequests(current => current.filter(request => request.requestId !== requestId));
-      await onRefreshGuildData?.().catch(() => undefined);
+      if (onRefreshGuildData) await onRefreshGuildData().catch(() => undefined);
     } catch (error) {
       setGuildNameAdminError(error instanceof Error ? error.message : 'Could not review guild name request.');
     } finally {
@@ -263,7 +263,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     e.preventDefault();
     const name = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
     const tag = guildTagForName(name);
-    const requestedName = requestedGuildName.replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim();
+    const requestedName = requestedGuildName.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!name || !/^[A-Z]{3}$/.test(tag) || busy || creatingGuild || createGuildInFlightRef.current) return;
     if (requestedName && (requestedName.length < 3 || requestedName.length > 32)) {
       setSocialError('Custom guild names must be 3–32 characters.');
@@ -1027,7 +1027,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       maxLength={32}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
                     />
-                    <p className="mt-1 text-[9px] text-slate-500">Only you and the app administrator can see this request before approval.</p>
+                    <p className="mt-1 text-[9px] text-slate-500">This request is sent privately to the administrator and is not shown in the public Guild directory.</p>
                   </div>
                   <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3">
                     <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Name Preview</div>
