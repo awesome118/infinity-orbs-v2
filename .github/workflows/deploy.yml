@@ -136,6 +136,8 @@ jobs:
           node --import tsx --test tests/large-number-economy.test.ts
           # Validate upgrade-batch rejection/rollback telemetry and route ID parity.
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts tests/player-state-reconciliation.test.ts tests/upgrade-spam-ui.test.ts
+          # Reject fractional Altar offerings without limiting large whole-Coin values.
+          node --import tsx --test tests/altar-validation.test.ts
           # Guard the roll-ticket lock boundary, admin seed plumbing, and deterministic preview stream.
           node --import tsx --test tests/roll-ticket-seeds.test.ts
           # Guard admin Full Test fixtures against stale nav, force-roll, and leaderboard-cache assumptions.

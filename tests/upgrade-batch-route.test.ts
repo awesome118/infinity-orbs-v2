@@ -61,10 +61,13 @@ test('booster and automation routes validate against their live shared catalogs'
   assert.ok(Object.keys(AUTOMATIONS).length > 0);
 });
 
-test('Guild perk and Celestial Alignment routes use shared choices instead of literals', () => {
+test('Guild perk and Celestial Alignment routes and server stats share their catalogs', () => {
   const app = source('src/server/app.ts');
+  const game = source('src/server/game.ts');
   assert.match(routeBlock(app, "app.post('/api/alignment/choose'", "app.post('/api/cosmetics/buy'"), /CELESTIAL_ALIGNMENT_CHOICES\.includes/);
   assert.match(routeBlock(app, "app.post('/api/guilds/perk'", "app.post('/api/guilds/trust'"), /GUILD_PERK_IDS\.includes/);
+  assert.match(game, /CELESTIAL_ALIGNMENT_CHOICES,/);
+  assert.doesNotMatch(game, /const CELESTIAL_ALIGNMENT_CHOICES\s*=/);
   assert.ok(CELESTIAL_ALIGNMENT_CHOICES.length >= 3);
   assert.ok(GUILD_PERK_IDS.includes('tokenYieldRank'));
   assert.ok(GUILD_PERK_IDS.includes('taskBountyRank'));

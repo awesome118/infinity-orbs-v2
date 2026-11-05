@@ -42,6 +42,7 @@ import {
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_CHOICES,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   type CelestialAlignmentChoice,
@@ -7080,7 +7081,6 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   });}
 
 const CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY = 'io:celestial-alignment:choice-stats:v1';
-const CELESTIAL_ALIGNMENT_CHOICES = ['starseeker', 'goldenOrbit', 'clockwork'] as const;
 type CelestialAlignmentChoiceStatsRecord = {
   total: number;
   choices: Record<CelestialAlignmentChoice, number>;
