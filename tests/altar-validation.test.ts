@@ -35,3 +35,13 @@ test('both the HTTP route and direct server mutation enforce the same Altar vali
   assert.match(game.slice(handlerStart, handlerEnd), /isValidAltarOfferingAmounts/);
   assert.doesNotMatch(app.slice(appRouteStart, appRouteEnd), /Number\.isInteger\(Math\.floor\(/);
 });
+test('Altar lifetime Coin and Shard totals saturate instead of overflowing persisted stats', () => {
+  const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = game.indexOf('export async function sacrificeToAltar');
+  const end = game.indexOf('export async function upgradeMasterySkill', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = game.slice(start, end);
+  assert.match(handler, /sacrifices\.coinsSacrificed = addCoinAmount\(/);
+  assert.match(handler, /sacrifices\.shardsSacrificed = roundShardAmount\(/);
+  assert.doesNotMatch(handler, /sacrifices\.coinsSacrificed = \(sacrifices\.coinsSacrificed \?\? 0\) \+ numCoins/);
+});

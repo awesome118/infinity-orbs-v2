@@ -6980,8 +6980,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   s.coins -= numCoins;
   if (numShards > 0) spendShards(s, numShards);
 
-  sacrifices.coinsSacrificed = (sacrifices.coinsSacrificed ?? 0) + numCoins;
-  sacrifices.shardsSacrificed = (sacrifices.shardsSacrificed ?? 0) + numShards;
+  // Lifetime counters use the same finite-number bounds as their wallets.
+  // Without saturation, two valid e308-scale offerings could serialize Infinity
+  // as null and erase the displayed lifetime Altar total.
+  sacrifices.coinsSacrificed = addCoinAmount(sacrifices.coinsSacrificed ?? 0, numCoins);
+  sacrifices.shardsSacrificed = roundShardAmount(
+    roundShardAmount(sacrifices.shardsSacrificed ?? 0) + numShards,
+  );
 
   // Coins now create a probabilistic Devotion Breakthrough. The offering
   // size raises the chance and failed attempts build pity. This roll only
