@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.30
+
+- **Reddit Post Flair Reliability:** Share and Frenzy resolve existing subreddit flair-template IDs before applying labels. If no matching template exists or flair lookup fails, the post is created without flair instead of failing.
+
 ### New in 2.2.29
 
 - **Guild Tag Safety:** The name picker hides a letter choice whenever it would complete a blocked or already-used three-letter tag, regardless of which name part is selected last. The server independently rejects blocked or duplicate tags.

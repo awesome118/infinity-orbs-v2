@@ -265,6 +265,7 @@ const localReddit = {
   }) => {
     console.log('[Reddit Mock] User flair set:', options.username, options.text);
   },
+  getPostFlairTemplates: async (_subredditName: string) => [],
   submitCustomPost: async (options: {
     runAs?: string;
     subredditName?: string;

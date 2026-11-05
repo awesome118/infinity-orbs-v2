@@ -1,4 +1,5 @@
 import { redis, context, reddit } from './devvit-mock.js';
+import { getPostFlairOptions } from './post-flair.js';
 import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
 import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
@@ -7655,7 +7656,7 @@ export async function startOrbFrenzy(options: {
       runAs: 'USER',
       subredditName,
       title: `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`,
-      flairText: 'frenzy',
+      ...(await getPostFlairOptions(subredditName, 'frenzy')),
       entry: 'frenzy',
       userGeneratedContent: { text: postText },
     });

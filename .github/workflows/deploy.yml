@@ -44,7 +44,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.29]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.30]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -114,6 +114,7 @@ jobs:
           node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts tests/inline-main-post-cta-layout.test.ts tests/game-ban-status.test.ts
           node --import tsx --test tests/storage-compression.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
+          node --import tsx --test tests/post-flair.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
           node --import tsx --test tests/combat-runes.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts

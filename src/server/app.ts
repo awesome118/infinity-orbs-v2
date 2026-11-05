@@ -96,6 +96,7 @@ import {
   reviewGuildNameRequest,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
+import { getPostFlairOptions } from './post-flair.js';
 
 const combatFocusSyncQueues = new Map<string, Promise<unknown>>();
 
@@ -1844,7 +1845,7 @@ export function createApp() {
           runAs: 'USER',
           subredditName,
           title: `u/${username} found a 1/${formatRarity(value, isInfinity)} Orb`,
-          flairText: 'discovery',
+          ...(await getPostFlairOptions(subredditName, 'discovery')),
           entry: 'default',
           postData,
           userGeneratedContent: { text },
