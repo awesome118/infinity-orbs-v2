@@ -232,7 +232,7 @@ test('low-mean binomial groups retain their skew instead of using a Gaussian app
 
 test('near-certain Binomial groups sample the rare failure side rather than iterating every success', () => {
   const rng = seededRandom(97531);
-  const successes = sampleBinomialCount(100_000_000, 0.999999, rng);
-  assert.ok(successes >= 99_999_850 && successes <= 100_000_000,
+  const successes = sampleBinomialCount(100_000_000, 0.9999999999, rng);
+  assert.ok(successes >= 99_999_995 && successes <= 100_000_000,
     'near-certain outcome should remain within the expected tail');
 });
