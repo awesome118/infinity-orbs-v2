@@ -984,8 +984,9 @@ export function createApp() {
     const sequence=req.body?.sequence, intent=req.body?.intent;
     if(!Number.isSafeInteger(sequence)||sequence<1)return res.status(400).json({error:'A valid combat sequence is required.'});
     if(typeof intent!=='string'||!COMBAT_COMMANDS.includes(intent as typeof COMBAT_COMMANDS[number]))return res.status(400).json({error:'Invalid combat command.'});
-    if(intent==='ability'&&(typeof req.body?.skillId!=='string'||req.body.skillId.length>100))return res.status(400).json({error:'A valid active ability is required.'});
-    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,intent,req.body?.skillId)); }
+    const command = intent as typeof COMBAT_COMMANDS[number];
+    if(command==='ability'&&(typeof req.body?.skillId!=='string'||req.body.skillId.length>100))return res.status(400).json({error:'A valid active ability is required.'});
+    try { res.setHeader('Cache-Control','no-store');res.json(await performCombatBeat(sequence,command,req.body?.skillId)); }
     catch(e:any){const message=e?.message||'Combat beat failed.';const status=message==='stale combat sequence'||message==='Ability is on cooldown.'||message==='No player action is ready for this ability.'?409:message==='REDDIT_LOGIN_REQUIRED'?401:message.startsWith('COMBAT_BEAT_TOO_SOON:')?429:message==='Combat state changed repeatedly. Please retry.'?503:['Invalid combat command.','Choose a valid equipped ability.','Ability is not equipped.','Not enough energy for this ability.'].includes(message)?400:500;res.status(status).json({error:message});}
   });
   app.post('/api/combat/dungeon', async (req,res) => {

@@ -21,6 +21,8 @@ test('Combat command, tactic, and dungeon types share runtime catalogs', () => {
   const shared = source('src/shared/combat.ts');
 
   assert.match(app, /COMBAT_COMMANDS\.includes/);
+  assert.match(app, /const command = intent as typeof COMBAT_COMMANDS\[number\]/);
+  assert.match(app, /performCombatBeat\(sequence,command/);
   assert.match(combat, /COMBAT_DUNGEONS\.includes\(dungeonValue as CombatDungeonId\)/);
   assert.match(combat, /COMBAT_TACTICS\.includes\(tacticValue as CombatTactic\)/);
   assert.match(combat, /COMBAT_DUNGEONS\.includes\(s\.dungeonId\)/);

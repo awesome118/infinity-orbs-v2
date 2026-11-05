@@ -44,7 +44,7 @@ interface SacrificeResponse extends CombatSnapshot {
 interface AutoSacrificeResponse extends CombatSnapshot {
   runeAutoSacrificeResult?:{runesSacrificed:number;totalXp:number};
 }
-const RUNE_RARITIES:CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
+const RUNE_RARITIES:CombatRuneRarity[]=[...COMBAT_RUNE_RARITIES];
 
 export const RunesSection:React.FC=()=>{
   const [snapshot,setSnapshot]=useState<CombatSnapshot|null>(null);
