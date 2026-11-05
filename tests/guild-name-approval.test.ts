@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   GUILD_NAME_FIRST_WORDS,
   GUILD_NAME_SECOND_WORDS,
@@ -37,4 +39,22 @@ test('every curated guild combination produces a unique three-letter tag', () =>
 test('guild names with unapproved parts cannot generate public fallback tags', () => {
   assert.equal(isApprovedGuildName('Player Chosen Words'), false);
   assert.equal(guildTagForName('Player Chosen Words'), '');
+});
+
+test('guild custom names are only exposed through an admin-only approval queue', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  const guildInfo = social.slice(social.indexOf('export async function guildInfo'), social.indexOf('export async function getPlayerGuildContext'));
+  const createGuild = social.slice(social.indexOf('export async function createGuild'), social.indexOf('export async function getGuildNameRequests'));
+  const review = social.slice(social.indexOf('export async function reviewGuildNameRequest'), social.indexOf('export async function joinGuild'));
+
+  assert.match(social, /async function applyGuildNameReviewMigration/);
+  assert.match(social, /await applyGuildNameReviewMigration\(\)/);
+  assert.match(social, /function requireGuildNameAdmin\(\)[\\s\\S]*?isAdminUsername\(context\.username\)/);
+  assert.match(createGuild, /name: cleanFallbackName/);
+  assert.match(createGuild, /nameStatus: cleanRequestedName \? 'pending' : 'approved'/);
+  assert.doesNotMatch(createGuild, /requestedName:\\s*cleanRequestedName/);
+  assert.match(guildInfo, /\.map\(guild => \(\{/);
+  assert.doesNotMatch(guildInfo, /requestedName/);
+  assert.match(review, /guild\.name = request\.requestedName/);
+  assert.match(review, /guild\.nameStatus = 'approved'/);
 });
