@@ -15,5 +15,8 @@ test('optional shared roll bonuses fail open when Redis reads fail', () => {
   assert.match(block, /getCommunityEvent\(\)\.catch\(error =>/);
   assert.match(block, /getFakeCcuBonus\(\)\.catch\(error =>/);
   assert.match(block, /return 0;/);
-  assert.match(block, /redis\.get\('infinity-orbs:combat:' \+ spyUserId\)\.catch/);
+  assert.match(game, /readRedisLargeValue as readRedisLargeValueForRolls/);
+  assert.match(block, /redis\.get\('infinity-orbs:combat:' \+ spyUserId\)[\s\S]*?readRedisLargeValueForRolls\('infinity-orbs:combat:' \+ spyUserId, storedValue\)/);
+  assert.match(block, /Read\/decode failed; rolling without the bonus/);
+  assert.doesNotMatch(block, /redis\.get\('infinity-orbs:combat:' \+ spyUserId\)\.catch/);
 });

@@ -3,6 +3,7 @@ import { getPostFlairOptions } from './post-flair.js';
 import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
 import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { readRedisLargeValue as readRedisLargeValueForRolls } from './redis-large-values.js';
 import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey, groupCodexFields, normalizeCodexCollection } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
@@ -4442,12 +4443,15 @@ export async function applyRolls(
       console.error('[Fake CCU] Read failed; rolling without the test offset.', error);
       return 0;
     }),
-    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
-      // Combat progression is an optional cross-mode bonus. A transient failure
-      // to read it must never prevent a normal orb roll.
-      console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
-      return null;
-    }),
+    redis.get('infinity-orbs:combat:' + spyUserId)
+      .then(storedValue => readRedisLargeValueForRolls('infinity-orbs:combat:' + spyUserId, storedValue))
+      .catch((error: unknown) => {
+        // Combat state is compressed/chunked independently of the player save.
+        // Decode it before parsing so large inventories retain Rune and boss
+        // bonuses; a missing/corrupt optional record still cannot block rolls.
+        console.error('[Undercrypt Resonance] Read/decode failed; rolling without the bonus.', error);
+        return null;
+      }),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
