@@ -9,6 +9,49 @@ export type ChallengeType = 'rolls' | 'value' | 'rare';
  */
 export const MAX_GUILD_TASK_TIER = 100;
 
+/**
+ * Guild names use curated parts instead of unrestricted player-entered text.
+ * Each position has unique initials so the generated three-letter tag is
+ * collision-free for every distinct three-part combination.
+ */
+export const GUILD_NAME_FIRST_WORDS = [
+  'Ashen', 'Bright', 'Cinder', 'Dread', 'Ember', 'Frost',
+  'Gilded', 'Hollow', 'Ironbound', 'Jade', 'Kindled', 'Lunar',
+] as const;
+
+export const GUILD_NAME_SECOND_WORDS = [
+  'Astral', 'Blazing', 'Celestial', 'Dawnbound', 'Everlight', 'Farseeing',
+  'Grim', 'Hallowed', 'Infinite', 'Jagged', 'Kingsfall', 'Lightforged',
+] as const;
+
+export const GUILD_NAME_NOUNS = [
+  'Alliance', 'Bastion', 'Covenant', 'Dominion', 'Enclave', 'Fellowship',
+  'Guard', 'Horde', 'Imperium', 'Junction', 'Keep', 'Legion',
+] as const;
+
+/** Return a canonical name only when all three parts come from the approved lists. */
+export function composeGuildName(firstWord: string, secondWord: string, noun: string): string {
+  const approvedFirst = (GUILD_NAME_FIRST_WORDS as readonly string[]).includes(firstWord);
+  const approvedSecond = (GUILD_NAME_SECOND_WORDS as readonly string[]).includes(secondWord);
+  const approvedNoun = (GUILD_NAME_NOUNS as readonly string[]).includes(noun);
+  return approvedFirst && approvedSecond && approvedNoun
+    ? firstWord + ' ' + secondWord + ' ' + noun
+    : '';
+}
+
+/** Existing and newly created guild names can be checked without trusting the client. */
+export function isApprovedGuildName(name: string): boolean {
+  const parts = name.trim().split(/\\s+/);
+  return parts.length === 3 &&
+    composeGuildName(parts[0] ?? '', parts[1] ?? '', parts[2] ?? '') === name.trim();
+}
+
+/** Guild tags are derived from each approved name part's initial. */
+export function guildTagForName(name: string): string {
+  if (!isApprovedGuildName(name)) return '';
+  return name.trim().split(/\\s+/).map(part => part[0]?.toUpperCase() ?? '').join('');
+}
+
 /** Normalize a non-negative Collection Value amount without a safe-integer ceiling. */
 export function normalizeGuildValueProgress(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
