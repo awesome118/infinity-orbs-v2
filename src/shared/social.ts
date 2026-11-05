@@ -10,9 +10,8 @@ export type ChallengeType = 'rolls' | 'value' | 'rare';
 export const MAX_GUILD_TASK_TIER = 100;
 
 /**
- * Guild names use curated parts instead of unrestricted player-entered text.
- * Each position has unique initials so the generated three-letter tag is
- * collision-free for every distinct three-part combination.
+ * Public fallback names are assembled from curated parts. Players may request
+ * a custom name, but it remains private until an administrator approves it.
  */
 export const GUILD_NAME_FIRST_WORDS = [
   'Ashen', 'Bright', 'Cinder', 'Dread', 'Ember', 'Frost',
@@ -29,7 +28,6 @@ export const GUILD_NAME_NOUNS = [
   'Guard', 'Horde', 'Imperium', 'Junction', 'Keep', 'Legion',
 ] as const;
 
-/** Return a canonical name only when all three parts come from the approved lists. */
 export function composeGuildName(firstWord: string, secondWord: string, noun: string): string {
   const approvedFirst = (GUILD_NAME_FIRST_WORDS as readonly string[]).includes(firstWord);
   const approvedSecond = (GUILD_NAME_SECOND_WORDS as readonly string[]).includes(secondWord);
@@ -39,17 +37,15 @@ export function composeGuildName(firstWord: string, secondWord: string, noun: st
     : '';
 }
 
-/** Existing and newly created guild names can be checked without trusting the client. */
 export function isApprovedGuildName(name: string): boolean {
-  const parts = name.trim().split(/\\s+/);
+  const parts = name.trim().split(/\s+/);
   return parts.length === 3 &&
     composeGuildName(parts[0] ?? '', parts[1] ?? '', parts[2] ?? '') === name.trim();
 }
 
-/** Guild tags are derived from each approved name part's initial. */
 export function guildTagForName(name: string): string {
   if (!isApprovedGuildName(name)) return '';
-  return name.trim().split(/\\s+/).map(part => part[0]?.toUpperCase() ?? '').join('');
+  return name.trim().split(/\s+/).map(part => part[0]?.toUpperCase() ?? '').join('');
 }
 
 /** Normalize a non-negative Collection Value amount without a safe-integer ceiling. */
@@ -143,6 +139,8 @@ export type GuildPerkId =
 export interface Guild {
   id: string;
   name: string;
+  /** Legacy guild names default to approved; new custom requests stay on the fallback name. */
+  nameStatus?: 'pending' | 'approved' | 'rejected';
   tag: string;
   tokens: number;
   members: GuildMember[];
@@ -154,6 +152,15 @@ export interface Guild {
   perks?: GuildPerks;
   chat?: GuildMessage[];
   bannerEffect?: string;
+}
+
+export interface GuildNameRequest {
+  requestId: string;
+  guildId: string;
+  requestedName: string;
+  submittedBy: string;
+  submittedByUserId: string;
+  submittedAt: number;
 }
 
 export interface LeaderboardEntry {
