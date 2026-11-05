@@ -1508,6 +1508,17 @@ export function addCoinAmount(current: unknown, increment: unknown): number {
   return Number.isFinite(sum) ? Math.min(Number.MAX_VALUE, sum) : Number.MAX_VALUE;
 }
 
+/**
+ * Altar offerings use whole-number Coins and whole, safe-integer Shards.
+ * Coin balances intentionally support values above Number.MAX_SAFE_INTEGER.
+ */
+export function isValidAltarOfferingAmounts(coinsValue: unknown, shardsValue: unknown): boolean {
+  const coins = Number(coinsValue);
+  const shards = Number(shardsValue);
+  return Number.isFinite(coins) && coins >= 0 && Number.isInteger(coins) &&
+    Number.isSafeInteger(shards) && shards >= 0;
+}
+
 export function formatNumber(value: number): string {
   const raw = Number(value);
   const safe = Number.isNaN(raw) || raw < 0

@@ -121,7 +121,7 @@ import {
   PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity,
   MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity,
   GLOBAL_BOOSTERS, PREMIUM_BOOSTERS, AUTOMATIONS, PRESTIGE_UPGRADES,
-  CELESTIAL_ALIGNMENT_CHOICES, UPGRADE_IDS,
+  CELESTIAL_ALIGNMENT_CHOICES, UPGRADE_IDS, isValidAltarOfferingAmounts,
   type FeatureId, type MasterySkillId, type UpgradeId, type PrestigeUpgradeId,
   type PremiumBoosterId, type AutomationId, type GlobalBoosterId,
 } from '../shared/game.js';
@@ -1557,10 +1557,8 @@ export function createApp() {
       const { coins = 0, shards = 0 } = req.body || {};
       const numCoins = Number(coins);
       const numShards = Number(shards);
-      if (!Number.isFinite(numCoins) || !Number.isFinite(numShards) ||
-          numCoins < 0 || numShards < 0 ||
-          !Number.isInteger(Math.floor(numCoins)) || !Number.isSafeInteger(Math.floor(numShards))) {
-        return res.status(400).json({ error: 'Invalid offering amounts.' });
+      if (!isValidAltarOfferingAmounts(numCoins, numShards)) {
+        return res.status(400).json({ error: 'Invalid offering amounts. Coins and Shards must be whole, non-negative amounts.' });
       }
       const result = await sacrificeToAltar(numCoins, numShards);
       res.json(result);

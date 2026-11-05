@@ -58,6 +58,7 @@ import {
   addCollectionValue,
   normalizeCoinAmount,
   addCoinAmount,
+  isValidAltarOfferingAmounts,
   offlineRollCap,
   getOrbInfo,
   formatRarity,
@@ -6909,6 +6910,9 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   altarBreakthroughChance: number;
   altarPity: number;
 }> {
+  if (!isValidAltarOfferingAmounts(coins, shards)) {
+    throw new Error('Altar offerings must be whole, non-negative amounts.');
+  }
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const numCoins = normalizeCoinAmount(coins);
