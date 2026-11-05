@@ -417,11 +417,7 @@ export function createGuildTask(
 }
 
 export function createInitialGuildTasks(): GuildTask[] {
-  return [
-    createGuildTask('rolls', 1),
-    createGuildTask('value', 1),
-    createGuildTask('rare', 1),
-  ];
+  return GUILD_TASK_TYPES.map(type => createGuildTask(type, 1));
 }
 
 export function challengeForWeek() {

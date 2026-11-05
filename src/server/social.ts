@@ -768,7 +768,8 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
 }
 
 function generatedFallbackTaskType(index: number): GuildTask['type'] {
-  return index === 0 ? 'rolls' : index === 1 ? 'value' : 'rare';
+  const safeIndex = Number.isSafeInteger(index) ? Math.max(0, index) : 0;
+  return GUILD_TASK_TYPES[safeIndex % GUILD_TASK_TYPES.length]!;
 }
 
 function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
