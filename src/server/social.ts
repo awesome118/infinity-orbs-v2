@@ -956,11 +956,20 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         const usedNames = new Set<string>();
         const usedTags = new Set<string>();
 
-        // Reserve safe names first so legacy custom names cannot take them as fallbacks.
+        // Preserve names already explicitly approved by this system. Every guild
+        // without a recorded decision is legacy UGC and must enter the review queue,
+        // even when its old name happens to match the curated three-part pattern.
         for (const guild of guilds) {
-          if (isApprovedGuildName(guild.name)) {
+          const status = guild.nameStatus;
+          if (status === 'approved') {
+            usedNames.add(guild.name.toLowerCase());
+            if (guild.tag) usedTags.add(guild.tag.toUpperCase());
+          } else if ((status === 'pending' || status === 'rejected') && isApprovedGuildName(guild.name)) {
             usedNames.add(guild.name.toLowerCase());
             usedTags.add(guildTagForName(guild.name));
+          } else if (status == null) {
+            const oldName = String(guild.name ?? '').replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim();
+            if (oldName) usedNames.add(oldName.toLowerCase());
           }
         }
 
@@ -974,8 +983,15 @@ async function applyGuildNameReviewMigration(): Promise<void> {
             .slice(0, 32);
           const hasExistingRequest = pendingByGuild.has(guild.id);
 
-          if (isApprovedGuildName(originalName)) {
-            guild.nameStatus = hasExistingRequest ? 'pending' : 'approved';
+          const hasRecordedDecision = guild.nameStatus === 'approved' ||
+            guild.nameStatus === 'pending' || guild.nameStatus === 'rejected';
+          if (guild.nameStatus === 'approved') {
+            // This is a name already approved through the new workflow.
+            continue;
+          }
+          if ((guild.nameStatus === 'pending' || guild.nameStatus === 'rejected') &&
+              isApprovedGuildName(originalName)) {
+            // Previously generated fallback names are already safe to display.
             guild.tag = guildTagForName(originalName);
             continue;
           }
@@ -983,11 +999,17 @@ async function applyGuildNameReviewMigration(): Promise<void> {
           const fallback = uniqueGuildFallbackName(guild.id, usedNames, usedTags);
           guild.name = fallback.name;
           guild.tag = fallback.tag;
-          guild.nameStatus = cleanOriginalName.length >= 3 || hasExistingRequest ? 'pending' : 'approved';
+          if (!hasRecordedDecision) {
+            guild.nameStatus = cleanOriginalName.length >= 3 || hasExistingRequest ? 'pending' : 'approved';
+          } else if (guild.nameStatus === 'pending') {
+            guild.nameStatus = 'pending';
+          } else {
+            guild.nameStatus = 'rejected';
+          }
           usedNames.add(fallback.name.toLowerCase());
           usedTags.add(fallback.tag);
 
-          if (cleanOriginalName.length >= 3 && !hasExistingRequest) {
+          if (cleanOriginalName.length >= 3 && !hasExistingRequest && !hasRecordedDecision) {
             const owner = guild.members.find(member => member.role === 'owner') ?? guild.members[0];
             requests.push({
               requestId: secureSocialToken('guild-name'),
@@ -1662,8 +1684,11 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
     }
 
+    const pendingRequests = await readGuildNameRequests();
+    if (pendingRequests.some(request => request.requestedName.toLowerCase() === cleanFallbackName.toLowerCase())) {
+      throw new Error('That temporary name is already requested by another guild. Choose a different combination.');
+    }
     if (cleanRequestedName) {
-      const pendingRequests = await readGuildNameRequests();
       if (guilds.some(g => g.name.toLowerCase() === cleanRequestedName.toLowerCase()) ||
           pendingRequests.some(request => request.requestedName.toLowerCase() === cleanRequestedName.toLowerCase())) {
         throw new Error('That guild name is already in use or awaiting review.');
