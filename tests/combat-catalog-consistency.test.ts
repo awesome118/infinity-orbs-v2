@@ -9,6 +9,8 @@ import {
   COMBAT_INTENTS,
   COMBAT_RUNE_RARITIES,
   COMBAT_RUNE_STATS,
+  COMBAT_TRAITS,
+  COMBAT_GEAR_SLOTS,
 } from '../src/shared/combat.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
@@ -47,4 +49,17 @@ test('Rune rarity and stat types are derived from the arrays used by validators 
     'Cosmic', 'Astral', 'Celestial', 'Transcendent',
   ]);
   assert.deepEqual([...COMBAT_RUNE_STATS], ['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
+});
+
+test('gear slot and trait types come from catalogs used by persisted gear normalization', () => {
+  const shared = source('src/shared/combat.ts');
+  const combat = source('src/server/combat.ts');
+
+  assert.match(shared, /export type CombatTrait = \(typeof COMBAT_TRAITS\)\[number\]/);
+  assert.match(shared, /export type CombatGearSlot = \(typeof COMBAT_GEAR_SLOTS\)\[number\]/);
+  assert.match(combat, /COMBAT_GEAR_SLOTS\.includes\(rawSlot as CombatGearSlot\)/);
+  assert.match(combat, /COMBAT_TRAITS\.includes\(x\.trait as CombatTrait\)/);
+  assert.match(combat, /rawSlot==='chest'\?'armor'/);
+  assert.deepEqual([...COMBAT_GEAR_SLOTS], ['weapon', 'armor', 'helmet', 'gloves', 'boots', 'ring', 'amulet']);
+  assert.deepEqual([...COMBAT_TRAITS], ['bleed', 'keen', 'first-strike', 'bulwark', 'regeneration', 'desperation']);
 });

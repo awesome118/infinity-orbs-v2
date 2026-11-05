@@ -434,8 +434,10 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training' | 'turn-timer';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct' | 'damageReduction' | 'beatIntervalMs';
-export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
-export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
+export const COMBAT_TRAITS = ['bleed', 'keen', 'first-strike', 'bulwark', 'regeneration', 'desperation'] as const;
+export type CombatTrait = (typeof COMBAT_TRAITS)[number];
+export const COMBAT_GEAR_SLOTS = ['weapon', 'armor', 'helmet', 'gloves', 'boots', 'ring', 'amulet'] as const;
+export type CombatGearSlot = (typeof COMBAT_GEAR_SLOTS)[number];
 export type CombatMajorAbility =
   | { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
   | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; }
@@ -1273,7 +1275,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
 
-  const equipmentSlots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+  const equipmentSlots:readonly CombatGearSlot[]=COMBAT_GEAR_SLOTS;
   for (const slot of equipmentSlots) {
     const activeId = state.equipment[slot];
     if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;
