@@ -27,6 +27,7 @@ import {
   type RollResponse,
   type UpgradeId,
   UPGRADE_IDS,
+  BUY_ALL_UPGRADE_ORDER,
   MAX_UPGRADE_PURCHASES_PER_REQUEST,
   type PrestigeUpgradeId,
   type Orb,
@@ -6729,11 +6730,7 @@ export async function buyAllUpgrades(): Promise<{
 }> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
-    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
-  ];
+  const upgradeIds: readonly UpgradeId[] = BUY_ALL_UPGRADE_ORDER;
 
   let totalSpent = 0;
   let upgradedCount = 0;

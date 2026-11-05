@@ -70,6 +70,7 @@ import {
   timeEnergyActivationsAvailable,
   upgradeCost,
   upgradeUnlockLevel,
+  BUY_ALL_UPGRADE_ORDER,
   MAX_UPGRADE_PURCHASES_PER_REQUEST,
   prestigeUpgradeCost,
   masterySkillCost,
@@ -2570,11 +2571,7 @@ function App() {
       ...currentState,
       upgrades: { ...currentState.upgrades },
     };
-    const ids: UpgradeId[] = [
-      'speed', 'multi', 'luck', 'coinBonus', 'auto',
-      'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
-      'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll',
-    ];
+    const ids: readonly UpgradeId[] = BUY_ALL_UPGRADE_ORDER;
     let purchases = 0;
 
     let changed = true;

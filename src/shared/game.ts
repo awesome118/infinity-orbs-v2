@@ -20,6 +20,13 @@ export const UPGRADE_IDS = [
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
+/** Preserve the intended priority when Buy All spends a limited wallet. */
+export const BUY_ALL_UPGRADE_ORDER = [
+  'speed', 'multi', 'luck', 'coinBonus', 'auto',
+  'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+  'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll',
+] as const satisfies readonly UpgradeId[];
+
 /** Bound one Buy All request so large balances cannot monopolize a gameplay request. */
 export const MAX_UPGRADE_PURCHASES_PER_REQUEST = 5_000;
 

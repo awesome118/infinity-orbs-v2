@@ -6,6 +6,7 @@ import {
   UPGRADE_IDS,
   UPGRADE_UNLOCK_LEVELS,
   MAX_UPGRADE_PURCHASES_PER_REQUEST,
+  BUY_ALL_UPGRADE_ORDER,
   PRESTIGE_UPGRADES,
   PREMIUM_BOOSTERS,
   AUTOMATIONS,
@@ -86,4 +87,19 @@ test('Buy All shares its safety cap and reports when more affordable upgrades re
   assert.match(client, /purchases < MAX_UPGRADE_PURCHASES_PER_REQUEST/);
   assert.match(client, /res\.purchaseLimitReached/);
   assert.match(client, /run Buy All again to continue/);
+});
+
+test('Buy All purchase priority is shared by client and server', () => {
+  const game = source('src/server/game.ts');
+  const client = source('src/client/main.tsx');
+  const serverHandler = game.slice(game.indexOf('export async function buyAllUpgrades'), game.indexOf('export async function claimDailyStreak'));
+  const clientHandler = client.slice(client.indexOf('const handleBuyAllUpgrades'), client.indexOf('// Turbo Roll Booster'));
+
+  assert.deepEqual([...BUY_ALL_UPGRADE_ORDER], [
+    'speed', 'multi', 'luck', 'coinBonus', 'auto',
+    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll',
+  ]);
+  assert.match(serverHandler, /upgradeIds: readonly UpgradeId\[\] = BUY_ALL_UPGRADE_ORDER/);
+  assert.match(clientHandler, /ids: readonly UpgradeId\[\] = BUY_ALL_UPGRADE_ORDER/);
 });
