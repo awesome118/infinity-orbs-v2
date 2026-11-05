@@ -34,6 +34,7 @@ import {
   isGuildValueProgress,
   isApprovedGuildName,
   guildTagForName,
+  type GuildNameRequest,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
@@ -60,6 +61,7 @@ function isAdminUsername(value: unknown): boolean {
 }
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+const GUILD_NAME_REQUESTS_KEY = key('guild-name-requests:v1');
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
@@ -472,6 +474,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
 
   guild.id = nonEmptyString(guild.id, 'recovered-guild-' + (index + 1));
   guild.name = nonEmptyString(guild.name, 'Recovered Guild ' + (index + 1));
+  guild.nameStatus = ['pending', 'approved', 'rejected'].includes(String(guild.nameStatus)) ? guild.nameStatus : 'approved';
   guild.tag = nonEmptyString(guild.tag, 'REC' + (index + 1));
   delete guild.level;
   delete guild.xp;
@@ -650,6 +653,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     delete (g as any).taxRate;
     delete (g as any).boss;
     delete (g as any).bossWeek;
+    g.nameStatus = ['pending', 'approved', 'rejected'].includes(String(g.nameStatus))
+      ? g.nameStatus
+      : 'approved';
     g.tokens ??= 0;
     if (!g.perks) {
       g.perks = {
@@ -873,6 +879,28 @@ async function ensureGuildMigrations(): Promise<void> {
   await applyGuildMigration(GUILD_TOKEN_RESET_KEY, guilds => {
     for (const guild of guilds) guild.tokens = 0;
   });
+}
+
+type StoredGuildNameRequest = GuildNameRequest;
+
+async function readGuildNameRequests(): Promise<StoredGuildNameRequest[]> {
+  const raw = await redis.get(GUILD_NAME_REQUESTS_KEY);
+  if (raw == null) return [];
+  const parsed = parseStoredJson<unknown>(raw);
+  if (!Array.isArray(parsed)) throw new Error('Guild name request queue is corrupted; refusing to overwrite it.');
+  return parsed.filter((item): item is StoredGuildNameRequest =>
+    !!item && typeof item === 'object' && !Array.isArray(item) &&
+    typeof (item as any).requestId === 'string' &&
+    typeof (item as any).guildId === 'string' &&
+    typeof (item as any).requestedName === 'string' &&
+    typeof (item as any).submittedBy === 'string' &&
+    typeof (item as any).submittedByUserId === 'string' &&
+    Number.isSafeInteger((item as any).submittedAt),
+  );
+}
+
+function requireGuildNameAdmin(): void {
+  if (!isAdminUsername(context.username)) throw new Error('Only the Infinity Orbs administrator can review guild names.');
 }
 
 async function updateGuilds<T>(mutator: (guilds: Guild[]) => Promise<T> | T): Promise<T> {
@@ -1447,22 +1475,23 @@ export async function kickGuildMember(targetUsername: string) {
 }
 
 
-export async function createGuild(name: string, tag: string) {
-  const cleanName = typeof name === 'string' ? name.trim() : '';
+export async function createGuild(name: string, tag: string, requestedName?: string) {
+  const cleanFallbackName = typeof name === 'string' ? name.trim() : '';
   const cleanTag = typeof tag === 'string' ? tag.trim().toUpperCase() : '';
-  if (!isApprovedGuildName(cleanName)) {
-    throw new Error('Choose each guild name part from the available options.');
-  }
-  if (cleanName.length > 32 || cleanTag !== guildTagForName(cleanName)) {
-    throw new Error('Guild tag is generated automatically from the guild name.');
+  if (!isApprovedGuildName(cleanFallbackName) || cleanTag !== guildTagForName(cleanFallbackName)) {
+    throw new Error('Choose a temporary guild name from the available three-part options.');
   }
 
-  return updateGuilds(guilds => {
-    if (guilds.some(g => g.name.toLowerCase() === cleanName.toLowerCase() || g.tag === cleanTag)) {
-      throw new Error('That guild name or tag is already taken.');
-    }
+  const cleanRequestedName = typeof requestedName === 'string'
+    ? requestedName.replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim()
+    : '';
+  if (cleanRequestedName && (cleanRequestedName.length < 3 || cleanRequestedName.length > 32)) {
+    throw new Error('Custom guild names must be 3–32 characters.');
+  }
+
+  return updateGuilds(async guilds => {
     const existingGuild = currentGuild(guilds);
-    const adminGuildOverride = (context.username ?? '').toLowerCase() === 'shadow_fen';
+    const adminGuildOverride = isAdminUsername(context.username);
     if (existingGuild && !adminGuildOverride) {
       throw new Error('Leave your current guild first.');
     }
@@ -1475,9 +1504,32 @@ export async function createGuild(name: string, tag: string) {
     }
 
     const now = Date.now();
+    const id = `${now}-${createSecureId()}`;
+    if (guilds.some(g => g.name.toLowerCase() === cleanFallbackName.toLowerCase() || g.tag === cleanTag)) {
+      throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
+    }
+
+    const pendingRequests = await readGuildNameRequests();
+    if (cleanRequestedName) {
+      if (guilds.some(g => g.name.toLowerCase() === cleanRequestedName.toLowerCase()) ||
+          pendingRequests.some(request => request.requestedName.toLowerCase() === cleanRequestedName.toLowerCase())) {
+        throw new Error('That guild name is already in use or awaiting review.');
+      }
+      pendingRequests.push({
+        requestId: secureSocialToken('guild-name'),
+        guildId: id,
+        requestedName: cleanRequestedName,
+        submittedBy: username(),
+        submittedByUserId: user(),
+        submittedAt: now,
+      });
+      await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(pendingRequests));
+    }
+
     const guild: Guild = {
-      id: `${now}-${createSecureId()}`,
-      name: cleanName,
+      id,
+      name: cleanFallbackName,
+      nameStatus: cleanRequestedName ? 'pending' : 'approved',
       tag: cleanTag,
       tokens: 0,
       createdAt: now,
@@ -1489,7 +1541,7 @@ export async function createGuild(name: string, tag: string) {
       chat: [{
         id: `msg-${now}`,
         username: 'System',
-        text: `Guild [${cleanTag}] ${cleanName} created.`,
+        text: `Guild [${cleanTag}] ${cleanFallbackName} created.`,
         timestamp: now,
         isSystem: true,
       }],
@@ -1504,11 +1556,62 @@ export async function createGuild(name: string, tag: string) {
         tokenYieldRank: 0,
         taskBountyRank: 0,
         comboRank: 0,
-
       },
     };
     guilds.push(guild);
     return guild;
+  });
+}
+
+export async function getGuildNameRequests(): Promise<Array<GuildNameRequest & { fallbackName: string; tag: string }>> {
+  requireGuildNameAdmin();
+  const [guilds, requests] = await Promise.all([loadGuilds(), readGuildNameRequests()]);
+  const byId = new Map(guilds.map(guild => [guild.id, guild]));
+  return requests
+    .filter(request => byId.get(request.guildId)?.nameStatus === 'pending')
+    .map(request => {
+      const guild = byId.get(request.guildId)!;
+      return { ...request, fallbackName: guild.name, tag: guild.tag };
+    })
+    .sort((a, b) => a.submittedAt - b.submittedAt);
+}
+
+export async function reviewGuildNameRequest(
+  requestId: string,
+  decision: 'approve' | 'reject',
+): Promise<{ success: true; decision: 'approve' | 'reject'; guildName: string }> {
+  requireGuildNameAdmin();
+  const cleanRequestId = String(requestId ?? '').trim();
+  if (!cleanRequestId || (decision !== 'approve' && decision !== 'reject')) {
+    throw new Error('Choose a valid guild name request decision.');
+  }
+
+  return updateGuilds(async guilds => {
+    const requests = await readGuildNameRequests();
+    const index = requests.findIndex(request => request.requestId === cleanRequestId);
+    if (index < 0) throw new Error('That guild name request no longer exists.');
+    const request = requests[index]!;
+    const guild = guilds.find(item => item.id === request.guildId);
+    if (!guild || guild.nameStatus !== 'pending') {
+      requests.splice(index, 1);
+      await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+      throw new Error('That guild no longer has a pending name request.');
+    }
+
+    if (decision === 'approve') {
+      const duplicate = guilds.some(item =>
+        item.id !== guild.id && item.name.toLowerCase() === request.requestedName.toLowerCase(),
+      );
+      if (duplicate) throw new Error('That name has since been taken by another guild.');
+      guild.name = request.requestedName;
+      guild.nameStatus = 'approved';
+    } else {
+      guild.nameStatus = 'rejected';
+    }
+
+    requests.splice(index, 1);
+    await redis.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(requests));
+    return { success: true, decision, guildName: guild.name };
   });
 }
 
