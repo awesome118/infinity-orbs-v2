@@ -17,6 +17,25 @@ export type UpgradeId =
   | 'orbFingers'
   | 'criticalDividend';
 
+/** Single source of truth for all standard Coin upgrade IDs accepted by the API. */
+export const UPGRADE_IDS: readonly UpgradeId[] = [
+  'speed',
+  'multi',
+  'clusterRoll',
+  'auto',
+  'luck',
+  'coinBonus',
+  'shardChance',
+  'xpBonus',
+  'critChance',
+  'critPower',
+  'offlineRate',
+  'valueBonus',
+  'offlineFoundry',
+  'orbFingers',
+  'criticalDividend',
+];
+
 /**
  * Minimum player levels for standard Coin upgrades.
  */
@@ -190,7 +209,7 @@ export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
-const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
+export const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
 
 export function normalizeCelestialAlignmentInstances(value: unknown, legacyChoice?: unknown, legacyUntil?: unknown, now = Date.now()): CelestialAlignmentInstance[] {
   const source = Array.isArray(value) ? value : [];

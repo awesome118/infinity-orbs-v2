@@ -117,7 +117,15 @@ import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest, recordUpgradeBatchDiagnostic } from './server-monitor.js';
 import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import {
+  PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity,
+  MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity,
+  GLOBAL_BOOSTERS, PREMIUM_BOOSTERS, AUTOMATIONS, PRESTIGE_UPGRADES,
+  CELESTIAL_ALIGNMENT_CHOICES, UPGRADE_IDS,
+  type FeatureId, type MasterySkillId, type UpgradeId, type PrestigeUpgradeId,
+  type PremiumBoosterId, type AutomationId, type GlobalBoosterId,
+} from '../shared/game.js';
+import { GUILD_PERK_IDS, type GuildPerkId } from '../shared/social.js';
 import { APP_VERSION } from '../shared/version.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
@@ -1297,11 +1305,10 @@ export function createApp() {
     try {
       const id = req.body?.id;
       const useCredit = req.body?.useCredit === true;
-      const validIds = ['luck', 'speed', 'crit'];
-      if (!validIds.includes(id)) {
+      if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(GLOBAL_BOOSTERS, id)) {
         return res.status(400).json({ error: 'Invalid Global Booster.' });
       }
-      res.json(await activateGlobalBooster(id, useCredit));
+      res.json(await activateGlobalBooster(id as GlobalBoosterId, useCredit));
     } catch (e) {
       badRequest(res, e, 'Failed to activate Global Booster.');
     }
@@ -1401,12 +1408,10 @@ export function createApp() {
   app.post('/api/upgrade', async (req, res) => {
     try {
       const { id } = req.body || {};
-      const validUpgradeIds = [
-        'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-        'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus'
-      ];
-      if (!validUpgradeIds.includes(id ?? '')) return res.status(400).json({ error: 'Unknown upgrade.' });
-      res.json({ state: await buyUpgrade(id) });
+      if (typeof id !== 'string' || !UPGRADE_IDS.includes(id as UpgradeId)) {
+        return res.status(400).json({ error: 'Unknown upgrade.' });
+      }
+      res.json({ state: await buyUpgrade(id as UpgradeId) });
     } catch (e) { badRequest(res, e, 'Upgrade failed.'); }
   });
 
@@ -1422,14 +1427,8 @@ export function createApp() {
     const requestedIds = Array.isArray(ids)
       ? ids.filter((id): id is string => typeof id === 'string').slice(0, 100)
       : [];
-    const validUpgradeIds: UpgradeId[] = [
-      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
-      'offlineFoundry', 'orbFingers', 'criticalDividend',
-    ];
-
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100 ||
-        !ids.every(id => typeof id === 'string' && validUpgradeIds.includes(id as UpgradeId))) {
+        !ids.every(id => typeof id === 'string' && UPGRADE_IDS.includes(id as UpgradeId))) {
       recordUpgradeBatchDiagnostic({
         stage: 'server-rejected',
         username: context.username,
@@ -1542,16 +1541,10 @@ export function createApp() {
   app.post('/api/prestige/upgrade', async (req, res) => {
     try {
       const { id } = req.body || {};
-      const validIds = [
-        'permLuck', 'permSpeed', 'unbrokenMomentum', 'vaultCap', 'sonarPing', 'instantReveal',
-        'autoOverclock', 'autoFilter', 'resonanceMeter', 'stellarMagnet', 'chronoOverdrive',
-        'transmutation', 'shardSynthesis', 'astralBarrage', 'cosmicInheritance',
-        'autoBuyer', 'supernova', 'altarResonator', 'offlineOverdrive',
-        'luckyFloor', 'astralArsenal', 'deepVault', 'masteryEngine', 'steadyHands', 'offlineFortune',
-        'frenzyVolley', 'astralReserve', 'temporalCompression', 'shardResonator', 'cosmicValuation', 'cosmicReserve', 'autoScrap'
-      ];
-      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid prestige upgrade.' });
-      res.json({ state: await buyPrestigeUpgrade(id) });
+      if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PRESTIGE_UPGRADES, id)) {
+        return res.status(400).json({ error: 'Invalid prestige upgrade.' });
+      }
+      res.json({ state: await buyPrestigeUpgrade(id as PrestigeUpgradeId) });
     } catch (e) { badRequest(res, e, 'Prestige upgrade failed.'); }
   });
 
@@ -1604,10 +1597,10 @@ export function createApp() {
   app.post('/api/alignment/choose', async (req, res) => {
     try {
       const choice = req.body?.choice;
-      if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) {
+      if (typeof choice !== 'string' || !CELESTIAL_ALIGNMENT_CHOICES.includes(choice as typeof CELESTIAL_ALIGNMENT_CHOICES[number])) {
         return res.status(400).json({ error: 'Choose a valid Alignment effect.' });
       }
-      res.json(await chooseCelestialAlignment(choice));
+      res.json(await chooseCelestialAlignment(choice as typeof CELESTIAL_ALIGNMENT_CHOICES[number]));
     } catch (e) {
       badRequest(res, e, 'Celestial Alignment choice failed.');
     }
@@ -1620,18 +1613,20 @@ export function createApp() {
   app.post('/api/boosters/activate', async (req, res) => {
     try {
       const id = req.body?.id;
-      const validIds = ['fortune', 'hyperdrive', 'barrage', 'prosperity', 'ascension'];
-      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid premium booster.' });
-      res.json({ state: await activatePremiumBooster(id) });
+      if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(PREMIUM_BOOSTERS, id)) {
+        return res.status(400).json({ error: 'Invalid premium booster.' });
+      }
+      res.json({ state: await activatePremiumBooster(id as PremiumBoosterId) });
     } catch (e) { badRequest(res, e, 'Failed to activate booster.'); }
   });
 
   app.post('/api/automation/buy', async (req, res) => {
     try {
       const id = req.body?.id;
-      const validIds = ['autoQuestClaim', 'autoStreakClaim', 'autoCommunityClaim', 'autoOfflineClaim', 'autoUpgrade'];
-      if (!validIds.includes(id)) return res.status(400).json({ error: 'Invalid automation.' });
-      res.json({ state: await buyAutomation(id) });
+      if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(AUTOMATIONS, id)) {
+        return res.status(400).json({ error: 'Invalid automation.' });
+      }
+      res.json({ state: await buyAutomation(id as AutomationId) });
     } catch (e) { badRequest(res, e, 'Failed to unlock automation.'); }
   });
 
@@ -1786,12 +1781,10 @@ export function createApp() {
   app.post('/api/guilds/perk', async (req, res) => {
     try {
       const { perk } = req.body || {};
-      const validPerks = [
-        'luckRank', 'speedRank', 'vaultRank', 'shardRank', 'critRank', 'coinRank',
-        'memberCapacityRank', 'tokenYieldRank', 'taskBountyRank', 'comboRank',
-      ];
-      if (!validPerks.includes(perk)) return res.status(400).json({ error: 'Invalid guild perk.' });
-      res.json(await buyGuildPerk(perk));
+      if (typeof perk !== 'string' || !GUILD_PERK_IDS.includes(perk as GuildPerkId)) {
+        return res.status(400).json({ error: 'Invalid guild perk.' });
+      }
+      res.json(await buyGuildPerk(perk as GuildPerkId));
     } catch (e) { badRequest(res, e, 'Failed to upgrade guild perk.'); }
   });
 

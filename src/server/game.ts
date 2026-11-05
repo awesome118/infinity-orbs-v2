@@ -25,6 +25,7 @@ import {
   type QuestItem,
   type RollResponse,
   type UpgradeId,
+  UPGRADE_IDS,
   type PrestigeUpgradeId,
   type Orb,
   AUTO_UNLOCK_COST,
@@ -6612,12 +6613,7 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
       throw new Error('Upgrade batch must contain 1 to 100 purchases.');
     }
-    const validIds: UpgradeId[] = [
-      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
-      'offlineFoundry', 'orbFingers', 'criticalDividend',
-    ];
-    if (!ids.every(id => validIds.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
+    if (!ids.every(id => UPGRADE_IDS.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
 
     const s = await settleOffline(await loadRaw());
     const purchased: Array<{ id: UpgradeId; cost: number; level: number }> = [];

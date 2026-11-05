@@ -222,6 +222,20 @@ export type GuildPerkId =
   | 'comboRank'
 ;
 
+/** Canonical accepted Guild perk IDs, including the legacy token-yield alias. */
+export const GUILD_PERK_IDS: readonly GuildPerkId[] = [
+  'luckRank',
+  'speedRank',
+  'vaultRank',
+  'shardRank',
+  'critRank',
+  'coinRank',
+  'memberCapacityRank',
+  'tokenYieldRank',
+  'taskBountyRank',
+  'comboRank',
+];
+
 export interface Guild {
   id: string;
   name: string;
