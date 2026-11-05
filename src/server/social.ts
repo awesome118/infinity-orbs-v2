@@ -32,6 +32,8 @@ import {
   normalizeGuildValueProgress,
   addGuildValueProgress,
   isGuildValueProgress,
+  isApprovedGuildName,
+  guildTagForName,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
@@ -1446,10 +1448,13 @@ export async function kickGuildMember(targetUsername: string) {
 
 
 export async function createGuild(name: string, tag: string) {
-  const cleanName = name.trim().slice(0, 32);
-  const cleanTag = tag.trim().replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
-  if (cleanName.length < 3 || cleanTag.length < 2) {
-    throw new Error('Guild name must be 3+ chars and tag 2-5 letters.');
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  const cleanTag = typeof tag === 'string' ? tag.trim().toUpperCase() : '';
+  if (!isApprovedGuildName(cleanName)) {
+    throw new Error('Choose each guild name part from the available options.');
+  }
+  if (cleanName.length > 32 || cleanTag !== guildTagForName(cleanName)) {
+    throw new Error('Guild tag is generated automatically from the guild name.');
   }
 
   return updateGuilds(guilds => {
