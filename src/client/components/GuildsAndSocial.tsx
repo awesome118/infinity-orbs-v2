@@ -1030,7 +1030,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                     <p className="mt-1 text-[9px] text-slate-500">This request is sent privately to the administrator and is not shown in the public Guild directory.</p>
                   </div>
                   <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3">
-                    <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Name Preview</div>
+                    <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Temporary Public Name</div>
                     <div className="mt-1 text-base font-black text-white">{createName}</div>
                     <div className="mt-1 text-[10px] font-bold text-slate-400">Guild Tag: <span className="text-purple-200">{createTag}</span></div>
                   </div>
