@@ -63,6 +63,7 @@ test('guild custom names are only exposed through an admin-only approval queue',
   assert.match(migration, /if \(guild\.nameStatus === 'approved'\)/);
   assert.doesNotMatch(migration, /if \(isApprovedGuildName\(originalName\)\) \{/);
   assert.match(migration, /activeRequests = requests\.filter\(request => pendingGuildIds\.has\(request\.guildId\)\)/);
+  assert.match(migration, /for \(const request of requests\) usedNames\.add\(request\.requestedName\.toLowerCase\(\)\)/);
   const leave = social.slice(social.indexOf('export async function leaveGuild'), social.indexOf('export async function contribute'));
   assert.match(leave, /filter\(request => request\.guildId !== guild\.id\)/);
   assert.match(createGuild, /filter\(request => request\.guildId !== deletedGuildId\)/);
