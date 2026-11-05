@@ -205,3 +205,34 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(frenzy, /MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, remainingCount/);
   assert.match(frenzy, /writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, absoluteProcessed, false\)/);
 });
+
+test('low-mean binomial groups retain their skew instead of using a Gaussian approximation', () => {
+  const rng = seededRandom(246813579);
+  const count = 500;
+  const probability = 0.003;
+  const samples = 30_000;
+  let total = 0;
+  let zeroCount = 0;
+
+  for (let index = 0; index < samples; index++) {
+    const result = sampleBinomialCount(count, probability, rng);
+    total += result;
+    if (result === 0) zeroCount += 1;
+  }
+
+  const expectedMean = count * probability;
+  const expectedZeroRate = Math.pow(1 - probability, count);
+  const sampledMean = total / samples;
+  const sampledZeroRate = zeroCount / samples;
+  assert.ok(Math.abs(sampledMean - expectedMean) < 0.04,
+    `expected mean near ${expectedMean}, got ${sampledMean}`);
+  assert.ok(Math.abs(sampledZeroRate - expectedZeroRate) < 0.01,
+    `expected zero-proc rate near ${expectedZeroRate}, got ${sampledZeroRate}`);
+});
+
+test('near-certain Binomial groups sample the rare failure side rather than iterating every success', () => {
+  const rng = seededRandom(97531);
+  const successes = sampleBinomialCount(100_000_000, 0.999999, rng);
+  assert.ok(successes >= 99_999_850 && successes <= 100_000_000,
+    'near-certain outcome should remain within the expected tail');
+});
