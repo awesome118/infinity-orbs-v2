@@ -209,21 +209,8 @@ export interface GuildPerks {
   comboRank?: number; // +5% Guild Combo time per rank.
 }
 
-export type GuildPerkId =
-  | 'luckRank'
-  | 'speedRank'
-  | 'vaultRank'
-  | 'shardRank'
-  | 'critRank'
-  | 'coinRank'
-  | 'memberCapacityRank'
-  | 'tokenYieldRank'
-  | 'taskBountyRank'
-  | 'comboRank'
-;
-
 /** Canonical accepted Guild perk IDs, including the legacy token-yield alias. */
-export const GUILD_PERK_IDS: readonly GuildPerkId[] = [
+export const GUILD_PERK_IDS = [
   'luckRank',
   'speedRank',
   'vaultRank',
@@ -234,7 +221,8 @@ export const GUILD_PERK_IDS: readonly GuildPerkId[] = [
   'tokenYieldRank',
   'taskBountyRank',
   'comboRank',
-];
+] as const;
+export type GuildPerkId = (typeof GUILD_PERK_IDS)[number];
 
 export interface Guild {
   id: string;

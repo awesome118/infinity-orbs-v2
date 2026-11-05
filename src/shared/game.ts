@@ -1,24 +1,7 @@
 import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
 
-export type UpgradeId =
-  | 'speed'
-  | 'multi'
-  | 'clusterRoll'
-  | 'auto'
-  | 'luck'
-  | 'coinBonus'
-  | 'shardChance'
-  | 'xpBonus'
-  | 'critChance'
-  | 'critPower'
-  | 'offlineRate'
-  | 'valueBonus'
-  | 'offlineFoundry'
-  | 'orbFingers'
-  | 'criticalDividend';
-
-/** Single source of truth for all standard Coin upgrade IDs accepted by the API. */
-export const UPGRADE_IDS: readonly UpgradeId[] = [
+/** Canonical standard Coin upgrade catalog; the ID type is derived from this tuple. */
+export const UPGRADE_IDS = [
   'speed',
   'multi',
   'clusterRoll',
@@ -34,7 +17,8 @@ export const UPGRADE_IDS: readonly UpgradeId[] = [
   'offlineFoundry',
   'orbFingers',
   'criticalDividend',
-];
+] as const;
+export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
 /**
  * Minimum player levels for standard Coin upgrades.
@@ -207,9 +191,9 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
-export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
+export const CELESTIAL_ALIGNMENT_CHOICES = ['starseeker', 'goldenOrbit', 'clockwork'] as const;
+export type CelestialAlignmentChoice = (typeof CELESTIAL_ALIGNMENT_CHOICES)[number];
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
-export const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
 
 export function normalizeCelestialAlignmentInstances(value: unknown, legacyChoice?: unknown, legacyUntil?: unknown, now = Date.now()): CelestialAlignmentInstance[] {
   const source = Array.isArray(value) ? value : [];
