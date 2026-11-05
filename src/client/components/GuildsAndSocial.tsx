@@ -22,11 +22,14 @@ import {
 } from 'lucide-react';
 import type {
   Guild,
+  GuildNameRequest,
   LeaderboardEntry,
   WorldEvent,
   GuildPerkId,
   LeaderboardBoards,
   LeaderboardId,
+} from '../../shared/social.js';
+import {
   GUILD_NAME_FIRST_WORDS,
   GUILD_NAME_SECOND_WORDS,
   GUILD_NAME_NOUNS,
@@ -52,7 +55,7 @@ interface GuildsAndSocialProps {
   leaderboard: LeaderboardEntry[];
   leaderboards?: LeaderboardBoards;
   worldEvent: WorldEvent | null;
-  onCreateGuild: (name: string, tag: string) => Promise<boolean>;
+  onCreateGuild: (name: string, tag: string, requestedName?: string) => Promise<boolean>;
   onJoinGuild: (id: string) => Promise<void>;
   onLeaveGuild: () => Promise<void>;
   onBuyGuildPerk?: (perk: GuildPerkId) => Promise<void>;
@@ -126,8 +129,14 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   const [createFirstWord, setCreateFirstWord] = useState<string>(GUILD_NAME_FIRST_WORDS[0]);
   const [createSecondWord, setCreateSecondWord] = useState<string>(GUILD_NAME_SECOND_WORDS[0]);
   const [createGuildNoun, setCreateGuildNoun] = useState<string>(GUILD_NAME_NOUNS[0]);
+  const [requestedGuildName, setRequestedGuildName] = useState('');
   const createName = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
   const createTag = guildTagForName(createName);
+  const isGuildNameAdmin = playerUsername.trim().replace(/^u\//i, '').toLowerCase() === 'shadow_fen';
+  const [guildNameRequests, setGuildNameRequests] = useState<GuildNameRequest[]>([]);
+  const [guildNameRequestsLoading, setGuildNameRequestsLoading] = useState(false);
+  const [guildNameReviewBusy, setGuildNameReviewBusy] = useState<string | null>(null);
+  const [guildNameAdminError, setGuildNameAdminError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingGuild, setCreatingGuild] = useState(false);
   const createGuildInFlightRef = useRef(false);
@@ -196,6 +205,47 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
   }, [activeTab, onRefreshLeaderboards]);
 
 
+  const refreshGuildNameRequests = async () => {
+    if (!isGuildNameAdmin) return;
+    setGuildNameRequestsLoading(true);
+    setGuildNameAdminError('');
+    try {
+      const response = await fetch('/api/guilds/name-requests', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload.error ?? 'Could not load guild name requests.'));
+      setGuildNameRequests(Array.isArray(payload.requests) ? payload.requests : []);
+    } catch (error) {
+      setGuildNameAdminError(error instanceof Error ? error.message : 'Could not load guild name requests.');
+    } finally {
+      setGuildNameRequestsLoading(false);
+    }
+  };
+
+  const reviewGuildNameRequest = async (requestId: string, decision: 'approve' | 'reject') => {
+    if (!isGuildNameAdmin || guildNameReviewBusy) return;
+    setGuildNameReviewBusy(requestId);
+    setGuildNameAdminError('');
+    try {
+      const response = await fetch('/api/guilds/name-requests/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, decision }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload.error ?? 'Could not review guild name request.'));
+      setGuildNameRequests(current => current.filter(request => request.requestId !== requestId));
+      await onRefreshGuildData?.().catch(() => undefined);
+    } catch (error) {
+      setGuildNameAdminError(error instanceof Error ? error.message : 'Could not review guild name request.');
+    } finally {
+      setGuildNameReviewBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isGuildNameAdmin) void refreshGuildNameRequests();
+  }, [isGuildNameAdmin]);
+
   const fmt = (n: number) => formatNumber(Number.isFinite(n) ? Math.max(0, n) : 0);
   const normalizeUsername = (value: string) => value.trim().toLowerCase();
   const currentGuildMember = myGuild?.members.find(m => normalizeUsername(m.username) === normalizeUsername(playerUsername));
@@ -213,20 +263,29 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
     e.preventDefault();
     const name = composeGuildName(createFirstWord, createSecondWord, createGuildNoun);
     const tag = guildTagForName(name);
+    const requestedName = requestedGuildName.replace(/[\\u0000-\\u001f\\u007f]/g, ' ').replace(/\\s+/g, ' ').trim();
     if (!name || !/^[A-Z]{3}$/.test(tag) || busy || creatingGuild || createGuildInFlightRef.current) return;
+    if (requestedName && (requestedName.length < 3 || requestedName.length > 32)) {
+      setSocialError('Custom guild names must be 3–32 characters.');
+      setSocialNotice('');
+      return;
+    }
     createGuildInFlightRef.current = true;
     setCreatingGuild(true);
     setSocialError('');
     setSocialNotice('');
     sound.playClick();
     try {
-      const created = await onCreateGuild(name, tag);
+      const created = await onCreateGuild(name, tag, requestedName);
       if (created) {
         setCreateFirstWord(GUILD_NAME_FIRST_WORDS[0]);
         setCreateSecondWord(GUILD_NAME_SECOND_WORDS[0]);
         setCreateGuildNoun(GUILD_NAME_NOUNS[0]);
+        setRequestedGuildName('');
         setShowCreateModal(false);
-        setSocialNotice('Guild created successfully.');
+        setSocialNotice(requestedName
+          ? 'Guild created with its temporary name. Your custom name is awaiting admin approval.'
+          : 'Guild created successfully.');
       } else {
         setSocialError('Guild could not be created. Check the name and tag, then try again.');
       }
@@ -312,6 +371,35 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
       {/* 1. GUILD TAB */}
       {activeTab === 'guild' && (
         <div className="space-y-6">
+          {isGuildNameAdmin && (
+            <section className="rounded-2xl border border-amber-500/30 bg-amber-950/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-amber-200">Guild Name Approval</h3>
+                  <p className="mt-1 text-[10px] text-slate-400">Custom names stay private until you approve them. The generated three-part name remains public in the meantime.</p>
+                </div>
+                <button type="button" onClick={() => void refreshGuildNameRequests()} disabled={guildNameRequestsLoading} className="rounded-lg border border-amber-500/30 px-2.5 py-1.5 text-[10px] font-bold text-amber-200 disabled:opacity-50">
+                  {guildNameRequestsLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              {guildNameAdminError && <p role="alert" className="text-[10px] text-rose-300">{guildNameAdminError}</p>}
+              {guildNameRequests.length === 0 ? (
+                <p className="text-xs text-slate-500">{guildNameRequestsLoading ? 'Loading requests…' : 'No pending guild name requests.'}</p>
+              ) : guildNameRequests.map(request => (
+                <div key={request.requestId} className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] uppercase tracking-wider font-black text-slate-500">{request.submittedBy} requested for {request.fallbackName}</div>
+                    <div className="mt-1 break-words text-sm font-black text-white">{request.requestedName}</div>
+                    <div className="mt-1 text-[9px] text-slate-500">{new Date(request.submittedAt).toLocaleString()}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void reviewGuildNameRequest(request.requestId, 'approve')} disabled={guildNameReviewBusy !== null} className="rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{guildNameReviewBusy === request.requestId ? 'Saving…' : 'Approve'}</button>
+                    <button type="button" onClick={() => void reviewGuildNameRequest(request.requestId, 'reject')} disabled={guildNameReviewBusy !== null} className="rounded-lg border border-rose-500/40 px-3 py-2 text-[10px] font-black text-rose-300 disabled:opacity-50">Reject</button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
           {guildLoading && !guildDataLoaded ? (
             <div role="status" aria-busy="true" className="space-y-3 rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
               <div className="h-5 w-40 animate-pulse rounded bg-slate-800" />
@@ -342,6 +430,12 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                       <p className="text-xs text-slate-400 mt-0.5">
                         {myGuild.members.length} / {10 + Math.min(40, myGuild.perks?.memberCapacityRank ?? 0)} Members • {fmt(myGuild.tokens ?? 0)} Guild Tokens
                       </p>
+                      {myGuild.nameStatus === 'pending' && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-300">Your requested custom name is awaiting review. The temporary name is public until approved.</p>
+                      )}
+                      {myGuild.nameStatus === 'rejected' && (
+                        <p className="mt-1 text-[10px] font-semibold text-slate-400">Your custom name request was not approved. The temporary name remains in use.</p>
+                      )}
                     </div>
                   </div>
 
@@ -876,7 +970,7 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
               <div role="dialog" aria-modal="true" aria-labelledby="io-create-guild-title" className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
                 <h3 id="io-create-guild-title" className="text-lg font-black text-white">Found a New Guild</h3>
                 <p className="text-xs text-slate-400">
-                  Build a name from three curated parts. Your tag is generated automatically.
+                  Choose a safe temporary three-part name. You may also request a custom name; it stays hidden until the admin approves it.
                 </p>
                 <form onSubmit={handleCreateGuild} className="space-y-3">
                   <div className="grid grid-cols-1 gap-2">
@@ -919,6 +1013,21 @@ export const GuildsAndSocial: React.FC<GuildsAndSocialProps> = ({
                         {GUILD_NAME_NOUNS.map(noun => <option key={noun} value={noun}>{noun}</option>)}
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label htmlFor="io-requested-guild-name" className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                      Request a Custom Name (Optional)
+                    </label>
+                    <input
+                      id="io-requested-guild-name"
+                      type="text"
+                      value={requestedGuildName}
+                      onChange={e => setRequestedGuildName(e.target.value.slice(0, 32))}
+                      placeholder="Enter a custom name for review"
+                      maxLength={32}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                    />
+                    <p className="mt-1 text-[9px] text-slate-500">Only you and the app administrator can see this request before approval.</p>
                   </div>
                   <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3">
                     <div className="text-[9px] font-black uppercase tracking-wider text-purple-300">Name Preview</div>
