@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { GUILD_TASK_TYPES } from '../src/shared/social.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
