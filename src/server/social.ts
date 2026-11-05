@@ -956,6 +956,9 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         const pendingByGuild = new Set(requests.map(request => request.guildId));
         const usedNames = new Set<string>();
         const usedTags = new Set<string>();
+        // Existing pending requests must also reserve their names while legacy
+        // fallback names are allocated, or migration could create an approval collision.
+        for (const request of requests) usedNames.add(request.requestedName.toLowerCase());
 
         // Preserve names already explicitly approved by this system. Every guild
         // without a recorded decision is legacy UGC and must enter the review queue,
