@@ -30,6 +30,9 @@ import type {
   LeaderboardId,
 } from '../../shared/social.js';
 import {
+  GUILD_NAME_FIRST_WORDS,
+  GUILD_NAME_SECOND_WORDS,
+  GUILD_NAME_NOUNS,
   composeGuildName,
   getAvailableGuildNameOptions,
   guildTagForName,

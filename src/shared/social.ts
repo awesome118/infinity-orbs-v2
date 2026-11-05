@@ -57,7 +57,6 @@ export function guildTagForName(name: string): string {
   return name.trim().split(/\s+/).map(part => part[0]?.toUpperCase() ?? '').join('');
 }
 
-/** Apply the same bounded, control-safe normalization to every Guild name path. */
 /**
  * Three-letter Guild tags that must never be assigned. Keep this list limited
  * to unmistakable hate-group identifiers and common profanity/sexual slurs.
@@ -103,6 +102,7 @@ export function getAvailableGuildNameOptions(
   });
 }
 
+/** Apply the same bounded, control-safe normalization to every Guild name path. */
 export function normalizeGuildName(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value
