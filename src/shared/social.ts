@@ -16,16 +16,25 @@ export const MAX_GUILD_TASK_TIER = 100;
 export const GUILD_NAME_FIRST_WORDS = [
   'Ashen', 'Bright', 'Cinder', 'Dread', 'Ember', 'Frost',
   'Gilded', 'Hollow', 'Ironbound', 'Jade', 'Kindled', 'Lunar',
+  'Mystic', 'Nether', 'Obsidian', 'Primal', 'Quartz', 'Radiant',
+  'Shadowed', 'Thorned', 'Umbral', 'Verdant', 'Wraith', 'Xenial',
+  'Yonder', 'Zealous',
 ] as const;
 
 export const GUILD_NAME_SECOND_WORDS = [
   'Astral', 'Blazing', 'Celestial', 'Dawnbound', 'Everlight', 'Farseeing',
   'Grim', 'Hallowed', 'Infinite', 'Jagged', 'Kingsfall', 'Lightforged',
+  'Moonfallen', 'Nightborn', 'Oathbound', 'Phoenix', 'Quicksilver', 'Riftwoven',
+  'Starforged', 'Timeworn', 'Unbroken', 'Voidwoven', 'Windborne', 'Xenith',
+  'Yearning', 'Zephyr',
 ] as const;
 
 export const GUILD_NAME_NOUNS = [
   'Alliance', 'Bastion', 'Covenant', 'Dominion', 'Enclave', 'Fellowship',
   'Guard', 'Horde', 'Imperium', 'Junction', 'Keep', 'Legion',
+  'Monastery', 'Nexus', 'Order', 'Pact', 'Quorum', 'Realm',
+  'Sanctuary', 'Tribunal', 'Union', 'Vanguard', 'Watch', 'Xanadu',
+  'Yard', 'Zeal',
 ] as const;
 
 export function composeGuildName(firstWord: string, secondWord: string, noun: string): string {
