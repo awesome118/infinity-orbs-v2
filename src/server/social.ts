@@ -928,6 +928,9 @@ async function applyGuildCustomNameRestoreMigration(): Promise<void> {
         const guilds = parseGuildListRaw(decodedRaw);
         const requestRaw = await redis.get(GUILD_NAME_REQUESTS_KEY);
         const decodedRequests = parseStoredJson<unknown>(requestRaw);
+        if (requestRaw != null && !Array.isArray(decodedRequests)) {
+          throw new Error('Guild name request queue could not be parsed; refusing to discard pending custom names.');
+        }
         const requestedNameByGuild = new Map<string, string>();
         if (Array.isArray(decodedRequests)) {
           for (const request of decodedRequests) {
