@@ -1001,15 +1001,20 @@ async function applyGuildCustomNameRestoreMigration(): Promise<void> {
   }
 }
 
+type GuildFlairMutation = {
+  set: Record<string, string>;
+  remove: string[];
+};
+
 async function updateGuilds<T>(
-  mutator: (guilds: Guild[]) => Promise<T> | T,
+  mutator: (guilds: Guild[], flair: GuildFlairMutation) => Promise<T> | T,
 ): Promise<T> {
   await ensureGuildMigrations();
   return withGuildDataMutationLock(async () => {
     await ensureRedisStringKey(GUILDS_KEY, '[]');
 
     for (let attempt = 0; attempt < 8; attempt++) {
-      const txn = await redis.watch(GUILDS_KEY);
+      const txn = await redis.watch(GUILDS_KEY, GUILD_FLAIR_NAMES_KEY);
       let transactionClosed = false;
       let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
       let writeCommitted = false;
@@ -1017,11 +1022,18 @@ async function updateGuilds<T>(
         const storedRaw = await redis.get(GUILDS_KEY);
         const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
         const guilds: Guild[] = parseGuildList(decodedRaw);
-        const result = await mutator(guilds);
+        const flair: GuildFlairMutation = { set: {}, remove: [] };
+        const result = await mutator(guilds, flair);
         writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
 
         await txn.multi();
         await txn.set(GUILDS_KEY, writePlan.storedValue);
+        for (const userId of flair.remove) {
+          if (userId) await txn.hDel(GUILD_FLAIR_NAMES_KEY, userId);
+        }
+        if (Object.keys(flair.set).length > 0) {
+          await txn.hSet(GUILD_FLAIR_NAMES_KEY, flair.set);
+        }
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) {
@@ -1538,7 +1550,7 @@ export async function kickGuildMember(targetUsername: string) {
   const requested = String(targetUsername ?? '').trim().replace(/^u\//i, '').toLowerCase();
   if (!requested) throw new Error('Guild member username is required.');
 
-  const result = await updateGuilds(guilds => {
+  const result = await updateGuilds((guilds, flair) => {
     const guild = currentGuild(guilds);
     if (!guild) throw new Error('You are not in a guild.');
 
@@ -1560,16 +1572,15 @@ export async function kickGuildMember(targetUsername: string) {
     guild.members = guild.members.filter(member =>
       !(member.username === target.username || (member.userId && target.userId && member.userId === target.userId)),
     );
-    return { username: target.username, userId: target.userId ?? '' };
+    const targetUserId = String(target.userId ?? '').trim();
+    if (targetUserId) flair.remove.push(targetUserId);
+    return { username: target.username, userId: targetUserId };
   });
 
   if (result.userId) {
-    try {
-      await redis.hDel(GUILD_FLAIR_NAMES_KEY, result.userId);
-      await syncPlayerRarityFlair(result.userId, result.username);
-    } catch (error) {
+    await syncPlayerRarityFlair(result.userId, result.username).catch(error => {
       console.error('[Guild Flair] Kicking succeeded, but the member flair sync failed.', error);
-    }
+    });
   }
   return { success: true, username: result.username };
 }
@@ -1584,7 +1595,7 @@ export async function createGuild(name: string, tag: string) {
     throw new Error('Guild name must be 3+ characters and tag must be 2–5 letters or numbers.');
   }
 
-  const guild = await updateGuilds(guilds => {
+  const guild = await updateGuilds((guilds, flair) => {
     const existingGuild = currentGuild(guilds);
     const adminGuildOverride = isAdminUsername(context.username);
     if (existingGuild && !adminGuildOverride) throw new Error('Leave your current guild first.');
@@ -1636,20 +1647,18 @@ export async function createGuild(name: string, tag: string) {
       },
     };
     guilds.push(createdGuild);
+    flair.set[user()] = createdGuild.name;
     return createdGuild;
   });
 
-  try {
-    await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
-    await syncCurrentPlayerRarityFlair();
-  } catch (error) {
-    console.error('[Guild Flair] The guild action succeeded, but its Reddit flair sync failed.', error);
-  }
+  await syncCurrentPlayerRarityFlair().catch(error => {
+    console.error('[Guild Flair] Guild was created, but its Reddit flair sync failed.', error);
+  });
   return guild;
 }
 
 export async function joinGuild(guildId: string) {
-  const guild = await updateGuilds(guilds => {
+  const guild = await updateGuilds((guilds, flair) => {
     if (currentGuild(guilds)) throw new Error('You are already in a guild.');
     const targetGuild = guilds.find(g => g.id === guildId);
     if (!targetGuild) throw new Error('Guild not found.');
@@ -1667,36 +1676,32 @@ export async function joinGuild(guildId: string) {
       trusted: false,
       joinedAt: now,
     });
+    flair.set[user()] = targetGuild.name;
     return targetGuild;
   });
 
-  try {
-    await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
-    await syncCurrentPlayerRarityFlair();
-  } catch (error) {
-    console.error('[Guild Flair] The guild action succeeded, but its Reddit flair sync failed.', error);
-  }
+  await syncCurrentPlayerRarityFlair().catch(error => {
+    console.error('[Guild Flair] Guild was joined, but its Reddit flair sync failed.', error);
+  });
   return guild;
 }
 
 export async function leaveGuild() {
-  await updateGuilds(guilds => {
+  await updateGuilds((guilds, flair) => {
     const guildIndex = guilds.findIndex(g => g.members.some(m => memberMatches(m)));
     if (guildIndex === -1) throw new Error('You are not in a guild.');
     const guild = guilds[guildIndex];
     const oldMember = guild.members.find(m => memberMatches(m));
     guild.members = guild.members.filter(m => !memberMatches(m));
+    flair.remove.push(user());
 
     if (guild.members.length === 0) guilds.splice(guildIndex, 1);
     else if (oldMember?.role === 'owner') promoteGuildOwnerIfNeeded(guild.members);
   });
 
-  try {
-    await redis.hDel(GUILD_FLAIR_NAMES_KEY, user());
-    await syncCurrentPlayerRarityFlair();
-  } catch (error) {
+  await syncCurrentPlayerRarityFlair().catch(error => {
     console.error('[Guild Flair] Leaving succeeded, but the Reddit flair sync failed.', error);
-  }
+  });
   return { success: true };
 }
 
