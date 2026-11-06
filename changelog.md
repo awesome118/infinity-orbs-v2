@@ -1,5 +1,10 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.32
+
+- **Guild Name Attribution:** Restore direct custom guild names and the original 2–5 character tag field. Each member's Reddit user flair now reads `GuildName - HighestOrbTier`, with the guild name tied to their Reddit account. Existing pending custom-name requests are restored during a one-time migration.
+- **Guild Flair Sync:** Create, join, leave, and kick actions update member flair while the existing rarity-based flair color remains intact.
+
 ### New in 2.2.31
 
 - **Reddit Review Release:** Reissues the v2.2.30 post-flair reliability fix as a new version for Reddit review. No additional gameplay changes.
