@@ -92,8 +92,6 @@ import {
   recordGlobalChatComment,
   resolveGlobalChatCommentAuthor,
   reportGlobalChatMessage,
-  getGuildNameRequests,
-  reviewGuildNameRequest,
 } from './social.js';
 import { context, reddit, redis } from './devvit-mock.js';
 import { getPostFlairOptions } from './post-flair.js';
@@ -1756,22 +1754,8 @@ export function createApp() {
 
   app.post('/api/guilds/create', async (req, res) => {
     try {
-      res.json({ guild: await createGuild(req.body?.name ?? '', req.body?.tag ?? '', req.body?.requestedName ?? '') });
+      res.json({ guild: await createGuild(req.body?.name ?? '', req.body?.tag ?? '') });
     } catch (e) { badRequest(res, e, 'Could not create guild.'); }
-  });
-
-  app.get('/api/guilds/name-requests', async (_req, res) => {
-    try { res.json({ requests: await getGuildNameRequests() }); }
-    catch (e) { badRequest(res, e, 'Could not load guild name requests.'); }
-  });
-
-  app.post('/api/guilds/name-requests/review', async (req, res) => {
-    try {
-      const requestId = String(req.body?.requestId ?? '');
-      const decision = req.body?.decision === 'approve' ? 'approve' : req.body?.decision === 'reject' ? 'reject' : '';
-      if (!decision) return res.status(400).json({ error: 'Choose approve or reject.' });
-      res.json(await reviewGuildNameRequest(requestId, decision));
-    } catch (e) { badRequest(res, e, 'Could not review guild name request.'); }
   });
 
   app.post('/api/guilds/join', async (req, res) => {
