@@ -6068,6 +6068,9 @@ export async function getMe(): Promise<PlayerState> {
   } else {
     delete s.gameBan;
   }
+  // Refresh the Reddit flair on game entry so existing members receive the
+  // guild label even before their next roll/save.
+  void syncRarityFlair(s);
   return s;
 }
 
