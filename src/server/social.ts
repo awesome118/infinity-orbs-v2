@@ -899,7 +899,7 @@ async function applyGuildCustomNameRestoreMigration(): Promise<void> {
 
   await ensureRedisStringKey(GUILDS_KEY, '[]');
   await ensureRedisStringKey(GUILD_NAME_REQUESTS_KEY, '[]');
-  return withGuildDataMutationLock(async () => {
+  await withGuildDataMutationLock(async () => {
     for (let attempt = 0; attempt < 8; attempt++) {
       const txn = await redis.watch(
         GUILDS_KEY,
@@ -993,6 +993,12 @@ async function applyGuildCustomNameRestoreMigration(): Promise<void> {
     }
     throw new Error('Guild custom-name restore migration changed while applying an update. Please retry.');
   });
+  // Refresh the current player's flair after the one-time member index rebuild.
+  try {
+    await syncCurrentPlayerRarityFlair();
+  } catch (error) {
+    console.error('[Guild Flair] Could not sync the current player after name restoration.', error);
+  }
 }
 
 async function updateGuilds<T>(
@@ -1558,8 +1564,12 @@ export async function kickGuildMember(targetUsername: string) {
   });
 
   if (result.userId) {
-    await redis.hDel(GUILD_FLAIR_NAMES_KEY, result.userId);
-    await syncPlayerRarityFlair(result.userId, result.username);
+    try {
+      await redis.hDel(GUILD_FLAIR_NAMES_KEY, result.userId);
+      await syncPlayerRarityFlair(result.userId, result.username);
+    } catch (error) {
+      console.error('[Guild Flair] Kicking succeeded, but the member flair sync failed.', error);
+    }
   }
   return { success: true, username: result.username };
 }
@@ -1629,8 +1639,12 @@ export async function createGuild(name: string, tag: string) {
     return createdGuild;
   });
 
-  await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
-  await syncCurrentPlayerRarityFlair();
+  try {
+    await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
+    await syncCurrentPlayerRarityFlair();
+  } catch (error) {
+    console.error('[Guild Flair] The guild action succeeded, but its Reddit flair sync failed.', error);
+  }
   return guild;
 }
 
@@ -1656,8 +1670,12 @@ export async function joinGuild(guildId: string) {
     return targetGuild;
   });
 
-  await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
-  await syncCurrentPlayerRarityFlair();
+  try {
+    await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
+    await syncCurrentPlayerRarityFlair();
+  } catch (error) {
+    console.error('[Guild Flair] The guild action succeeded, but its Reddit flair sync failed.', error);
+  }
   return guild;
 }
 
@@ -1673,8 +1691,12 @@ export async function leaveGuild() {
     else if (oldMember?.role === 'owner') promoteGuildOwnerIfNeeded(guild.members);
   });
 
-  await redis.hDel(GUILD_FLAIR_NAMES_KEY, user());
-  await syncCurrentPlayerRarityFlair();
+  try {
+    await redis.hDel(GUILD_FLAIR_NAMES_KEY, user());
+    await syncCurrentPlayerRarityFlair();
+  } catch (error) {
+    console.error('[Guild Flair] Leaving succeeded, but the Reddit flair sync failed.', error);
+  }
   return { success: true };
 }
 
