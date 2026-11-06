@@ -51,7 +51,7 @@ test('creating, joining, leaving, and kicking update the affected player flair m
     assert.ok(start >= 0, `missing ${functionName}`);
     const next = social.indexOf('\nexport async function ', start + 1);
     const block = social.slice(start, next < 0 ? social.length : next);
-    assert.match(block, /GUILD_FLAIR_NAMES_KEY/);
+    assert.match(block, /flair\.(set|remove)/);
     assert.match(block, /syncCurrentPlayerRarityFlair|syncPlayerRarityFlair/);
   }
 });
