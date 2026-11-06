@@ -10,8 +10,8 @@ export type ChallengeType = 'rolls' | 'value' | 'rare';
 export const MAX_GUILD_TASK_TIER = 100;
 
 /**
- * Public fallback names are assembled from curated parts. Players may request
- * a custom name, but it remains private until an administrator approves it.
+ * Legacy curated-name helpers remain for compatibility with older saved data.
+ * New Guilds use direct custom names and Reddit user flair for member attribution.
  */
 export const GUILD_NAME_FIRST_WORDS = [
   'Ashen', 'Bright', 'Cinder', 'Dread', 'Ember', 'Frost',
@@ -239,7 +239,7 @@ export type GuildPerkId =
 export interface Guild {
   id: string;
   name: string;
-  /** Legacy guild names default to approved; new custom requests stay on the fallback name. */
+  /** Legacy approval metadata; removed from Guild records by the custom-name restore migration. */
   nameStatus?: 'pending' | 'approved' | 'rejected';
   tag: string;
   tokens: number;
@@ -254,6 +254,7 @@ export interface Guild {
   bannerEffect?: string;
 }
 
+/** Legacy queued request shape, read once by the custom-name restore migration. */
 export interface GuildNameRequest {
   requestId: string;
   guildId: string;
