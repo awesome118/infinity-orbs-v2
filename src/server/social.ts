@@ -8,6 +8,8 @@ import {
   createPlayerSaveWritePlanForUser,
   discardPlayerSaveWritePlan,
   cleanupPreviousPlayerSave,
+  syncCurrentPlayerRarityFlair,
+  syncPlayerRarityFlair,
 } from './game.js';
 import { createRedisLargeValueWritePlan, readRedisLargeValue, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
 import type {
@@ -32,17 +34,9 @@ import {
   normalizeGuildValueProgress,
   addGuildValueProgress,
   isGuildValueProgress,
-  isApprovedGuildName,
-  guildTagForName,
-  isGuildTagAllowed,
   normalizeGuildName,
   guildMemberMatchesIdentity,
   promoteGuildOwnerIfNeeded,
-  composeGuildName,
-  GUILD_NAME_FIRST_WORDS,
-  GUILD_NAME_SECOND_WORDS,
-  GUILD_NAME_NOUNS,
-  type GuildNameRequest,
 } from '../shared/social.js';
 import type { DailyStreakCommunityEvent, PlayerState } from '../shared/game.js';
 import {
@@ -69,8 +63,10 @@ function isAdminUsername(value: unknown): boolean {
 }
 const key = (name: string) => `io:${name}`;
 const GUILDS_KEY = key('guilds');
+// Kept temporarily so names submitted before this rollback can be recovered.
 const GUILD_NAME_REQUESTS_KEY = key('guild-name-requests:v1');
-const GUILD_NAME_REVIEW_MIGRATION_KEY = key('guild-name-review-migration:v1');
+const GUILD_NAME_RESTORE_MIGRATION_KEY = key('guild-custom-name-restore:v1');
+const GUILD_FLAIR_NAMES_KEY = key('guild-flair-names:v1');
 const PLAYER_REGISTRY_KEY = key('player-registry');
 const GUILD_CHAT_MUTES_KEY = key('guild-chat-mutes:v1');
 const GUILD_TOKEN_RESET_KEY = key('guild-token-reset:v1');
@@ -885,59 +881,37 @@ async function ensureGuildMigrations(): Promise<void> {
   await applyGuildMigration(GUILD_TOKEN_RESET_KEY, guilds => {
     for (const guild of guilds) guild.tokens = 0;
   });
-  await applyGuildNameReviewMigration();
+  await applyGuildCustomNameRestoreMigration();
 }
 
-
-function uniqueGuildFallbackName(
-  seed: string,
-  usedNames: Set<string>,
-  usedTags: Set<string>,
-): { name: string; tag: string } {
-  const firstCount = GUILD_NAME_FIRST_WORDS.length;
-  const secondCount = GUILD_NAME_SECOND_WORDS.length;
-  const nounCount = GUILD_NAME_NOUNS.length;
-  const total = firstCount * secondCount * nounCount;
-  let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = Math.imul(hash ^ seed.charCodeAt(index), 16777619) >>> 0;
-  }
-  const start = hash % total;
-  for (let offset = 0; offset < total; offset += 1) {
-    const combination = (start + offset) % total;
-    const first = GUILD_NAME_FIRST_WORDS[combination % firstCount]!;
-    const second = GUILD_NAME_SECOND_WORDS[Math.floor(combination / firstCount) % secondCount]!;
-    const noun = GUILD_NAME_NOUNS[Math.floor(combination / (firstCount * secondCount)) % nounCount]!;
-    const name = composeGuildName(first, second, noun);
-    const tag = guildTagForName(name);
-    if (name && tag && isGuildTagAllowed(tag, usedTags) && !usedNames.has(name.toLowerCase())) {
-      return { name, tag };
-    }
-  }
-  throw new Error('There are no unused curated Guild fallback names left.');
-}
 
 /**
- * Existing custom Guild names predate manual approval. Replace public names
- * and tags with curated fallbacks while moving old names into the private
- * administrator queue. Already curated names remain public.
+ * Roll back the temporary guild-name approval rollout. Restore pending names,
+ * retain names already approved, clear obsolete status metadata, and build the
+ * member ID -> guild name projection used by Reddit user flair.
  */
-async function applyGuildNameReviewMigration(): Promise<void> {
-  const markerBeforeLock = await redis.get(GUILD_NAME_REVIEW_MIGRATION_KEY);
+async function applyGuildCustomNameRestoreMigration(): Promise<void> {
+  const markerBeforeLock = await redis.get(GUILD_NAME_RESTORE_MIGRATION_KEY);
   if (markerBeforeLock === '1') return;
   if (markerBeforeLock != null) {
-    throw new Error('Guild name review migration marker is corrupted; refusing to rerun it.');
+    throw new Error('Guild custom-name restore marker is corrupted; refusing to rerun it.');
   }
 
   await ensureRedisStringKey(GUILDS_KEY, '[]');
+  await ensureRedisStringKey(GUILD_NAME_REQUESTS_KEY, '[]');
   return withGuildDataMutationLock(async () => {
     for (let attempt = 0; attempt < 8; attempt++) {
-      const txn = await redis.watch(GUILDS_KEY, GUILD_NAME_REQUESTS_KEY, GUILD_NAME_REVIEW_MIGRATION_KEY);
+      const txn = await redis.watch(
+        GUILDS_KEY,
+        GUILD_NAME_REQUESTS_KEY,
+        GUILD_NAME_RESTORE_MIGRATION_KEY,
+        GUILD_FLAIR_NAMES_KEY,
+      );
       let transactionClosed = false;
       let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
       let writeCommitted = false;
       try {
-        const marker = await redis.get(GUILD_NAME_REVIEW_MIGRATION_KEY);
+        const marker = await redis.get(GUILD_NAME_RESTORE_MIGRATION_KEY);
         if (marker === '1') {
           await txn.unwatch();
           transactionClosed = true;
@@ -946,96 +920,65 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         if (marker != null) {
           await txn.unwatch();
           transactionClosed = true;
-          throw new Error('Guild name review migration marker is corrupted; refusing to rerun it.');
+          throw new Error('Guild custom-name restore marker is corrupted; refusing to rerun it.');
         }
 
         const storedRaw = await redis.get(GUILDS_KEY);
         const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
         const guilds = parseGuildListRaw(decodedRaw);
-        const liveGuildIds = new Set(guilds.map(guild => guild.id));
-        const requests = (await readGuildNameRequests()).filter(request => liveGuildIds.has(request.guildId));
-        const pendingByGuild = new Set(requests.map(request => request.guildId));
-        const usedNames = new Set<string>();
-        const usedTags = new Set<string>();
-        // Existing pending requests must also reserve their names while legacy
-        // fallback names are allocated, or migration could create an approval collision.
-        for (const request of requests) usedNames.add(request.requestedName.toLowerCase());
-
-        // Preserve names already explicitly approved by this system. Every guild
-        // without a recorded decision is legacy UGC and must enter the review queue,
-        // even when its old name happens to match the curated three-part pattern.
-        for (const guild of guilds) {
-          const status = guild.nameStatus;
-          if (status === 'approved') {
-            usedNames.add(guild.name.toLowerCase());
-            if (guild.tag) usedTags.add(guild.tag.toUpperCase());
-          } else if ((status === 'pending' || status === 'rejected') && isApprovedGuildName(guild.name)) {
-            usedNames.add(guild.name.toLowerCase());
-            usedTags.add(guildTagForName(guild.name));
-          } else if (status == null) {
-            const oldName = normalizeGuildName(guild.name);
-            if (oldName) usedNames.add(oldName.toLowerCase());
+        const requestRaw = await redis.get(GUILD_NAME_REQUESTS_KEY);
+        const decodedRequests = parseStoredJson<unknown>(requestRaw);
+        const requestedNameByGuild = new Map<string, string>();
+        if (Array.isArray(decodedRequests)) {
+          for (const request of decodedRequests) {
+            if (!request || typeof request !== 'object' || Array.isArray(request)) continue;
+            const item = request as { guildId?: unknown; requestedName?: unknown };
+            if (typeof item.guildId !== 'string') continue;
+            const requestedName = normalizeGuildName(item.requestedName);
+            if (requestedName.length >= 3) requestedNameByGuild.set(item.guildId, requestedName);
           }
         }
 
-        const now = Date.now();
+        const restoringGuildIds = new Set(requestedNameByGuild.keys());
+        const usedNames = new Set<string>(
+          guilds
+            .filter(guild => !restoringGuildIds.has(guild.id))
+            .map(guild => normalizeGuildName(guild.name).toLowerCase())
+            .filter(Boolean),
+        );
         for (const guild of guilds) {
-          const originalName = guild.name;
-          const cleanOriginalName = normalizeGuildName(originalName);
-          const hasExistingRequest = pendingByGuild.has(guild.id);
-
-          const hasRecordedDecision = guild.nameStatus === 'approved' ||
-            guild.nameStatus === 'pending' || guild.nameStatus === 'rejected';
-          if (guild.nameStatus === 'approved') {
-            // This is a name already approved through the new workflow.
-            continue;
-          }
-          if ((guild.nameStatus === 'pending' || guild.nameStatus === 'rejected') &&
-              isApprovedGuildName(originalName)) {
-            // Previously generated fallback names are already safe to display.
-            guild.tag = guildTagForName(originalName);
-            // A pending fallback with no surviving private request cannot be reviewed.
-            // Mark it resolved rather than leaving it stranded in a permanently pending state.
-            if (guild.nameStatus === 'pending' && !hasExistingRequest) guild.nameStatus = 'rejected';
-            continue;
-          }
-
-          const fallback = uniqueGuildFallbackName(guild.id, usedNames, usedTags);
-          guild.name = fallback.name;
-          guild.tag = fallback.tag;
-          if (!hasRecordedDecision) {
-            guild.nameStatus = cleanOriginalName.length >= 3 || hasExistingRequest ? 'pending' : 'approved';
-          } else if (guild.nameStatus === 'pending') {
-            guild.nameStatus = 'pending';
+          const requestedName = requestedNameByGuild.get(guild.id);
+          if (requestedName && !usedNames.has(requestedName.toLowerCase())) {
+            guild.name = requestedName;
+            usedNames.add(requestedName.toLowerCase());
           } else {
-            guild.nameStatus = 'rejected';
+            const safeExistingName = normalizeGuildName(guild.name);
+            if (safeExistingName) {
+              guild.name = safeExistingName;
+              usedNames.add(safeExistingName.toLowerCase());
+            }
           }
-          usedNames.add(fallback.name.toLowerCase());
-          usedTags.add(fallback.tag);
-
-          if (cleanOriginalName.length >= 3 && !hasExistingRequest &&
-              (!hasRecordedDecision || guild.nameStatus === 'pending')) {
-            const owner = guild.members.find(member => member.role === 'owner') ?? guild.members[0];
-            requests.push({
-              requestId: secureSocialToken('guild-name'),
-              guildId: guild.id,
-              requestedName: cleanOriginalName,
-              submittedBy: owner?.username ?? 'unknown',
-              submittedByUserId: owner?.userId ?? '',
-              submittedAt: now,
-            });
-          }
+          delete guild.nameStatus;
         }
 
         normalizeGuilds(guilds);
-        const pendingGuildIds = new Set(guilds.filter(guild => guild.nameStatus === 'pending').map(guild => guild.id));
-        const activeRequests = requests.filter(request => pendingGuildIds.has(request.guildId));
-        writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
+        const flairNames: Record<string, string> = {};
+        for (const guild of guilds) {
+          const guildName = normalizeGuildName(guild.name);
+          if (!guildName) continue;
+          for (const member of guild.members) {
+            const memberId = String(member.userId ?? '').trim();
+            if (memberId) flairNames[memberId] = guildName;
+          }
+        }
 
+        writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
         await txn.multi();
         await txn.set(GUILDS_KEY, writePlan.storedValue);
-        await txn.set(GUILD_NAME_REQUESTS_KEY, JSON.stringify(activeRequests));
-        await txn.set(GUILD_NAME_REVIEW_MIGRATION_KEY, '1');
+        await txn.set(GUILD_NAME_REQUESTS_KEY, '[]');
+        await txn.del(GUILD_FLAIR_NAMES_KEY);
+        if (Object.keys(flairNames).length > 0) await txn.hSet(GUILD_FLAIR_NAMES_KEY, flairNames);
+        await txn.set(GUILD_NAME_RESTORE_MIGRATION_KEY, '1');
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) {
@@ -1048,45 +991,19 @@ async function applyGuildNameReviewMigration(): Promise<void> {
         if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
       }
     }
-    throw new Error('Guild name review migration changed while applying an update. Please retry.');
+    throw new Error('Guild custom-name restore migration changed while applying an update. Please retry.');
   });
 }
 
-type StoredGuildNameRequest = GuildNameRequest;
-
-async function readGuildNameRequests(): Promise<StoredGuildNameRequest[]> {
-  const raw = await redis.get(GUILD_NAME_REQUESTS_KEY);
-  if (raw == null) return [];
-  const parsed = parseStoredJson<unknown>(raw);
-  if (!Array.isArray(parsed)) throw new Error('Guild name request queue is corrupted; refusing to overwrite it.');
-  return parsed.filter((item): item is StoredGuildNameRequest =>
-    !!item && typeof item === 'object' && !Array.isArray(item) &&
-    typeof (item as any).requestId === 'string' &&
-    typeof (item as any).guildId === 'string' &&
-    typeof (item as any).requestedName === 'string' &&
-    typeof (item as any).submittedBy === 'string' &&
-    typeof (item as any).submittedByUserId === 'string' &&
-    Number.isSafeInteger((item as any).submittedAt),
-  );
-}
-
-function requireGuildNameAdmin(): void {
-  if (!isAdminUsername(context.username)) throw new Error('Only the Infinity Orbs administrator can review guild names.');
-}
-
-type GuildMutationQueueWrites = {
-  setGuildNameRequests: (requests: StoredGuildNameRequest[]) => void;
-};
-
 async function updateGuilds<T>(
-  mutator: (guilds: Guild[], writes: GuildMutationQueueWrites) => Promise<T> | T,
+  mutator: (guilds: Guild[]) => Promise<T> | T,
 ): Promise<T> {
   await ensureGuildMigrations();
   return withGuildDataMutationLock(async () => {
     await ensureRedisStringKey(GUILDS_KEY, '[]');
 
     for (let attempt = 0; attempt < 8; attempt++) {
-      const txn = await redis.watch(GUILDS_KEY, GUILD_NAME_REQUESTS_KEY);
+      const txn = await redis.watch(GUILDS_KEY);
       let transactionClosed = false;
       let writePlan: Awaited<ReturnType<typeof createRedisLargeValueWritePlan>> | null = null;
       let writeCommitted = false;
@@ -1094,16 +1011,11 @@ async function updateGuilds<T>(
         const storedRaw = await redis.get(GUILDS_KEY);
         const decodedRaw = await readRedisLargeValue(GUILDS_KEY, storedRaw);
         const guilds: Guild[] = parseGuildList(decodedRaw);
-        let nextNameRequestsRaw: string | null = null;
-        const writes: GuildMutationQueueWrites = {
-          setGuildNameRequests: requests => { nextNameRequestsRaw = JSON.stringify(requests); },
-        };
-        const result = await mutator(guilds, writes);
+        const result = await mutator(guilds);
         writePlan = await createRedisLargeValueWritePlan(GUILDS_KEY, JSON.stringify(guilds));
 
         await txn.multi();
         await txn.set(GUILDS_KEY, writePlan.storedValue);
-        if (nextNameRequestsRaw !== null) await txn.set(GUILD_NAME_REQUESTS_KEY, nextNameRequestsRaw);
         const committed = await txn.exec();
         transactionClosed = true;
         if (committed !== null) {
@@ -1112,12 +1024,8 @@ async function updateGuilds<T>(
           return result;
         }
       } finally {
-        if (!transactionClosed) {
-          await txn.unwatch().catch(() => undefined);
-        }
-        if (writePlan && !writeCommitted) {
-          await discardRedisLargeValueWritePlan(writePlan);
-        }
+        if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+        if (writePlan && !writeCommitted) await discardRedisLargeValueWritePlan(writePlan);
       }
     }
     throw new Error('Guild data changed while processing the request. Please retry.');
@@ -1621,27 +1529,23 @@ export async function setGuildTrust(targetUsername: string, trusted: boolean) {
 }
 
 export async function kickGuildMember(targetUsername: string) {
-  const requested = String(targetUsername ?? '').trim().replace(/^u\//i, '').toLowerCase();
+  const requested = String(targetUsername ?? '').trim().replace(/^u\\//i, '').toLowerCase();
   if (!requested) throw new Error('Guild member username is required.');
 
-  return updateGuilds(guilds => {
+  const result = await updateGuilds(guilds => {
     const guild = currentGuild(guilds);
     if (!guild) throw new Error('You are not in a guild.');
 
     const actor = guild.members.find(member => memberMatches(member));
     if (!actor) throw new Error('Guild membership could not be verified.');
-
     const target = guild.members.find(member => member.username.toLowerCase() === requested);
     if (!target) throw new Error('Guild member not found.');
     if (target.username === actor.username || (target.userId && target.userId === actor.userId)) {
       throw new Error('You cannot kick yourself.');
     }
     if (target.role === 'owner') throw new Error('The guild owner cannot be kicked.');
-
     if (actor.role !== 'owner') {
-      if (!isTrustedMember(guild, actor)) {
-        throw new Error('Only trusted members can kick Guild members.');
-      }
+      if (!isTrustedMember(guild, actor)) throw new Error('Only trusted members can kick Guild members.');
       if (target.role === 'officer' || target.trusted === true) {
         throw new Error('Trusted members can only kick non-trusted members.');
       }
@@ -1650,89 +1554,49 @@ export async function kickGuildMember(targetUsername: string) {
     guild.members = guild.members.filter(member =>
       !(member.username === target.username || (member.userId && target.userId && member.userId === target.userId)),
     );
-
-
-    return { success: true, username: target.username };
+    return { username: target.username, userId: target.userId ?? '' };
   });
+
+  if (result.userId) {
+    await redis.hDel(GUILD_FLAIR_NAMES_KEY, result.userId);
+    await syncPlayerRarityFlair(result.userId, result.username);
+  }
+  return { success: true, username: result.username };
 }
 
 
-export async function createGuild(name: string, tag: string, requestedName?: string) {
-  const cleanFallbackName = typeof name === 'string' ? name.trim() : '';
-  const cleanTag = typeof tag === 'string' ? tag.trim().toUpperCase() : '';
-  if (!isApprovedGuildName(cleanFallbackName) || cleanTag !== guildTagForName(cleanFallbackName)) {
-    throw new Error('Choose a temporary guild name from the available three-part options.');
-  }
-  if (!isGuildTagAllowed(cleanTag)) {
-    throw new Error('That Guild tag is blocked. Choose another combination.');
-  }
-
-  const requestedNameCandidate = normalizeGuildName(requestedName);
-  const cleanRequestedName = requestedNameCandidate.toLowerCase() === cleanFallbackName.toLowerCase()
-    ? ''
-    : requestedNameCandidate;
-  if (cleanRequestedName && (cleanRequestedName.length < 3 || cleanRequestedName.length > 32)) {
-    throw new Error('Custom guild names must be 3–32 characters.');
+export async function createGuild(name: string, tag: string) {
+  const cleanName = normalizeGuildName(name);
+  const cleanTag = typeof tag === 'string'
+    ? tag.trim().replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase()
+    : '';
+  if (cleanName.length < 3 || cleanTag.length < 2) {
+    throw new Error('Guild name must be 3+ characters and tag must be 2–5 letters or numbers.');
   }
 
-  return updateGuilds(async (guilds, writes) => {
+  const guild = await updateGuilds(guilds => {
     const existingGuild = currentGuild(guilds);
     const adminGuildOverride = isAdminUsername(context.username);
-    let deletedGuildId: string | null = null;
-    if (existingGuild && !adminGuildOverride) {
-      throw new Error('Leave your current guild first.');
-    }
+    if (existingGuild && !adminGuildOverride) throw new Error('Leave your current guild first.');
     if (existingGuild && adminGuildOverride) {
       const departingAdmin = existingGuild.members.find(member => memberMatches(member));
       existingGuild.members = existingGuild.members.filter(member => !memberMatches(member));
       if (departingAdmin?.role === 'owner') promoteGuildOwnerIfNeeded(existingGuild.members);
       if (existingGuild.members.length === 0) {
         const index = guilds.indexOf(existingGuild);
-        if (index >= 0) {
-          deletedGuildId = existingGuild.id;
-          guilds.splice(index, 1);
-        }
+        if (index >= 0) guilds.splice(index, 1);
       }
+    }
+
+    if (guilds.some(g => g.name.toLowerCase() === cleanName.toLowerCase() ||
+        String(g.tag ?? '').toUpperCase() === cleanTag)) {
+      throw new Error('That guild name or tag is already taken.');
     }
 
     const now = Date.now();
-    const id = `${now}-${createSecureId()}`;
-    const takenGuildTags = new Set(guilds.map(guild => String(guild.tag ?? '').trim().toUpperCase()));
-    if (guilds.some(g => g.name.toLowerCase() === cleanFallbackName.toLowerCase()) ||
-        !isGuildTagAllowed(cleanTag, takenGuildTags)) {
-      throw new Error('That temporary guild name or tag is already taken. Choose another combination.');
-    }
-
-    const storedPendingRequests = await readGuildNameRequests();
-    const pendingRequests = deletedGuildId
-      ? storedPendingRequests.filter(request => request.guildId !== deletedGuildId)
-      : storedPendingRequests;
-    if (pendingRequests.length !== storedPendingRequests.length) {
-      writes.setGuildNameRequests(pendingRequests);
-    }
-    if (pendingRequests.some(request => request.requestedName.toLowerCase() === cleanFallbackName.toLowerCase())) {
-      throw new Error('That temporary name is already requested by another guild. Choose a different combination.');
-    }
-    if (cleanRequestedName) {
-      if (guilds.some(g => g.name.toLowerCase() === cleanRequestedName.toLowerCase()) ||
-          pendingRequests.some(request => request.requestedName.toLowerCase() === cleanRequestedName.toLowerCase())) {
-        throw new Error('That guild name is already in use or awaiting review.');
-      }
-      pendingRequests.push({
-        requestId: secureSocialToken('guild-name'),
-        guildId: id,
-        requestedName: cleanRequestedName,
-        submittedBy: username(),
-        submittedByUserId: user(),
-        submittedAt: now,
-      });
-      writes.setGuildNameRequests(pendingRequests);
-    }
-
-    const guild: Guild = {
-      id,
-      name: cleanFallbackName,
-      nameStatus: cleanRequestedName ? 'pending' : 'approved',
+    const createdGuild: Guild = {
+      id: `${now}-${createSecureId()}`,
+      name: cleanName,
       tag: cleanTag,
       tokens: 0,
       createdAt: now,
@@ -1744,7 +1608,7 @@ export async function createGuild(name: string, tag: string, requestedName?: str
       chat: [{
         id: `msg-${now}`,
         username: 'System',
-        text: `Guild [${cleanTag}] ${cleanFallbackName} created.`,
+        text: `Guild [${cleanTag}] ${cleanName} created.`,
         timestamp: now,
         isSystem: true,
       }],
@@ -1761,82 +1625,27 @@ export async function createGuild(name: string, tag: string, requestedName?: str
         comboRank: 0,
       },
     };
-    guilds.push(guild);
-    return guild;
+    guilds.push(createdGuild);
+    return createdGuild;
   });
-}
 
-export async function getGuildNameRequests(): Promise<Array<GuildNameRequest & { fallbackName: string; tag: string }>> {
-  requireGuildNameAdmin();
-  // loadGuilds() completes the one-time migration that moves legacy names into
-  // this queue. Read the queue afterward so the first admin visit sees those entries.
-  const guilds = await loadGuilds();
-  const requests = await readGuildNameRequests();
-  const byId = new Map<string, Guild>(guilds.map(guild => [guild.id, guild] as const));
-  return requests
-    .filter(request => byId.get(request.guildId)?.nameStatus === 'pending')
-    .map(request => {
-      const guild = byId.get(request.guildId)!;
-      return { ...request, fallbackName: guild.name, tag: guild.tag };
-    })
-    .sort((a, b) => a.submittedAt - b.submittedAt);
-}
-
-export async function reviewGuildNameRequest(
-  requestId: string,
-  decision: 'approve' | 'reject',
-): Promise<{ success: true; decision: 'approve' | 'reject'; guildName: string }> {
-  requireGuildNameAdmin();
-  const cleanRequestId = String(requestId ?? '').trim();
-  if (!cleanRequestId || (decision !== 'approve' && decision !== 'reject')) {
-    throw new Error('Choose a valid guild name request decision.');
-  }
-
-  return updateGuilds(async (guilds, writes) => {
-    const requests = await readGuildNameRequests();
-    const index = requests.findIndex(request => request.requestId === cleanRequestId);
-    if (index < 0) throw new Error('That guild name request no longer exists.');
-    const request = requests[index]!;
-    const guild = guilds.find(item => item.id === request.guildId);
-    if (!guild || guild.nameStatus !== 'pending') {
-      const remainingRequests = requests.filter(item => item.guildId !== request.guildId);
-      writes.setGuildNameRequests(remainingRequests);
-      return { success: true, decision, guildName: '' };
-    }
-
-    if (decision === 'approve') {
-      const duplicate = guilds.some(item =>
-        item.id !== guild.id && item.name.toLowerCase() === request.requestedName.toLowerCase(),
-      );
-      if (duplicate) throw new Error('That name has since been taken by another guild.');
-      guild.name = request.requestedName;
-      guild.nameStatus = 'approved';
-    } else {
-      guild.nameStatus = 'rejected';
-    }
-
-    // A guild should have only one request, but clear every duplicate/legacy
-    // entry for this Guild so none can remain invisible and reserve a name.
-    const remainingRequests = requests.filter(item => item.guildId !== guild.id);
-    writes.setGuildNameRequests(remainingRequests);
-    return { success: true, decision, guildName: guild.name };
-  });
+  await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
+  await syncCurrentPlayerRarityFlair();
+  return guild;
 }
 
 export async function joinGuild(guildId: string) {
-  return updateGuilds(guilds => {
-    if (currentGuild(guilds)) {
-      throw new Error('You are already in a guild.');
-    }
-    const guild = guilds.find(g => g.id === guildId);
-    if (!guild) throw new Error('Guild not found.');
-    const capacity = maxGuildMembers(guild);
-    if (guild.members.length >= capacity) {
-      throw new Error(`That guild is full (${guild.members.length}/${capacity}).`);
+  const guild = await updateGuilds(guilds => {
+    if (currentGuild(guilds)) throw new Error('You are already in a guild.');
+    const targetGuild = guilds.find(g => g.id === guildId);
+    if (!targetGuild) throw new Error('Guild not found.');
+    const capacity = maxGuildMembers(targetGuild);
+    if (targetGuild.members.length >= capacity) {
+      throw new Error(`That guild is full (${targetGuild.members.length}/${capacity}).`);
     }
 
     const now = Date.now();
-    guild.members.push({
+    targetGuild.members.push({
       username: username(),
       userId: user(),
       contribution: 0,
@@ -1844,31 +1653,29 @@ export async function joinGuild(guildId: string) {
       trusted: false,
       joinedAt: now,
     });
-    return guild;
+    return targetGuild;
   });
+
+  await redis.hSet(GUILD_FLAIR_NAMES_KEY, { [user()]: guild.name });
+  await syncCurrentPlayerRarityFlair();
+  return guild;
 }
 
 export async function leaveGuild() {
-  return updateGuilds(async (guilds, writes) => {
+  await updateGuilds(guilds => {
     const guildIndex = guilds.findIndex(g => g.members.some(m => memberMatches(m)));
     if (guildIndex === -1) throw new Error('You are not in a guild.');
     const guild = guilds[guildIndex];
     const oldMember = guild.members.find(m => memberMatches(m));
     guild.members = guild.members.filter(m => !memberMatches(m));
 
-    if (guild.members.length === 0) {
-      guilds.splice(guildIndex, 1);
-      const requests = await readGuildNameRequests();
-      const remainingRequests = requests.filter(request => request.guildId !== guild.id);
-      if (remainingRequests.length !== requests.length) {
-        writes.setGuildNameRequests(remainingRequests);
-      }
-    } else {
-      if (oldMember?.role === 'owner') promoteGuildOwnerIfNeeded(guild.members);
-    }
-
-    return { success: true };
+    if (guild.members.length === 0) guilds.splice(guildIndex, 1);
+    else if (oldMember?.role === 'owner') promoteGuildOwnerIfNeeded(guild.members);
   });
+
+  await redis.hDel(GUILD_FLAIR_NAMES_KEY, user());
+  await syncCurrentPlayerRarityFlair();
+  return { success: true };
 }
 
 export async function contribute(value: number, rollCount = 1, bestRarity?: number, rareOrbCount?: number) {
