@@ -1529,7 +1529,7 @@ export async function setGuildTrust(targetUsername: string, trusted: boolean) {
 }
 
 export async function kickGuildMember(targetUsername: string) {
-  const requested = String(targetUsername ?? '').trim().replace(/^u\\//i, '').toLowerCase();
+  const requested = String(targetUsername ?? '').trim().replace(/^u\//i, '').toLowerCase();
   if (!requested) throw new Error('Guild member username is required.');
 
   const result = await updateGuilds(guilds => {
