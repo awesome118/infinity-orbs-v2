@@ -3,64 +3,76 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  GUILD_NAME_FIRST_WORDS,
-  GUILD_NAME_SECOND_WORDS,
-  GUILD_NAME_NOUNS,
-  composeGuildName,
-  isApprovedGuildName,
-  guildTagForName,
-  isGuildTagAllowed,
-  getAvailableGuildNameOptions,
+  buildGuildUserFlair,
   normalizeGuildName,
   guildMemberMatchesIdentity,
   promoteGuildOwnerIfNeeded,
 } from '../src/shared/social.js';
 
-test('curated guild fallback names always contain three approved parts', () => {
-  const name = composeGuildName('Ashen', 'Astral', 'Alliance');
-  assert.equal(name, 'Ashen Astral Alliance');
-  assert.equal(isApprovedGuildName(name), true);
-  assert.equal(isApprovedGuildName('Ashen Astral My Own Name'), false);
-  assert.equal(composeGuildName('Unlisted', 'Astral', 'Alliance'), '');
-});
-
-test('every curated guild combination produces a unique three-letter tag', () => {
-  const tags = new Set<string>();
-  for (const first of GUILD_NAME_FIRST_WORDS) {
-    for (const second of GUILD_NAME_SECOND_WORDS) {
-      for (const noun of GUILD_NAME_NOUNS) {
-        const name = composeGuildName(first, second, noun);
-        const tag = guildTagForName(name);
-        assert.equal(isApprovedGuildName(name), true);
-        assert.match(tag, /^[A-Z]{3}$/);
-        assert.equal(tags.has(tag), false, 'duplicate tag for ' + name);
-        tags.add(tag);
-      }
-    }
-  }
-  assert.equal(tags.size, GUILD_NAME_FIRST_WORDS.length * GUILD_NAME_SECOND_WORDS.length * GUILD_NAME_NOUNS.length);
-});
-
-test('guild names with unapproved parts cannot generate public fallback tags', () => {
-  assert.equal(isApprovedGuildName('Player Chosen Words'), false);
-  assert.equal(guildTagForName('Player Chosen Words'), '');
-});
-
-test('guild-name normalization preserves letters while collapsing controls and whitespace', () => {
-  assert.equal(normalizeGuildName('  Ashen\tAstral   Alliance\u0007  '), 'Ashen Astral Alliance');
+test('guild names are normalized safely for the public directory and Reddit flair', () => {
+  assert.equal(normalizeGuildName('  Celestial\tKnights   '), 'Celestial Knights');
   assert.equal(normalizeGuildName('x'.repeat(40)).length, 32);
   assert.equal(normalizeGuildName(null), '');
 });
 
-test('guild identity never falls back to a stale username when a Reddit ID exists', () => {
+test('Reddit guild flair includes the custom guild name and each member’s highest orb tier', () => {
+  assert.equal(buildGuildUserFlair('Celestial Knights', 'Omega'), 'Celestial Knights - Omega');
+  assert.equal(buildGuildUserFlair('', 'Omega'), 'Omega');
+  assert.equal(buildGuildUserFlair('Celestial Knights', ''), 'Celestial Knights');
+  assert.ok(buildGuildUserFlair('x'.repeat(32), 'T'.repeat(40)).length <= 64);
+});
+
+test('guild creation accepts a custom name and unique 2–5 character tag without an approval request', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  const createStart = social.indexOf('export async function createGuild');
+  const joinStart = social.indexOf('export async function joinGuild', createStart);
+  const createGuild = social.slice(createStart, joinStart);
+  assert.match(createGuild, /const cleanName = normalizeGuildName\(name\)/);
+  assert.match(createGuild, /cleanName\.length < 3/);
+  assert.match(createGuild, /cleanTag\.length < 2/);
+  assert.match(createGuild, /name: cleanName/);
+  assert.doesNotMatch(createGuild, /requestedName|nameStatus|approval/i);
+});
+
+test('the one-time restore migration recovers pending custom names and clears legacy approval metadata', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  assert.match(social, /applyGuildCustomNameRestoreMigration/);
+  assert.match(social, /requestedNameByGuild\.get\(guild\.id\)/);
+  assert.match(social, /guild\.name = requestedName/);
+  assert.match(social, /delete guild\.nameStatus/);
+  assert.match(social, /GUILD_FLAIR_NAMES_KEY/);
+  assert.doesNotMatch(social, /applyGuildNameReviewMigration|reviewGuildNameRequest|getGuildNameRequests/);
+});
+
+test('creating, joining, leaving, and kicking update the affected player flair mapping', () => {
+  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
+  for (const functionName of ['createGuild', 'joinGuild', 'leaveGuild', 'kickGuildMember']) {
+    const start = social.indexOf(`export async function ${functionName}`);
+    assert.ok(start >= 0, `missing ${functionName}`);
+    const next = social.indexOf('\nexport async function ', start + 1);
+    const block = social.slice(start, next < 0 ? social.length : next);
+    assert.match(block, /GUILD_FLAIR_NAMES_KEY/);
+    assert.match(block, /syncCurrentPlayerRarityFlair|syncPlayerRarityFlair/);
+  }
+});
+
+test('guild names are added to the existing post-save Reddit rarity flair updater', () => {
+  const game = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
+  const start = game.indexOf('async function syncRarityFlair');
+  const end = game.indexOf('export async function syncCurrentPlayerRarityFlair', start);
+  const updater = game.slice(start, end);
+  assert.match(updater, /buildGuildUserFlair\(guildName, orbInfo\.tier\)/);
+  assert.match(updater, /reddit\.setUserFlair/);
+  assert.match(updater, /cached\?\.orbTier === orbInfo\.tier/);
+});
+
+test('guild member identity remains anchored to Reddit user ID and ownership transfers safely', () => {
   const member = { username: 'shadow_fen', userId: 't2_old' };
   assert.equal(guildMemberMatchesIdentity(member, 'shadow_fen', 't2_old'), true);
   assert.equal(guildMemberMatchesIdentity(member, 'shadow_fen', 't2_new'), false);
   assert.equal(guildMemberMatchesIdentity(member, 'shadow_fen'), false);
   assert.equal(guildMemberMatchesIdentity({ username: 'legacy_user' }, 'legacy_user', 't2_new'), true);
-});
 
-test('guild ownership moves to the highest-contribution member after owner departure', () => {
   const members: Array<{ username: string; contribution: number; role: 'owner' | 'officer' | 'member'; trusted?: boolean }> = [
     { username: 'one', contribution: 100, role: 'member' },
     { username: 'two', contribution: 500, role: 'officer', trusted: false },
@@ -72,79 +84,11 @@ test('guild ownership moves to the highest-contribution member after owner depar
   assert.equal(members.filter(member => member.role === 'owner').length, 1);
 });
 
-
-test('offensive Guild tags are blocked and the completing letter disappears from every selector', () => {
-  assert.equal(isGuildTagAllowed('KKK'), false);
-  assert.equal(isGuildTagAllowed('kkk'), false);
-  assert.equal(isGuildTagAllowed('AAA'), true);
-
-  // The same forbidden K must disappear regardless of which of the three
-  // name parts is still being chosen.
-  assert.equal(getAvailableGuildNameOptions('first', 'Kindled', 'Kingsfall', 'Keep').includes('Kindled'), false);
-  assert.equal(getAvailableGuildNameOptions('second', 'Kindled', 'Kingsfall', 'Keep').includes('Kingsfall'), false);
-  assert.equal(getAvailableGuildNameOptions('noun', 'Kindled', 'Kingsfall', 'Keep').includes('Keep'), false);
-});
-
-test('a Guild tag already in use is hidden from the last selector in every position', () => {
-  const takenTags = new Set(['aaa']);
-  assert.equal(getAvailableGuildNameOptions('first', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Ashen'), false);
-  assert.equal(getAvailableGuildNameOptions('second', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Astral'), false);
-  assert.equal(getAvailableGuildNameOptions('noun', 'Ashen', 'Astral', 'Alliance', takenTags).includes('Alliance'), false);
-  assert.equal(isGuildTagAllowed('AAA', takenTags), false);
-});
-
-test('guild custom names are only exposed through an admin-only approval queue', () => {
-  const social = readFileSync(resolve(process.cwd(), 'src/server/social.ts'), 'utf8');
-  const guildInfo = social.slice(social.indexOf('export async function guildInfo'), social.indexOf('export async function getPlayerGuildContext'));
-  const createGuild = social.slice(social.indexOf('export async function createGuild'), social.indexOf('export async function getGuildNameRequests'));
-  const review = social.slice(social.indexOf('export async function reviewGuildNameRequest'), social.indexOf('export async function joinGuild'));
-  const playerContext = social.slice(social.indexOf('export async function getPlayerGuildContext'), social.indexOf('export async function buyGuildPerk'));
-
-  assert.match(social, /async function applyGuildNameReviewMigration/);
-  assert.match(social, /await applyGuildNameReviewMigration\(\)/);
-  assert.match(social, /function requireGuildNameAdmin\(\)[\s\S]*?isAdminUsername\(context\.username\)/);
-  assert.match(createGuild, /if \(!isGuildTagAllowed\(cleanTag\)\)/);
-  assert.match(createGuild, /!isGuildTagAllowed\(cleanTag, takenGuildTags\)/);
-  assert.match(social, /isGuildTagAllowed\(tag, usedTags\)/);
-  assert.match(createGuild, /name: cleanFallbackName/);
-  assert.match(createGuild, /nameStatus: cleanRequestedName \? 'pending' : 'approved'/);
-  const publicGuildRecord = createGuild.match(/const guild: Guild = \{([\s\S]*?)\n    \};/);
-  assert.equal(publicGuildRecord?.[1]?.includes('requestedName'), false);
-  assert.match(guildInfo, /\.map\(guild => \(\{/);
-  assert.doesNotMatch(guildInfo, /requestedName/);
-  assert.match(review, /guild\.name = request\.requestedName/);
-  assert.match(review, /guild\.nameStatus = 'approved'/);
-  const migration = social.slice(social.indexOf('async function applyGuildNameReviewMigration'), social.indexOf('type StoredGuildNameRequest'));
-  assert.match(migration, /const hasRecordedDecision = guild\.nameStatus === 'approved'/);
-  assert.match(migration, /if \(guild\.nameStatus === 'approved'\)/);
-  assert.doesNotMatch(migration, /if \(isApprovedGuildName\(originalName\)\) \{/);
-  assert.match(migration, /activeRequests = requests\.filter\(request => pendingGuildIds\.has\(request\.guildId\)\)/);
-  assert.match(migration, /for \(const request of requests\) usedNames\.add\(request\.requestedName\.toLowerCase\(\)\)/);
-  assert.match(migration, /const oldName = normalizeGuildName\(guild\.name\)/);
-  assert.match(migration, /const cleanOriginalName = normalizeGuildName\(originalName\)/);
-  assert.match(migration, /guild\.nameStatus === 'pending' && !hasExistingRequest\) guild\.nameStatus = 'rejected'/);
-  assert.match(migration, /!hasRecordedDecision \|\| guild\.nameStatus === 'pending'/);
-  const leave = social.slice(social.indexOf('export async function leaveGuild'), social.indexOf('export async function contribute'));
-  assert.match(leave, /filter\(request => request\.guildId !== guild\.id\)/);
-  assert.match(createGuild, /filter\(request => request\.guildId !== deletedGuildId\)/);
-  assert.match(createGuild, /const departingAdmin = existingGuild\.members\.find\(member => memberMatches\(member\)\)/);
-  assert.match(createGuild, /departingAdmin\?\.role === 'owner'\) promoteGuildOwnerIfNeeded\(existingGuild\.members\)/);
-  assert.match(createGuild, /requestedNameCandidate\.toLowerCase\(\) === cleanFallbackName\.toLowerCase\(\)/);
-  assert.match(playerContext, /guildMemberMatchesIdentity\(m, uname, uid\)/);
-  assert.equal((playerContext.match(/guildMemberMatchesIdentity\(m, uname, uid\)/g) ?? []).length, 3);
-  assert.match(createGuild, /pendingRequests\.some\(request => request\.requestedName\.toLowerCase\(\) === cleanFallbackName\.toLowerCase\(\)\)/);
-  assert.match(review, /filter\(item => item\.guildId !== guild\.id\)/);
-  const queueReader = social.slice(social.indexOf('export async function getGuildNameRequests'), social.indexOf('export async function reviewGuildNameRequest'));
-  assert.ok(queueReader.indexOf('await loadGuilds()') < queueReader.indexOf('await readGuildNameRequests()'));
-  assert.doesNotMatch(queueReader, /Promise\.all/);
-
+test('guild creation UI restores the original custom name and tag inputs', () => {
   const ui = readFileSync(resolve(process.cwd(), 'src/client/components/GuildsAndSocial.tsx'), 'utf8');
-  assert.match(ui, /getAvailableGuildNameOptions\('first'/);
-  assert.match(ui, /getAvailableGuildNameOptions\('second'/);
-  assert.match(ui, /getAvailableGuildNameOptions\('noun'/);
-  assert.match(ui, /disabled=\{busy \|\| creatingGuild \|\| !createTagAvailable\}/);
-  assert.match(ui, /await refreshGuildNameRequests\(\)/);
-  assert.match(ui, /requestedNameCandidate\.toLowerCase\(\) === name\.toLowerCase\(\)/);
-  const main = readFileSync(resolve(process.cwd(), 'src/client/main.tsx'), 'utf8');
-  assert.match(main, /effectiveRequestedName = requestedNameCandidate\.toLowerCase\(\) === name\.toLowerCase\(\)/);
+  assert.match(ui, /Guild Name/);
+  assert.match(ui, /Guild Tag/);
+  assert.match(ui, /value=\{createName\}/);
+  assert.match(ui, /value=\{createTag\}/);
+  assert.doesNotMatch(ui, /Guild Name Approval|Request a Custom Name|Temporary Public Name/);
 });
