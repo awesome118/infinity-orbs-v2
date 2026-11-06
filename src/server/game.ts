@@ -12,7 +12,7 @@ const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
-import { countGuildTaskRareOrbs } from '../shared/social.js';
+import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
 import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
 import {
   createInitialState,
@@ -557,6 +557,7 @@ const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
 const OFFLINE_FULL_NOTIFICATION_MARKER_TTL_MS = 7 * 24 * 60 * 60_000;
 const PLAYER_FLAIR_KEY_PREFIX = 'io:player-flair:';
+const GUILD_FLAIR_NAMES_KEY = 'io:guild-flair-names:v1';
 const ROLL_TICKET_KEY_PREFIX = 'io:roll-ticket:';
 const ROLL_TICKET_COUNT = 50;
 const ROLL_TICKET_TTL_MS = 10 * 60_000;
@@ -3492,14 +3493,18 @@ function flairTextColorForBackground(backgroundColor: string): 'dark' | 'light' 
   return lightContrast >= darkContrast ? 'light' : 'dark';
 }
 
-async function syncRarityFlair(s: PlayerState): Promise<void> {
-  const userId = currentUserId();
+async function syncRarityFlair(
+  s: PlayerState,
+  targetUserId = currentUserId(),
+  targetUsername?: string,
+  forceRefresh = false,
+): Promise<void> {
+  const userId = String(targetUserId ?? '').trim();
   const subredditName = String(context.subredditName ?? '').trim();
   if (!userId || !subredditName) return;
 
-  // Saves schedule this as best-effort post-commit work. Serialize the external
-  // flair side effect separately from the player lock, then base every write on
-  // the newest durable state rather than whichever save happened to finish last.
+  // Keep Reddit flair updates outside the authoritative player-save transaction.
+  // The separate lock and post-write recheck prevent stale saves overwriting newer flair.
   await withPlayerMutationLockFor('flair:' + userId, async () => {
     const flairKey = PLAYER_FLAIR_KEY_PREFIX + userId;
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -3507,35 +3512,57 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
       const raw = await readStoredPlayerSave(userId, storedRaw);
       const latest = raw == null ? null : parsePlayerStateValue(raw);
       const source = latest ?? s;
-      const username = String(context.username ?? source.username ?? '').trim();
+      const username = String(targetUsername ?? (
+        userId === currentUserId() ? context.username : source.username
+      ) ?? '').trim();
       if (!username) return;
 
       const highestRarity = Math.max(2, Math.floor(Number(source.highestRarity ?? 2) || 2));
       const orbInfo = getOrbInfo(highestRarity, source.highestRarityIsInfinity === true);
-      const flairText = orbInfo.tier;
+      const current = await redis.get(flairKey);
+      let cached: { orbTier?: string; guildName?: string } | null = null;
+      if (typeof current === 'string') {
+        try { cached = JSON.parse(current) as { orbTier?: string; guildName?: string }; } catch { cached = null; }
+      }
+
+      // Normal saves only need to revisit Reddit when the best tier changes.
+      // Guild create/join/leave/kick explicitly force a membership refresh.
+      if (!forceRefresh && cached?.orbTier === orbInfo.tier && typeof cached.guildName === 'string') return;
+
+      const guildName = String(await redis.hGet(GUILD_FLAIR_NAMES_KEY, userId) ?? '');
+      const flairText = buildGuildUserFlair(guildName, orbInfo.tier);
       const backgroundColor = orbInfo.color;
       const textColor = flairTextColorForBackground(backgroundColor);
-      const flairState = JSON.stringify({ text: flairText, backgroundColor, textColor });
-      const current = await redis.get(flairKey);
-      if (String(current ?? '') === flairState) return;
-
-      await reddit.setUserFlair({
-        subredditName,
-        username,
+      const flairState = JSON.stringify({
         text: flairText,
+        orbTier: orbInfo.tier,
+        guildName,
         backgroundColor,
         textColor,
       });
+      if (String(current ?? '') !== flairState) {
+        await reddit.setUserFlair({
+          subredditName,
+          username,
+          text: flairText,
+          backgroundColor,
+          textColor,
+        });
+      }
 
-      // A newer save may have committed while Reddit was processing the update.
-      // Re-read before caching; if it changed, retry under the same flair lock.
+      // A newer player save or guild membership change may have committed while
+      // Reddit was processing the update. Recheck both sources before caching.
       const afterStoredRaw = await redis.get(playerKeyFor(userId));
       const afterRaw = await readStoredPlayerSave(userId, afterStoredRaw);
       const after = afterRaw == null ? null : parsePlayerStateValue(afterRaw);
       const afterRarity = Math.max(2, Math.floor(Number(after?.highestRarity ?? source.highestRarity ?? 2) || 2));
       const afterOrb = getOrbInfo(afterRarity, (after?.highestRarityIsInfinity ?? source.highestRarityIsInfinity) === true);
+      const afterGuildName = String(await redis.hGet(GUILD_FLAIR_NAMES_KEY, userId) ?? '');
+      const afterText = buildGuildUserFlair(afterGuildName, afterOrb.tier);
       const afterState = JSON.stringify({
-        text: afterOrb.tier,
+        text: afterText,
+        orbTier: afterOrb.tier,
+        guildName: afterGuildName,
         backgroundColor: afterOrb.color,
         textColor: flairTextColorForBackground(afterOrb.color),
       });
@@ -3545,11 +3572,27 @@ async function syncRarityFlair(s: PlayerState): Promise<void> {
       }
     }
 
-    // Do not cache a stale result. A later committed save will retry the sync.
-    console.error('[Rarity Flair] Player rarity kept changing during flair sync; leaving cache untouched.');
+    console.error('[Rarity Flair] Player rarity or guild membership kept changing during flair sync; leaving cache untouched.');
   }).catch(error => {
     console.error('[Rarity Flair] Failed to update user flair:', error);
   });
+}
+
+/** Force a flair refresh after the current player changes guild membership. */
+export async function syncCurrentPlayerRarityFlair(): Promise<void> {
+  const state = await loadRaw();
+  await syncRarityFlair(state, currentUserId(), String(context.username ?? state.username ?? ''), true);
+}
+
+/** Force a flair refresh for a player removed by another guild member. */
+export async function syncPlayerRarityFlair(userId: string, username: string): Promise<void> {
+  const cleanUserId = String(userId ?? '').trim();
+  if (!cleanUserId) return;
+  const storedRaw = await redis.get(playerKeyFor(cleanUserId));
+  const raw = await readStoredPlayerSave(cleanUserId, storedRaw);
+  if (raw == null) return;
+  const state = parsePlayerStateValue(raw);
+  await syncRarityFlair(state, cleanUserId, String(username ?? state.username ?? '').trim(), true);
 }
 
 export async function getGlobalBoosterAnnouncement(): Promise<{
