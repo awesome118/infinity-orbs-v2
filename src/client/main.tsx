@@ -48,7 +48,6 @@ import type {
   WorldEvent,
   GuildPerkId,
 } from '../shared/social.js';
-import { normalizeGuildName } from '../shared/social.js';
 import {
   formatRarity,
   formatNumber,
@@ -3301,21 +3300,15 @@ function App() {
 
 
   // Guilds
-  const handleCreateGuild = async (name: string, tag: string, requestedName?: string): Promise<boolean> => {
-    const requestedNameCandidate = normalizeGuildName(requestedName);
-    const effectiveRequestedName = requestedNameCandidate.toLowerCase() === name.toLowerCase()
-      ? ''
-      : requestedNameCandidate;
+  const handleCreateGuild = async (name: string, tag: string): Promise<boolean> => {
     setBusy(true);
     try {
       await getJson('/api/guilds/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, tag, requestedName: effectiveRequestedName }),
+        body: JSON.stringify({ name, tag }),
       });
-      showToast(effectiveRequestedName
-        ? `Guild [${tag}] ${name} founded. Custom name sent for approval.`
-        : `Guild [${tag}] ${name} founded!`, 'success');
+      showToast(`Guild [${tag}] ${name} founded!`, 'success');
       void refreshGuildData().catch(() => undefined);
       return true;
     } catch (e: any) {
