@@ -64,6 +64,8 @@ test('guild names are added to the existing post-save Reddit rarity flair update
   assert.match(updater, /buildGuildUserFlair\(guildName, orbInfo\.tier\)/);
   assert.match(updater, /reddit\.setUserFlair/);
   assert.match(updater, /cached\?\.orbTier === orbInfo\.tier/);
+  const getMe = game.slice(game.indexOf('export async function getMe'), game.indexOf('export async function checkOffline'));
+  assert.match(getMe, /void syncRarityFlair\(s\)/);
 });
 
 test('guild member identity remains anchored to Reddit user ID and ownership transfers safely', () => {
