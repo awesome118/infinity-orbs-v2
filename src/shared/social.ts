@@ -113,6 +113,20 @@ export function normalizeGuildName(value: unknown): string {
     .trim();
 }
 
+/** Format the Reddit user flair as a guild identity followed by the member's best orb tier. */
+export function buildGuildUserFlair(guildName: unknown, highestOrbTier: unknown): string {
+  const name = normalizeGuildName(guildName);
+  const tier = typeof highestOrbTier === 'string'
+    ? highestOrbTier.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+    : '';
+  if (!name) return tier.slice(0, 64);
+  if (!tier) return name.slice(0, 64);
+  const suffix = ` - ${tier}`;
+  const availableNameLength = Math.max(0, 64 - suffix.length);
+  const safeName = name.slice(0, availableNameLength).trimEnd();
+  return safeName ? safeName + suffix : tier.slice(0, 64);
+}
+
 /** Normalize a non-negative Collection Value amount without a safe-integer ceiling. */
 export function normalizeGuildValueProgress(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
