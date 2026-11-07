@@ -1,6 +1,8 @@
 export type CombatPage = 'fight' | 'dungeons' | 'gear' | 'forge' | 'skills' | 'arena' | 'runes';
-export type CombatIntent = 'strike' | 'heavy' | 'guard' | 'mend';
-export type CombatCommand = CombatIntent | 'auto' | 'ability';
+export const COMBAT_INTENTS = ['strike', 'heavy', 'guard', 'mend'] as const;
+export type CombatIntent = (typeof COMBAT_INTENTS)[number];
+export const COMBAT_COMMANDS = ['auto', ...COMBAT_INTENTS, 'ability'] as const;
+export type CombatCommand = (typeof COMBAT_COMMANDS)[number];
 export type CombatAbilityType = 'strike' | 'flurry' | 'mend' | 'focus' | 'bounty';
 export const COMBAT_ABILITY_SLOTS = 3;
 export const SKILL_GACHA_RANK_MAX = 30;
@@ -8,16 +10,19 @@ export const SKILL_GACHA_RANK_MAX = 30;
 export const COMBAT_BEAT_INTERVAL_MS = 30_000;
 /** Maximum supported PvE depth; reaching it ends the descent instead of farming a capped room. */
 export const COMBAT_MAX_DEPTH = 50_000;
-export type CombatTactic = 'balanced' | 'aggressive' | 'defensive' | 'recovery';
-export type CombatDungeonId = 'undercrypt' | 'cinder-vault' | 'glass-labyrinth';
+export const COMBAT_TACTICS = ['balanced', 'aggressive', 'defensive', 'recovery'] as const;
+export type CombatTactic = (typeof COMBAT_TACTICS)[number];
+export const COMBAT_DUNGEONS = ['undercrypt', 'cinder-vault', 'glass-labyrinth'] as const;
+export type CombatDungeonId = (typeof COMBAT_DUNGEONS)[number];
 export interface CombatAutoScrapSettings { enabled: boolean; maxQuality: number; }
 export const DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS: CombatAutoScrapSettings = { enabled:false, maxQuality:20 };
 export type CombatRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Mythic';
 
 
-export type CombatRuneRarity = 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Mythic' | 'Cosmic' | 'Astral' | 'Celestial' | 'Transcendent';
-export type CombatRuneStat = 'luckPct' | 'coinGainPct' | 'shardChancePct' | 'xpGainPct';
-export const COMBAT_RUNE_RARITIES: CombatRuneRarity[] = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic', 'Astral', 'Celestial', 'Transcendent'];
+export const COMBAT_RUNE_RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Mythic', 'Cosmic', 'Astral', 'Celestial', 'Transcendent'] as const;
+export type CombatRuneRarity = (typeof COMBAT_RUNE_RARITIES)[number];
+export const COMBAT_RUNE_STATS = ['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct'] as const;
+export type CombatRuneStat = (typeof COMBAT_RUNE_STATS)[number];
 /** Cumulative cryptographic drop thresholds; each new tier is exactly 10× rarer than the previous one. */
 export const COMBAT_RUNE_RARITY_ROLL_THRESHOLDS: Record<CombatRuneRarity, number> = {
   Common: 1,
@@ -66,24 +71,26 @@ export function shouldAutoSacrificeRune(
   return combatRuneRarityAtOrBelow(rune.rarity, maxRarity) &&
     !(preserveSpecialEffects && Boolean(rune.majorAbility));
 }
-export type CombatRuneMajorAbilityId =
-  | 'fateweaver'
-  | 'midas-engine'
-  | 'memory-well'
-  | 'echo-chamber'
-  | 'paradox-engine'
-  | 'event-horizon'
-  | 'shard-constellation'
-  | 'temporal-loop'
-  | 'prismatic-fork'
-  | 'critical-convergence'
-  | 'rarity-ladder'
-  | 'stellar-dividend'
-  | 'shard-jackpot'
-  | 'milestone-engine'
-  | 'shard-tithe'
-  | 'discovery-oracle'
-  | 'dry-streak-refinery';
+export const COMBAT_RUNE_MAJOR_ABILITY_IDS = [
+  'fateweaver',
+  'midas-engine',
+  'memory-well',
+  'echo-chamber',
+  'paradox-engine',
+  'event-horizon',
+  'shard-constellation',
+  'temporal-loop',
+  'prismatic-fork',
+  'critical-convergence',
+  'rarity-ladder',
+  'stellar-dividend',
+  'shard-jackpot',
+  'milestone-engine',
+  'shard-tithe',
+  'discovery-oracle',
+  'dry-streak-refinery',
+] as const;
+export type CombatRuneMajorAbilityId = (typeof COMBAT_RUNE_MAJOR_ABILITY_IDS)[number];
 export interface CombatRuneMajorAbility {
   id: CombatRuneMajorAbilityId;
   name: string;
@@ -403,7 +410,7 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
   const bonuses: CombatRuneBonuses = { luckPct: 0, coinGainPct: 0, shardChancePct: 0, xpGainPct: 0 };
   const equipped = new Set((Array.isArray(equippedValue) ? equippedValue : []).filter((value): value is string => typeof value === 'string'));
   if (!equipped.size || !Array.isArray(runesValue)) return bonuses;
-  const validStats = new Set<CombatRuneStat>(['luckPct', 'coinGainPct', 'shardChancePct', 'xpGainPct']);
+  const validStats = new Set<CombatRuneStat>(COMBAT_RUNE_STATS);
   const safeAdd = (current: number, extra: number) => Math.min(Number.MAX_VALUE, current + Math.min(Number.MAX_VALUE, Math.max(0, extra)));
   for (const raw of runesValue) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
@@ -429,8 +436,10 @@ export function combatRuneBonuses(runesValue: unknown, equippedValue: unknown): 
 export type CombatSkillStat = 'damagePct' | 'speedFlat' | 'healthPct' | 'critChance' | 'coinBonus';
 export type CombatUpgradeId = 'edge-training' | 'vitality' | 'precision' | 'scavenger' | 'orb-resonance' | 'mark-magnet' | 'ward-training' | 'turn-timer';
 export type CombatUpgradeStat = 'damagePct' | 'healthPct' | 'speedFlat' | 'critChance' | 'markBonus' | 'orbFocusPct' | 'damageReduction' | 'beatIntervalMs';
-export type CombatTrait = 'bleed' | 'keen' | 'first-strike' | 'bulwark' | 'regeneration' | 'desperation';
-export type CombatGearSlot = 'weapon' | 'armor' | 'helmet' | 'gloves' | 'boots' | 'ring' | 'amulet';
+export const COMBAT_TRAITS = ['bleed', 'keen', 'first-strike', 'bulwark', 'regeneration', 'desperation'] as const;
+export type CombatTrait = (typeof COMBAT_TRAITS)[number];
+export const COMBAT_GEAR_SLOTS = ['weapon', 'armor', 'helmet', 'gloves', 'boots', 'ring', 'amulet'] as const;
+export type CombatGearSlot = (typeof COMBAT_GEAR_SLOTS)[number];
 export type CombatMajorAbility =
   | { id:'second-dawn'; name:string; trigger:'on-damage'; healPercent:number; description:string; }
   | { id:'chrono-surge'; name:string; trigger:'passive'; speedPercent:number; description:string; }
@@ -1127,7 +1136,7 @@ export function combatBossesBeatenByDepth(bestDepthValue: unknown, finalBossClea
 export function combatTotalBossesBeaten(value: unknown): number {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
   const state = value as Record<string, unknown>;
-  const dungeonIds: CombatDungeonId[] = ['undercrypt', 'cinder-vault', 'glass-labyrinth'];
+  const dungeonIds: readonly CombatDungeonId[] = COMBAT_DUNGEONS;
   const activeDungeon: CombatDungeonId = dungeonIds.includes(state.dungeonId as CombatDungeonId)
     ? state.dungeonId as CombatDungeonId
     : 'undercrypt';
@@ -1268,7 +1277,7 @@ export function addCombatGearToInventory(state: CombatState, item: CombatGear, m
     state.inventory = state.inventory.filter(existing => existing.id !== removedId);
   }
 
-  const equipmentSlots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+  const equipmentSlots:readonly CombatGearSlot[]=COMBAT_GEAR_SLOTS;
   for (const slot of equipmentSlots) {
     const activeId = state.equipment[slot];
     if (activeId && state.inventory.some(g => g.id === activeId && g.slot === slot)) continue;

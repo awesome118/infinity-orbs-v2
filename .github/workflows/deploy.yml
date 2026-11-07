@@ -116,7 +116,7 @@ jobs:
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/post-flair.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
-          node --import tsx --test tests/combat-runes.test.ts
+          node --import tsx --test tests/combat-runes.test.ts tests/combat-catalog-consistency.test.ts tests/combat-leaderboard-decode.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
           node --import tsx --test tests/redis-storage-retention.test.ts
           # Cover Guild combo timer persistence and weighted rare-Orb task progress.
@@ -136,6 +136,10 @@ jobs:
           node --import tsx --test tests/large-number-economy.test.ts
           # Validate upgrade-batch rejection/rollback telemetry and route ID parity.
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts tests/player-state-reconciliation.test.ts tests/upgrade-spam-ui.test.ts
+          # Reject fractional Altar offerings without limiting large whole-Coin values.
+          node --import tsx --test tests/altar-validation.test.ts
+          # Optional roll bonuses must not block rolling during transient Redis read failures.
+          node --import tsx --test tests/roll-optional-reads.test.ts
           # Guard the roll-ticket lock boundary, admin seed plumbing, and deterministic preview stream.
           node --import tsx --test tests/roll-ticket-seeds.test.ts
           # Guard admin Full Test fixtures against stale nav, force-roll, and leaderboard-cache assumptions.

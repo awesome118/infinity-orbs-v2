@@ -121,25 +121,37 @@ export function sampleBinomialCount(n: number, p: number, random: () => number):
   }
 
   const mean = count * probability;
-  const variance = mean * (1 - probability);
-  if (variance >= 1) {
-    const rawU1 = Number(random());
-    const rawU2 = Number(random());
-    const u1 = Number.isFinite(rawU1) ? Math.max(1e-12, Math.min(1 - Number.EPSILON, rawU1)) : 0.5;
-    const u2 = Number.isFinite(rawU2) ? Math.max(0, Math.min(1, rawU2)) : 0.5;
-    const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return Math.max(0, Math.min(count, Math.round(mean + Math.sqrt(variance) * gaussian)));
+  const expectedFailures = count - mean;
+  // A Gaussian is a poor fit when either side of the Binomial has only a
+  // handful of expected outcomes. Sample that rarer side by exact geometric
+  // gaps instead; this also keeps near-certain probabilities from looping once
+  // for every success in a very large group.
+  const complement = probability > 0.5;
+  const rareEventProbability = complement ? 1 - probability : probability;
+  const expectedRareEvents = Math.min(mean, expectedFailures);
+  if (expectedRareEvents <= 32) {
+    const logFailure = Math.log1p(-rareEventProbability);
+    let position = 0;
+    let rareEvents = 0;
+    while (position < count) {
+      const raw = Number(random());
+      const sample = Number.isFinite(raw)
+        ? Math.max(1e-12, Math.min(1 - Number.EPSILON, raw))
+        : 0.5;
+      const gap = Math.floor(Math.log(sample) / logFailure) + 1;
+      if (!Number.isSafeInteger(gap) || gap > count - position) break;
+      position += gap;
+      rareEvents += 1;
+    }
+    return complement ? count - rareEvents : rareEvents;
   }
 
-  // Geometric gaps are efficient for the very low Shard Proc probabilities.
-  const logFailure = Math.log1p(-probability);
-  let position = 0;
-  let successes = 0;
-  while (position <= count) {
-    const raw = Number(random());
-    const sample = Number.isFinite(raw) ? Math.max(1e-12, Math.min(1 - Number.EPSILON, raw)) : 0.5;
-    position += Math.floor(Math.log(sample) / logFailure) + 1;
-    if (position <= count) successes += 1;
-  }
-  return successes;
+  // Both outcomes are common enough for a normal approximation to be stable.
+  const variance = mean * (1 - probability);
+  const rawU1 = Number(random());
+  const rawU2 = Number(random());
+  const u1 = Number.isFinite(rawU1) ? Math.max(1e-12, Math.min(1 - Number.EPSILON, rawU1)) : 0.5;
+  const u2 = Number.isFinite(rawU2) ? Math.max(0, Math.min(1, rawU2)) : 0.5;
+  const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return Math.max(0, Math.min(count, Math.round(mean + Math.sqrt(variance) * gaussian)));
 }

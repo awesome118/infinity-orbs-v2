@@ -3,6 +3,7 @@ import { getPostFlairOptions } from './post-flair.js';
 import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
 import { createRedisLargeValueWritePlan, retireRedisLargeValue, discardRedisLargeValueWritePlan } from './redis-large-values.js';
+import { readRedisLargeValue as readRedisLargeValueForRolls } from './redis-large-values.js';
 import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey, groupCodexFields, normalizeCodexCollection } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
@@ -25,6 +26,9 @@ import {
   type QuestItem,
   type RollResponse,
   type UpgradeId,
+  UPGRADE_IDS,
+  BUY_ALL_UPGRADE_ORDER,
+  MAX_UPGRADE_PURCHASES_PER_REQUEST,
   type PrestigeUpgradeId,
   type Orb,
   AUTO_UNLOCK_COST,
@@ -41,6 +45,7 @@ import {
   TIME_ENERGY_MAX_MS,
   CELESTIAL_ALIGNMENT_MIN_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
+  CELESTIAL_ALIGNMENT_CHOICES,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
   type CelestialAlignmentChoice,
@@ -57,6 +62,7 @@ import {
   addCollectionValue,
   normalizeCoinAmount,
   addCoinAmount,
+  isValidAltarOfferingAmounts,
   offlineRollCap,
   getOrbInfo,
   formatRarity,
@@ -4461,7 +4467,13 @@ export async function applyRolls(
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
-    getGlobalBoosters(),
+    getGlobalBoosters().catch(error => {
+      // Global Boosters are shared bonuses, never a prerequisite for core rolling.
+      // Redis quota/availability issues should fall back to this player's last
+      // known snapshot (or an inactive snapshot for a new player).
+      console.error('[Global Boosters] Read failed; rolling with the last known/default state.', error);
+      return s.globalBoosters ?? createInitialGlobalBoosters(now);
+    }),
     getCommunityEvent().catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
       // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
@@ -4470,13 +4482,21 @@ export async function applyRolls(
       console.error('[Community Event] Read failed; rolling without the event bonus.', error);
       return null;
     }),
-    getFakeCcuBonus(),
-    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
-      // Combat progression is an optional cross-mode bonus. A transient failure
-      // to read it must never prevent a normal orb roll.
-      console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
-      return null;
+    getFakeCcuBonus().catch(error => {
+      // Fake CCU is an admin-only test offset. If its optional read fails,
+      // use real CCU rather than failing an ordinary player roll.
+      console.error('[Fake CCU] Read failed; rolling without the test offset.', error);
+      return 0;
     }),
+    redis.get('infinity-orbs:combat:' + spyUserId)
+      .then(storedValue => readRedisLargeValueForRolls('infinity-orbs:combat:' + spyUserId, storedValue))
+      .catch((error: unknown) => {
+        // Combat state is compressed/chunked independently of the player save.
+        // Decode it before parsing so large inventories retain Rune and boss
+        // bonuses; a missing/corrupt optional record still cannot block rolls.
+        console.error('[Undercrypt Resonance] Read/decode failed; rolling without the bonus.', error);
+        return null;
+      }),
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
@@ -6658,12 +6678,7 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
       throw new Error('Upgrade batch must contain 1 to 100 purchases.');
     }
-    const validIds: UpgradeId[] = [
-      'speed', 'multi', 'clusterRoll', 'auto', 'luck', 'coinBonus',
-      'shardChance', 'xpBonus', 'critChance', 'critPower', 'offlineRate', 'valueBonus',
-      'offlineFoundry', 'orbFingers', 'criticalDividend',
-    ];
-    if (!ids.every(id => validIds.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
+    if (!ids.every(id => UPGRADE_IDS.includes(id))) throw new Error('Upgrade batch contains an unknown upgrade.');
 
     const s = await settleOffline(await loadRaw());
     const purchased: Array<{ id: UpgradeId; cost: number; level: number }> = [];
@@ -6727,11 +6742,7 @@ export async function buyUpgradeBatch(ids: UpgradeId[]): Promise<{
 export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   const reserve = Math.max(0, Math.floor(Number.isFinite(reserveCoins) ? reserveCoins : 0));
   const spendableCoins = Math.max(0, s.coins - reserve);
-  const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
-    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
-  ];
+  const upgradeIds: readonly UpgradeId[] = BUY_ALL_UPGRADE_ORDER;
   let bestId: UpgradeId | null = null;
   let lowestCost = Infinity;
 
@@ -6753,28 +6764,26 @@ export function autoBuyCheapest(s: PlayerState, reserveCoins = 0): boolean {
   return false;
 }
 
-export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent: number; upgradedCount: number }> {
+export async function buyAllUpgrades(): Promise<{
+  state: PlayerState;
+  totalSpent: number;
+  upgradedCount: number;
+  purchaseLimitReached: boolean;
+}> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  const upgradeIds: UpgradeId[] = [
-    'speed', 'multi', 'luck', 'coinBonus', 'auto',
-    'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
-    'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll'
-  ];
+  const upgradeIds: readonly UpgradeId[] = BUY_ALL_UPGRADE_ORDER;
 
   let totalSpent = 0;
   let upgradedCount = 0;
-  const MAX_PURCHASES_PER_REQUEST = 5_000;
-
   // Sweep one level across every affordable upgrade, then repeat until no upgrade
-  // can be bought. This makes the button genuinely "Upgrade All" rather than
-  // "buy the cheapest thing until the wallet is empty."
+  // can be bought or the shared safety limit is reached.
   let changed = true;
-  while (changed && upgradedCount < MAX_PURCHASES_PER_REQUEST) {
+  while (changed && upgradedCount < MAX_UPGRADE_PURCHASES_PER_REQUEST) {
     changed = false;
 
     for (const id of upgradeIds) {
-      if (upgradedCount >= MAX_PURCHASES_PER_REQUEST) break;
+      if (upgradedCount >= MAX_UPGRADE_PURCHASES_PER_REQUEST) break;
 
       const level = s.upgrades[id] ?? 0;
       if (s.level < upgradeUnlockLevel(id)) continue;
@@ -6796,7 +6805,14 @@ export async function buyAllUpgrades(): Promise<{ state: PlayerState; totalSpent
     await save(s);
   }
 
-  return { state: s, totalSpent, upgradedCount };
+  const purchaseLimitReached = upgradedCount >= MAX_UPGRADE_PURCHASES_PER_REQUEST &&
+    upgradeIds.some(id => {
+      if (id === 'auto' || s.level < upgradeUnlockLevel(id)) return false;
+      const nextCost = upgradeCost(id, s.upgrades[id] ?? 0);
+      return Number.isFinite(nextCost) && nextCost <= s.coins;
+    });
+
+  return { state: s, totalSpent, upgradedCount, purchaseLimitReached };
   });
 }
 
@@ -6959,6 +6975,9 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   altarBreakthroughChance: number;
   altarPity: number;
 }> {
+  if (!isValidAltarOfferingAmounts(coins, shards)) {
+    throw new Error('Altar offerings must be whole, non-negative amounts.');
+  }
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   const numCoins = normalizeCoinAmount(coins);
@@ -7000,8 +7019,13 @@ export async function sacrificeToAltar(coins: number, shards: number): Promise<{
   s.coins -= numCoins;
   if (numShards > 0) spendShards(s, numShards);
 
-  sacrifices.coinsSacrificed = (sacrifices.coinsSacrificed ?? 0) + numCoins;
-  sacrifices.shardsSacrificed = (sacrifices.shardsSacrificed ?? 0) + numShards;
+  // Lifetime counters use the same finite-number bounds as their wallets.
+  // Without saturation, two valid e308-scale offerings could serialize Infinity
+  // as null and erase the displayed lifetime Altar total.
+  sacrifices.coinsSacrificed = addCoinAmount(sacrifices.coinsSacrificed ?? 0, numCoins);
+  sacrifices.shardsSacrificed = roundShardAmount(
+    roundShardAmount(sacrifices.shardsSacrificed ?? 0) + numShards,
+  );
 
   // Coins now create a probabilistic Devotion Breakthrough. The offering
   // size raises the chance and failed attempts build pity. This roll only
@@ -7126,7 +7150,6 @@ export async function upgradeMasterySkill(skillId: MasterySkillId): Promise<Play
   });}
 
 const CELESTIAL_ALIGNMENT_CHOICE_STATS_KEY = 'io:celestial-alignment:choice-stats:v1';
-const CELESTIAL_ALIGNMENT_CHOICES = ['starseeker', 'goldenOrbit', 'clockwork'] as const;
 type CelestialAlignmentChoiceStatsRecord = {
   total: number;
   choices: Record<CelestialAlignmentChoice, number>;

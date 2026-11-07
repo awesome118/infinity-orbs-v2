@@ -51,7 +51,7 @@ jobs:
           node --import tsx --test tests/storage-compression.test.ts
           node --import tsx --test --test-name-pattern="Frenzy claim activity is a retryable post-commit projection" tests/frenzy.test.ts
           node --import tsx --test tests/cosmic-dust-uncapped.test.ts
-          node --import tsx --test tests/combat-runes.test.ts
+          node --import tsx --test tests/combat-runes.test.ts tests/combat-catalog-consistency.test.ts tests/combat-leaderboard-decode.test.ts
           node --import tsx --test tests/guild-member-recovery.test.ts
           node --import tsx --test tests/redis-storage-retention.test.ts
           node --import tsx --test tests/guild-combo-progress.test.ts
@@ -66,6 +66,8 @@ jobs:
           node --import tsx --test tests/upgrade-expansion.test.ts
           node --import tsx --test tests/large-number-economy.test.ts
           node --import tsx --test tests/server-monitor.test.ts tests/upgrade-batch-route.test.ts tests/player-state-reconciliation.test.ts tests/upgrade-spam-ui.test.ts
+          node --import tsx --test tests/altar-validation.test.ts
+          node --import tsx --test tests/roll-optional-reads.test.ts
           node --import tsx --test tests/roll-ticket-seeds.test.ts
           node --import tsx --test tests/admin-api-feature-fixture.test.ts
           node --import tsx --test tests/rarity-icon-visuals.test.ts

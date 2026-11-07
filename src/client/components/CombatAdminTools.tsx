@@ -9,7 +9,7 @@ type LabResponse=CombatSnapshot&{
   balance?:{generatedAt:number;rarityOdds:Record<string,number>;statBudgets:Record<string,number>;projections:Projection[];checks:Array<{label:string;passed:boolean;detail:string}>};
 };
 const slots:CombatGearSlot[]=['weapon','helmet','armor','gloves','boots','ring','amulet'];
-const runeRarities:CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
+const runeRarities:CombatRuneRarity[]=[...COMBAT_RUNE_RARITIES];
 const runeStats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct'];
 const runeMajorAbilityIds=['fateweaver','midas-engine','memory-well'] as const;
 const fmt=(v:unknown)=>Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0});

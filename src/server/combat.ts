@@ -3,7 +3,7 @@ import { loadRaw } from './game.js';
 import { compressStorageString, decompressStorageString } from './storage-compression.js';
 import { getOrbInfo, rollContinuum } from '../shared/game.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatCommand, CombatSkillDefinition, CombatDungeonId, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatMajorAbility, CombatOrbRoll, CombatSkillId, CombatSnapshot, CombatState, CombatTactic, CombatTrait, CombatRarity, CombatRune, CombatRuneAutoSacrificeSettings, CombatRuneRarity, CombatRuneStat, CombatSkillRuntime } from '../shared/combat.js';
-import { chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneRarityFromRoll, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
+import { COMBAT_DUNGEONS, COMBAT_TACTICS, COMBAT_RUNE_STATS, COMBAT_RUNE_MAJOR_ABILITY_IDS, COMBAT_TRAITS, COMBAT_GEAR_SLOTS, chooseAutoCombatIntent, COMBAT_ABILITY_SLOTS, COMBAT_INVENTORY_CAP, COMBAT_MAJOR_ABILITY_IDS, COMBAT_MAX_DEPTH, COMBAT_SKILLS, DEFAULT_COMBAT_AUTO_SCRAP_SETTINGS, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, COMBAT_UPGRADES, addCombatGearToInventory, applyCombatSkillCopy, combatMajorAbilityChance, combatOrbDamageMultiplier, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatTurnStep, combatActionTimeline, combatEnergyAfterRegen, combatTurnsCrossedThree, combatFlurryAttackMultiplier, combatForgeCost, combatHighestDepthReached, combatBossesBeatenByDepth, combatBossLuckBonus, combatMarkMultiplier, combatScrapValue, combatSkillCooldown, combatSkillEnergyCost, combatSkillCopiesForNextRank, combatStatsFor, combatUpgradeCost, combatUpgradeRank, createCombatState, gearQualityEffectiveness, getEnemyForDungeonDepth, normalizeCombatAutoScrapSettings, resetCombatRunCarry, resolveCombatSkillRarity, combatGearSpeedBonus, combatGearOtherStatMultiplier, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, synchronizeCombatStats, combatBeatIntervalMsFor, combatForgeQualityCost, COMBAT_RUNE_INVENTORY_CAP, COMBAT_RUNE_RARITIES, DEFAULT_COMBAT_RUNE_AUTO_SACRIFICE_SETTINGS, shouldAutoSacrificeRune, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, createCombatSkillRuntime, combatRuneEffectText, combatRuneExperienceForLevel, combatRuneLevelFromExperience, combatRuneSacrificeExperience, combatRuneSlotsUnlocked, combatRuneValueFor, combatRuneRarityFromRoll, combatRuneMajorAbilityChance, combatRuneMajorAbilityQuality, combatGearQualityFromRoll, combatGearStatBudgetMultiplier } from '../shared/combat.js';
 
 const MAX_CAS_ATTEMPTS=8, INVENTORY_CAP=COMBAT_INVENTORY_CAP;
 function combatKey():string { const id=String(context.userId??'').trim(); if(!id) throw new Error('REDDIT_LOGIN_REQUIRED'); return 'infinity-orbs:combat:'+id; }
@@ -16,7 +16,7 @@ function secureRandom():number {
   // Uniform 53-bit fraction in [0, 1), built from cryptographically random bits.
   return (words[0]!*0x20_0000+(words[1]!>>>11))/0x20_0000_0000_0000;
 }
-function pick<T>(values:T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
+function pick<T>(values:readonly T[]):T { return values[Math.floor(secureRandom()*values.length)]!; }
 function finiteInt(value:unknown,fallback:number,min:number,max:number):number {
   const bounded=(n:number)=>Math.max(min,Math.min(max,Math.floor(n)));
   const n=Number(value);
@@ -83,11 +83,10 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
   if(!value||typeof value!=='object')return null;
   const x=value as Record<string,unknown>;
   const rawSlot=String(x.slot??'');
-  const slot:CombatGearSlot|null=rawSlot==='armor'||rawSlot==='chest'?'armor':
-    (['weapon','helmet','gloves','boots','ring','amulet'] as string[]).includes(rawSlot)?rawSlot as CombatGearSlot:null;
-  const traits:CombatTrait[]=['bleed','keen','first-strike','bulwark','regeneration','desperation'];
+  const slot:CombatGearSlot|null=rawSlot==='chest'?'armor':
+    COMBAT_GEAR_SLOTS.includes(rawSlot as CombatGearSlot)?rawSlot as CombatGearSlot:null;
   if(!slot||typeof x.id!=='string'||!x.id||typeof x.name!=='string')return null;
-  const trait=traits.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
+  const trait=COMBAT_TRAITS.includes(x.trait as CombatTrait)?x.trait as CombatTrait:(slot==='weapon'?'keen':'bulwark');
   const rawAbility=x.majorAbility&&typeof x.majorAbility==='object'?x.majorAbility as Record<string,unknown>:null;
   const majorAbility=normalizeMajorAbility(rawAbility);
   const hasSpeedInvestmentRoll=x.speedInvestmentRoll!==undefined&&x.speedInvestmentRoll!==null&&Number.isFinite(Number(x.speedInvestmentRoll));
@@ -104,8 +103,7 @@ function normalizeGear(value:unknown,fallbackFloor=0):CombatGear|null {
 }
 function normalizeRuneMajorAbility(raw:Record<string,unknown>|null,stat:CombatRuneStat):CombatRune['majorAbility'] {
   if(!raw)return undefined;
-  const validIds=['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine','shard-tithe','discovery-oracle','dry-streak-refinery'];
-  const valid=validIds.includes(String(raw.id));
+  const valid=typeof raw.id==='string'&&COMBAT_RUNE_MAJOR_ABILITY_IDS.includes(raw.id as CombatRuneMajorAbilityId);
   const id:NonNullable<CombatRune['majorAbility']>['id']=valid
     ?raw.id as NonNullable<CombatRune['majorAbility']>['id']
     :stat==='coinGainPct'?'midas-engine':stat==='xpGainPct'?'memory-well':'fateweaver';
@@ -144,8 +142,8 @@ function normalizeRune(value:unknown):CombatRune|null {
   const x=value as Record<string,unknown>,rarity=x.rarity,stat=x.stat,dungeon=x.sourceDungeon;
   if(typeof x.id!=='string'||!x.id.trim()||x.id.length>160)return null;
   if(!COMBAT_RUNE_RARITIES.includes(rarity as CombatRuneRarity))return null;
-  if(!(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as unknown[]).includes(stat))return null;
-  const sourceDungeon:CombatDungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(dungeon)?dungeon as CombatDungeonId:'undercrypt';
+  if(typeof stat!=='string'||!COMBAT_RUNE_STATS.includes(stat as CombatRuneStat))return null;
+  const sourceDungeon:CombatDungeonId=COMBAT_DUNGEONS.includes(dungeon as CombatDungeonId)?dungeon as CombatDungeonId:'undercrypt';
   const sourceDepth=finiteInt(x.sourceDepth,0,0,COMBAT_MAX_DEPTH-1);
   const rawValue=Number(x.value),cap=stat==='shardChancePct'?100:Number.MAX_VALUE;
   const runeValue=Number.isFinite(rawValue)?Math.max(0,Math.min(cap,rawValue)):0;
@@ -175,7 +173,6 @@ function equippedMajorAbilityTotal(state:CombatState,abilityId:CombatMajorAbilit
   return total;
 }
 
-const COMBAT_RUNE_MAJOR_ABILITY_IDS = ['fateweaver','midas-engine','memory-well','echo-chamber','paradox-engine','event-horizon','shard-constellation','temporal-loop','prismatic-fork','critical-convergence','rarity-ladder','stellar-dividend','shard-jackpot','milestone-engine','shard-tithe','discovery-oracle','dry-streak-refinery'] as const;
 type CombatRuneMajorAbilityId = NonNullable<CombatRune['majorAbility']>['id'];
 function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRuneMajorAbilityId):NonNullable<CombatRune['majorAbility']> {
   const quality=Math.max(0,Math.min(100,Number(qualityValue)||0));
@@ -206,7 +203,7 @@ function createRuneMajorAbility(qualityValue:number,requestedAbilityId?:CombatRu
 function createCombatRune(sourceDepth:number,sourceDungeon:CombatDungeonId,totalKills:number,sequence:number):CombatRune {
   const rarityRoll=secureRandom();
   const rarity:CombatRuneRarity=combatRuneRarityFromRoll(rarityRoll);
-  const stat=pick(['luckPct','coinGainPct','shardChancePct','xpGainPct'] as CombatRuneStat[]);
+  const stat=pick(COMBAT_RUNE_STATS);
   const value=combatRuneValueFor(rarity,stat,sourceDepth);
   const rarityName:Record<CombatRuneRarity,string>={Common:'Fractured',Uncommon:'Polished',Rare:'Radiant',Epic:'Runed',Legendary:'Ascendant',Mythic:'Mythic',Cosmic:'Cosmic',Astral:'Astral',Celestial:'Celestial',Transcendent:'Transcendent'};
   const statName:Record<CombatRuneStat,string>={luckPct:'Fate',coinGainPct:'Hoard',shardChancePct:'Prism',xpGainPct:'Insight'};
@@ -244,7 +241,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   }
   s.version=1;
   s.combatTutorialSeen = s.combatTutorialSeen === true;
-  s.dungeonId=(['undercrypt','cinder-vault','glass-labyrinth'] as unknown[]).includes(s.dungeonId)?s.dungeonId:'undercrypt';
+  s.dungeonId=COMBAT_DUNGEONS.includes(s.dungeonId)?s.dungeonId:'undercrypt';
   s.runId=finiteInt(s.runId,1,1,Number.MAX_SAFE_INTEGER);s.depth=finiteInt(s.depth,1,1,COMBAT_MAX_DEPTH);s.depthCapCleared=s.depthCapCleared===true;
   s.bestDepth=Math.max(s.depth,finiteInt(s.bestDepth,1,1,COMBAT_MAX_DEPTH));
   const savedDungeonBests=(s.dungeonBestDepths&&typeof s.dungeonBestDepths==='object'?s.dungeonBestDepths:{}) as Partial<Record<CombatDungeonId,number>>;
@@ -272,7 +269,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
   s.totalKills=finiteInt(s.totalKills,0,0,Number.MAX_SAFE_INTEGER);
   s.arenaRating=finiteInt(s.arenaRating,1000,100,10000);s.arenaWins=finiteInt(s.arenaWins,0,0,Number.MAX_SAFE_INTEGER);s.arenaLosses=finiteInt(s.arenaLosses,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastChallengeAt=finiteInt(s.arenaLastChallengeAt,0,0,Number.MAX_SAFE_INTEGER);s.arenaLastMatchAt=finiteInt(s.arenaLastMatchAt,0,0,Number.MAX_SAFE_INTEGER);
   s.coreLevel=finiteInt(s.coreLevel,1,1,1_000_000);s.coreHighestRarity=finiteInt(s.coreHighestRarity,2,2,Number.MAX_VALUE);
-  s.autoTactic=(['balanced','aggressive','defensive','recovery'] as unknown[]).includes(s.autoTactic)?s.autoTactic:'balanced';
+  s.autoTactic=COMBAT_TACTICS.includes(s.autoTactic)?s.autoTactic:'balanced';
   s.scrap=finiteInt(s.scrap,0,0,Number.MAX_SAFE_INTEGER);s.autoScrapUnlocked=s.autoScrapUnlocked===true;s.autoScrapSettings=normalizeCombatAutoScrapSettings(s.autoScrapSettings);s.skillRolls=finiteInt(s.skillRolls,0,0,Number.MAX_SAFE_INTEGER);s.skillGachaRank=finiteInt(storedGachaRank,legacyUnlockedRank,1,SKILL_GACHA_RANK_MAX);s.skillPityEpic=finiteInt(s.skillPityEpic,0,0,9);s.skillPityMythic=finiteInt(s.skillPityMythic,0,0,39);s.orbFocusRarity=finiteInt(s.orbFocusRarity,2,2,Number.MAX_VALUE);s.orbFocusName=typeof s.orbFocusName==='string'?s.orbFocusName.slice(0,100):'Common Orb';s.combatUpgrades=Object.fromEntries(COMBAT_UPGRADES.map(upgrade=>[upgrade.id,finiteInt(s.combatUpgrades?.[upgrade.id],0,0,upgrade.maxRank)])) as CombatState['combatUpgrades'];s.sequence=finiteInt(s.sequence,0,0,Number.MAX_SAFE_INTEGER);s.lastAcceptedBeatAtMs=Math.min(finiteInt(s.lastAcceptedBeatAtMs,0,0,Number.MAX_SAFE_INTEGER),Date.now());s.combatBeats=finiteInt(s.combatBeats,0,0,Number.MAX_SAFE_INTEGER);
   s.playerSpeedBeats=Object.prototype.hasOwnProperty.call(p,'playerSpeedBeats')?finiteInt(s.playerSpeedBeats,s.combatBeats,0,Number.MAX_SAFE_INTEGER):s.combatBeats;
   const normalizeSpeedCharge=(value:unknown):number=>{const raw=Number(value);return Number.isFinite(raw)?Math.max(0,Math.min(1,raw)):0;};
@@ -308,9 +305,9 @@ function normalizeState(raw:string|null|undefined):CombatState {
   const rawInventory:unknown[]=[];
   const hasPersistedInventory=Object.prototype.hasOwnProperty.call(p,'inventory')||
     Object.prototype.hasOwnProperty.call(p,'inventoryByDungeon')||
-    (['undercrypt','cinder-vault','glass-labyrinth'] as const).some(dungeon=>Array.isArray(persisted.inventoryByDungeon?.[dungeon]));
+    COMBAT_DUNGEONS.some(dungeon=>Array.isArray(persisted.inventoryByDungeon?.[dungeon]));
   if(Array.isArray(p.inventory))for(const item of p.inventory)rawInventory.push(item);
-  for(const dungeon of ['undercrypt','cinder-vault','glass-labyrinth'] as const){
+  for(const dungeon of COMBAT_DUNGEONS){
     const legacyBag=persisted.inventoryByDungeon?.[dungeon];
     if(Array.isArray(legacyBag))for(const item of legacyBag)rawInventory.push(item);
   }
@@ -352,7 +349,7 @@ function normalizeState(raw:string|null|undefined):CombatState {
     if(slot==='armor'&&owns('chest'))return savedEquipment.chest===null;
     return owns(slot)&&savedEquipment[slot]===null;
   };
-  const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+  const slots:readonly CombatGearSlot[]=COMBAT_GEAR_SLOTS;
   const migratedEquipment={} as Record<CombatGearSlot,string|null>;
   for(const slot of slots){
     if(explicitlyCleared(slot)){migratedEquipment[slot]=null;continue;}
@@ -447,7 +444,7 @@ function createMajorAbility(qualityValue:number,requestedAbilityId?:CombatMajorA
 function createGear(sourceFloor:number,requestedSlot?:CombatGearSlot,requestedQuality?:number):CombatGear {
   const floor=Math.max(0,Math.min(COMBAT_MAX_DEPTH-1,Math.floor(Number(sourceFloor)||0)));
   const scale=floor+1;
-  const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+  const slots:readonly CombatGearSlot[]=COMBAT_GEAR_SLOTS;
   const slot=requestedSlot??pick(slots);
   // Natural drops remain random; Forge can supply an exact requested quality.
   const quality=Number.isFinite(Number(requestedQuality))?Math.round(Math.max(0,Math.min(100,Number(requestedQuality)))*100)/100:combatGearQualityFromRoll(secureRandom());
@@ -1625,8 +1622,7 @@ export async function challengeCombatArena(opponentIdValue: string): Promise<Com
 
 
 export async function setCombatAutoTactic(tacticValue: unknown): Promise<CombatSnapshot> {
-  const validTactics: CombatTactic[] = ['balanced', 'aggressive', 'defensive', 'recovery'];
-  if (typeof tacticValue !== 'string' || !validTactics.includes(tacticValue as CombatTactic)) {
+  if (typeof tacticValue !== 'string' || !COMBAT_TACTICS.includes(tacticValue as CombatTactic)) {
     throw new Error('Invalid combat tactic.');
   }
   return mutate(state => {
@@ -1665,8 +1661,7 @@ export async function setCombatOrbFocus(rarityValue: unknown, nameValue: unknown
 }
 
 export async function setCombatDungeon(dungeonValue: unknown): Promise<CombatSnapshot> {
-  const validDungeons: CombatDungeonId[] = ['undercrypt', 'cinder-vault', 'glass-labyrinth'];
-  if (typeof dungeonValue !== 'string' || !validDungeons.includes(dungeonValue as CombatDungeonId)) {
+  if (typeof dungeonValue !== 'string' || !COMBAT_DUNGEONS.includes(dungeonValue as CombatDungeonId)) {
     throw new Error('Invalid combat dungeon.');
   }
   return mutate(state => {
@@ -1734,7 +1729,7 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       synchronizeCombatStats(state);state.health=state.maxHealth;
       labMessage='Set '+state.dungeonId+' to Depth '+depth.toLocaleString()+', refreshed enemy stats, and healed the test character.';
     }else if(action==='grant-gear'){
-      const slots:CombatGearSlot[]=['weapon','armor','helmet','gloves','boots','ring','amulet'];
+      const slots:readonly CombatGearSlot[]=COMBAT_GEAR_SLOTS;
       const slot=String(payload.slot??'weapon') as CombatGearSlot;
       if(!slots.includes(slot))throw new Error('Choose a valid gear slot.');
       const rawQuality=Number(payload.quality);
@@ -1748,8 +1743,8 @@ export async function adminCombatLabAction(value:unknown):Promise<CombatSnapshot
       addCombatGearToInventory(state,item);state.equipment[slot]=item.id;synchronizeCombatStats(state);state.health=state.maxHealth;
       labMessage='Granted and equipped '+item.name+' ('+item.quality.toFixed(2)+'% quality)'+(item.majorAbility?' with '+item.majorAbility.name:'')+'.';
     }else if(action==='grant-rune'){
-      const rarities:CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
-      const stats:CombatRuneStat[]=['luckPct','coinGainPct','shardChancePct','xpGainPct'];
+      const rarities:readonly CombatRuneRarity[]=COMBAT_RUNE_RARITIES;
+      const stats:readonly CombatRuneStat[]=COMBAT_RUNE_STATS;
       const rarity=String(payload.rarity??'Cosmic') as CombatRuneRarity;
       const stat=String(payload.stat??'luckPct') as CombatRuneStat;
       if(!rarities.includes(rarity)||!stats.includes(stat))throw new Error('Choose a valid Rune rarity and stat.');

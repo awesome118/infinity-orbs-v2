@@ -25,6 +25,7 @@ import type {
 } from '../shared/social.js';
 import {
   ACHIEVEMENTS,
+  GUILD_TASK_TYPES,
   createGuildTask,
   createInitialGuildTasks,
   CHALLENGE_POOL,
@@ -229,7 +230,7 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
   // from the normalized task list later in normalizeGuilds().
   if (guild.challenge != null) {
     const challenge = guild.challenge;
-    if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
+    if (!isRecordValue(challenge) || !GUILD_TASK_TYPES.includes(String(challenge.type) as GuildTask['type'])) {
       delete guild.challenge;
     } else {
       const target = challenge.type === 'value'
@@ -305,7 +306,7 @@ function normalizeRecoverableGuildNestedFields(guild: Record<string, any>, index
       guild.tasks = guild.tasks.slice(0, 3).map((value: unknown, taskIndex: number) => {
         const task = isRecordValue(value) ? value : {};
         delete task.guildXpReward;
-        const type: GuildTask['type'] = ['rolls', 'value', 'rare'].includes(String(task.type))
+        const type: GuildTask['type'] = GUILD_TASK_TYPES.includes(String(task.type) as GuildTask['type'])
           ? String(task.type) as GuildTask['type']
           : generatedFallbackTaskType(taskIndex);
         const tier = clampInteger(task.tier, 1, MAX_GUILD_TASK_TIER, 1);
@@ -370,7 +371,7 @@ function validateGuildNestedState(guild: Record<string, unknown>): void {
     const challenge = guild.challenge;
     if (
       !isRecordValue(challenge) ||
-      !['rolls', 'value', 'rare'].includes(String(challenge.type)) ||
+      !GUILD_TASK_TYPES.includes(String(challenge.type) as GuildTask['type']) ||
       !(challenge.type === 'value'
         ? isGuildValueProgress(challenge.target, 1) && isGuildValueProgress(challenge.progress)
         : Number.isSafeInteger(challenge.target) && Number(challenge.target) >= 1 &&
@@ -506,7 +507,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
   });
 
   const challenge = guild.challenge;
-  if (!isRecordValue(challenge) || !['rolls', 'value', 'rare'].includes(String(challenge.type))) {
+  if (!isRecordValue(challenge) || !GUILD_TASK_TYPES.includes(String(challenge.type) as GuildTask['type'])) {
     delete guild.challenge;
   } else {
     const target = challenge.type === 'value'
@@ -551,7 +552,7 @@ function recoverGuildRecordForPlaytest(guild: Record<string, any>, index: number
     guild.tasks = guild.tasks.filter(isRecordValue).map((task: Record<string, any>, taskIndex: number) => {
       delete task.guildXpReward;
       const fallbackType = generatedFallbackTaskType(taskIndex);
-      const type = ['rolls', 'value', 'rare'].includes(String(task.type)) ? task.type : fallbackType;
+      const type = GUILD_TASK_TYPES.includes(String(task.type) as GuildTask['type']) ? task.type : fallbackType;
       const tier = clampInt(task.tier, 1, MAX_GUILD_TASK_TIER, 1);
       const generated = createGuildTask(type, tier);
       const target = type === 'value'
@@ -708,10 +709,9 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
     } else {
       g.tasks = g.tasks.slice(0, 3).map((task, index) => {
         delete (task as any).guildXpReward;
-        const type: GuildTask['type'] =
-          task.type === 'rolls' || task.type === 'value' || task.type === 'rare'
-            ? task.type
-            : generatedFallbackTaskType(index);
+        const type: GuildTask['type'] = GUILD_TASK_TYPES.includes(task.type as GuildTask['type'])
+          ? task.type as GuildTask['type']
+          : generatedFallbackTaskType(index);
         const generated = createGuildTask(
           type,
           Math.max(1, Math.floor(Number(task.tier ?? 1) || 1)),
@@ -764,7 +764,8 @@ function normalizeGuilds(guilds: Guild[], now = Date.now()): Guild[] {
 }
 
 function generatedFallbackTaskType(index: number): GuildTask['type'] {
-  return index === 0 ? 'rolls' : index === 1 ? 'value' : 'rare';
+  const safeIndex = Number.isSafeInteger(index) ? Math.max(0, index) : 0;
+  return GUILD_TASK_TYPES[safeIndex % GUILD_TASK_TYPES.length]!;
 }
 
 function memberMatches(member: Guild['members'][number], requestedUsername?: string): boolean {
@@ -2831,9 +2832,23 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     ])
     : [[], []];
 
-  const decodedPlayerSaves = await Promise.all(userIds.map((userId, index) =>
-    saves[index] == null ? Promise.resolve(null) : readPlayerSaveForUser(userId, String(saves[index])),
-  ));
+  const [decodedPlayerSaves, decodedCombatSaves] = await Promise.all([
+    Promise.all(userIds.map((userId, index) =>
+      saves[index] == null ? Promise.resolve(null) : readPlayerSaveForUser(userId, String(saves[index])),
+    )),
+    Promise.all(userIds.map(async (userId, index) => {
+      const storedValue = combatSaves[index];
+      if (storedValue == null) return null;
+      try {
+        return await readRedisLargeValue('infinity-orbs:combat:' + userId, storedValue);
+      } catch (error) {
+        // Combat depth is a secondary leaderboard metric. One missing or corrupt
+        // Combat save must not make the shared core-game leaderboard unavailable.
+        console.error('[Leaderboard] Combat save could not be decoded for depth ranking:', userId, error);
+        return null;
+      }
+    })),
+  ]);
 
   const missingRegistryCount = userIds.filter(userId =>
     !Object.prototype.hasOwnProperty.call(registry, userId),
@@ -2851,7 +2866,7 @@ async function buildLeaderboardsSnapshot(): Promise<LeaderboardBoards> {
     const registryEntry = parseStoredJson<Partial<PlayerRegistryLeaderboardEntry>>(registry[userId]) ?? {};
     const save = decodedPlayerSaves[index] ? parseStoredJson<Partial<PlayerState>>(decodedPlayerSaves[index]) : null;
     if (!save) continue;
-    const combatSave = combatSaves[index] ? parseStoredJson<unknown>(combatSaves[index]) : null;
+    const combatSave = decodedCombatSaves[index] ? parseStoredJson<unknown>(decodedCombatSaves[index]) : null;
     const legacy = legacyById.get(userId);
 
     // Prefer the authoritative save. Older saves lacking lastShareAt may use
