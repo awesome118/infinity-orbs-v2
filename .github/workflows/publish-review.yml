@@ -1,5 +1,5 @@
 name: Submit Devvit version for review
-# v2.2.31 storage optimization: submit the current build for Reddit review, then install the candidate to r/infinity_orbs_dev only.
+# v2.2.33: submit the current guild-flair build for unlisted Reddit review, then install the candidate to r/infinity_orbs_dev only.
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   submit:
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.31]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.33]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,11 +40,11 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
-          test "$VERSION" = "2.2.31" || {
-            echo "Expected package version 2.2.31, got $VERSION."
+          test "$VERSION" = "2.2.33" || {
+            echo "Expected package version 2.2.33, got $VERSION."
             exit 1
           }
-          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.31'||p.packages?.['']?.version!=='2.2.31') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.31'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
+          node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); if(p.version!=='2.2.33'||p.packages?.['']?.version!=='2.2.33') process.exit(1); const v=fs.readFileSync('src/shared/version.ts','utf8'); if(!v.includes(\"APP_VERSION = '2.2.33'\")) process.exit(1); if(!fs.existsSync('README.md')) process.exit(1);"
           echo "Preparing infinity-orbs@$VERSION for unlisted review."
 
       - name: Review preflight
@@ -95,13 +95,13 @@ jobs:
           DEVVIT_ALLOW_SOURCE_UPLOAD: "1"
           CI: true
         timeout-minutes: 15
-        run: npx devvit publish --version 2.2.31
+        run: npx devvit publish --version 2.2.33
 
       - name: Install the submitted candidate to development subreddit only (r/infinity_orbs_dev)
         env:
           DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_TOKEN }}
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
-          VERSION: 2.2.31
+          VERSION: 2.2.33
         run: |
           set -euo pipefail
           npx devvit install r/infinity_orbs_dev "infinity-orbs@$VERSION"
