@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.37
+
+- **Game Update Preset:** Admins send a fixed Game Update notification rather than composing arbitrary copy. Players receive the title “Infinity Orbs Update” and the message “A new update is live! Jump back in and see what's changed.”
+- **Two-Push Daily Budget:** Offline Orbs and Game Update notifications share Reddit's limit of two pushes per player per day. Updates that hit the limit are queued and sent after the next UTC day begins.
+- **Quota-Aware Offline Reminders:** Full Offline Orbs reminders are retried after the daily push allowance resets instead of getting stuck after a provider-side quota rejection.
+- **Scheduler Client Fix:** Runtime jobs now use the Devvit scheduler client from `@devvit/web/server`, not the unavailable `context.scheduler` property. This fixes campaign scheduling and existing offline reminder scheduling.
+
 ### New in 2.2.36
 
 - **Independent Push Notification Types:** Players can separately enable or disable Game Updates and Offline Orbs reminders from the header bell menu. Existing Reddit notification opt-ins retain both alert types until changed.
