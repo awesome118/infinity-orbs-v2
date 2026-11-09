@@ -59,6 +59,9 @@
     "tasks": {
       "offline-orbs-full": {
         "endpoint": "/internal/scheduler/offline-orbs-full"
+      },
+      "manual-push-broadcast": {
+        "endpoint": "/internal/scheduler/manual-push-broadcast"
       }
     }
   }
