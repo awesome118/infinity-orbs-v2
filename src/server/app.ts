@@ -63,8 +63,8 @@ import {
   getCollectionPage,
   processOfflineFullNotification,
   processManualPushNotificationCampaign,
-  getNotificationState,
-  setNotificationState,
+  getNotificationPreferences,
+  setNotificationPreferences,
   getPopupConfig,
   recordPopupEvent,
   getFollowRewardStatus,
@@ -831,7 +831,8 @@ export function createApp() {
 
   app.get('/api/notifications', async (_req, res) => {
     try {
-      res.json({ enabled: await getNotificationState() });
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await getNotificationPreferences());
     } catch (e: any) {
       res.status(500).json({ error: e?.message || 'Could not load notification settings.' });
     }
@@ -839,8 +840,14 @@ export function createApp() {
 
   app.post('/api/notifications', async (req, res) => {
     try {
-      const enabled = req.body?.enabled === true;
-      res.json({ enabled: await setNotificationState(enabled) });
+      // Keep compatibility with older clients that still send { enabled }.
+      const result = typeof req.body?.enabled === 'boolean'
+        ? await setNotificationPreferences({ updates: req.body.enabled, offlineOrbs: req.body.enabled })
+        : await setNotificationPreferences({
+            ...(typeof req.body?.updates === 'boolean' ? { updates: req.body.updates } : {}),
+            ...(typeof req.body?.offlineOrbs === 'boolean' ? { offlineOrbs: req.body.offlineOrbs } : {}),
+          });
+      res.json(result);
     } catch (e: any) {
       res.status(400).json({ error: e?.message || 'Could not update notification settings.' });
     }
