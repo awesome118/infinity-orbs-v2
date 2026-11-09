@@ -62,6 +62,9 @@
       },
       "manual-push-broadcast": {
         "endpoint": "/internal/scheduler/manual-push-broadcast"
+      },
+      "pending-game-update-drain": {
+        "endpoint": "/internal/scheduler/pending-game-update-drain"
       }
     }
   }
