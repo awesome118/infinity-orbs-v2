@@ -16,7 +16,7 @@ name: Deploy Devvit
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# Explicit user-requested dev-only upload of v2.2.36. Current marker: [deploy-dev:2.2.36].
+# Explicit user-requested dev-only upload of v2.2.37. Current marker: [deploy-dev:2.2.37].
 # Retry v2.2.35 after fixing the required PlayerRegistryEntry fields in notification attribution.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
@@ -45,7 +45,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.36]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.37]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
