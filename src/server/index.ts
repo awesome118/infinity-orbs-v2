@@ -1,4 +1,4 @@
-import { context, createServer, getServerPort, redis, reddit } from '@devvit/web/server';
+import { context, createServer, getServerPort, redis, reddit, scheduler } from '@devvit/web/server';
 import { createApp } from './app.js';
 import { configureDevvitRuntime } from './devvit-mock.js';
 import { mGetInChunks } from './redis-batch.js';
@@ -17,7 +17,7 @@ const boundedRedis = new Proxy(redis, {
   },
 });
 
-configureDevvitRuntime({ redis: instrumentRedisClient(boundedRedis), context, reddit });
+configureDevvitRuntime({ redis: instrumentRedisClient(boundedRedis), context, reddit, scheduler });
 
 const app = createApp();
 const server = createServer(app);
