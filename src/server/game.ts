@@ -6265,7 +6265,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
           return;
         }
 
-        if (notificationMarker == null && !(await notifications.isOptedIn(userId))) {
+        if (notificationMarker == null && !(await isNotificationPreferenceEnabled(userId, 'offlineOrbs'))) {
           await clearCurrentJob();
           return;
         }
