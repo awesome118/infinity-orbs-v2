@@ -1406,6 +1406,9 @@ async function markNotificationAttributionPending(
     await redis.hSet(PLAYER_REGISTRY_KEY, {
       [id]: JSON.stringify({
         ...entry,
+        username: String(entry.username ?? '').trim().slice(0, 100),
+        firstSeenAt: validPastTimestamp(entry.firstSeenAt, now),
+        lastSeenAt,
         notificationPendingSource: source,
         notificationPendingAt: sentAt,
       } satisfies PlayerRegistryEntry),
