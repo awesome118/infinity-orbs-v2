@@ -1539,12 +1539,6 @@ function notificationDailySendKey(userId: string, day: string): string {
   return NOTIFICATION_DAILY_SEND_PREFIX + day + ':' + userId;
 }
 
-async function getNotificationDailySendCount(userId: string, now = Date.now()): Promise<number> {
-  const { day } = notificationDailyWindow(now);
-  const value = Number(await redis.get(notificationDailySendKey(userId, day)) ?? 0);
-  return Number.isSafeInteger(value) && value > 0 ? value : 0;
-}
-
 /**
  * Reserve one of the two daily Reddit push slots before calling the provider.
  * A per-user mutation lock serializes Offline Orbs and Game Update sends so
@@ -1568,6 +1562,34 @@ async function reserveNotificationDailySendSlot(
     return { allowed: true, count: count + 1, resetsAt };
   });
 }
+
+function isNotificationDailyLimitError(error: unknown): boolean {
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const response = record.response && typeof record.response === 'object'
+    ? record.response as Record<string, unknown>
+    : {};
+  const status = Number(record.status ?? record.statusCode ?? response.status ?? 0);
+  const detail = [
+    error instanceof Error ? error.message : String(error ?? ''),
+    String(record.code ?? ''),
+    String(record.name ?? ''),
+  ].join(' ');
+  return status === 429 || /\\b429\\b|rate.?limit|daily.{0,40}(limit|quota)|notification.{0,50}(limit|quota)|maximum.{0,30}(notification|push)/i.test(detail);
+}
+
+async function markNotificationDailyLimitReached(userId: string, now = Date.now()): Promise<void> {
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+  await withPlayerMutationLockFor(`notification-daily-budget:${id}`, async () => {
+    const { day, resetsAt } = notificationDailyWindow(now);
+    await redis.set(
+      notificationDailySendKey(id, day),
+      String(NOTIFICATION_DAILY_SEND_LIMIT),
+      { expiration: new Date(resetsAt + 2 * 24 * 60 * 60_000) },
+    );
+  });
+}
+
 
 interface PendingGameUpdate {
   campaignId: string;
@@ -1601,13 +1623,15 @@ function parsePendingGameUpdates(raw: unknown, now = Date.now()): PendingGameUpd
 async function queueGameUpdateForUser(userId: string, item: PendingGameUpdate): Promise<boolean> {
   const id = String(userId ?? '').trim();
   if (!id) return false;
-  return withPlayerMutationLockFor(`notification-update-queue:${id}`, async () => {
+  const added = await withPlayerMutationLockFor(`notification-update-queue:${id}`, async () => {
     const current = parsePendingGameUpdates(await redis.hGet(NOTIFICATION_PENDING_UPDATE_HASH, id));
     if (current.some(entry => entry.campaignId === item.campaignId)) return false;
     current.push(item);
     await redis.hSet(NOTIFICATION_PENDING_UPDATE_HASH, { [id]: JSON.stringify(current) });
     return true;
   });
+  if (added) await schedulePendingGameUpdateDrain(nextUtcNotificationDay());
+  return added;
 }
 
 function nextUtcNotificationDay(now = Date.now()): number {
@@ -1710,6 +1734,9 @@ export async function processPendingGameUpdateQueue(input: {
             console.warn('[Notification Broadcast] Could not record queued update attribution.', error);
           });
         } catch (error) {
+          if (isNotificationDailyLimitError(error)) {
+            await markNotificationDailyLimitReached(userId);
+          }
           // Keep a failed or ambiguous item for the next daily window. The
           // reserved slot stays consumed to avoid exceeding Reddit's limit.
           console.warn('[Notification Broadcast] Queued update send failed; retaining it for retry.', userId, error);
@@ -1953,6 +1980,8 @@ export async function processManualPushNotificationCampaign(input: {
             });
             delivered.push(userId);
           } catch (error) {
+            if (!isNotificationDailyLimitError(error)) throw error;
+            await markNotificationDailyLimitReached(userId);
             const added = await queueGameUpdateForUser(userId, {
               campaignId,
               title: state.title,
