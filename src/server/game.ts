@@ -1380,6 +1380,244 @@ export async function sendPushNotificationTest(): Promise<void> {
   });
 }
 
+
+async function markNotificationAttributionPending(
+  userId: string,
+  source: NotificationAttributionSource,
+  sentAt = Date.now(),
+): Promise<boolean> {
+  const id = String(userId ?? '').trim();
+  if (!id) return false;
+  return withPlayerMutationLockFor(`activity:${id}`, async () => {
+    const raw = await redis.hGet(PLAYER_REGISTRY_KEY, id);
+    if (typeof raw !== 'string' || !raw) return false;
+    const now = Date.now();
+    let entry: Partial<PlayerRegistryEntry>;
+    try {
+      entry = parsePlayerRegistryEntryForMutation(raw, now);
+    } catch (error) {
+      console.warn('[Notification Attribution] Skipped malformed player registry entry.', error);
+      return false;
+    }
+    const lastSeenAt = validPastTimestamp(entry.lastSeenAt, now);
+    if (lastSeenAt >= sentAt - PLAYER_ACTIVE_WINDOW_MS || lastSeenAt >= sentAt) return false;
+    const previousPendingAt = validPastTimestamp(entry.notificationPendingAt, now);
+    if (previousPendingAt > sentAt) return false;
+    await redis.hSet(PLAYER_REGISTRY_KEY, {
+      [id]: JSON.stringify({
+        ...entry,
+        notificationPendingSource: source,
+        notificationPendingAt: sentAt,
+      } satisfies PlayerRegistryEntry),
+    });
+    return true;
+  });
+}
+
+export async function getNotificationStats(): Promise<{
+  optedInPlayers: number;
+  totalPlayers: number;
+  percentage: number;
+}> {
+  const [registry, optedInPlayers] = await Promise.all([
+    redis.hGetAll(PLAYER_REGISTRY_KEY),
+    (async () => {
+      let cursor = '';
+      let count = 0;
+      const seen = new Set<string>();
+      for (let pageIndex = 0; pageIndex < 10_000; pageIndex += 1) {
+        const page = await notifications.listOptedInUsers({
+          ...(cursor ? { after: cursor } : {}),
+          limit: 1_000,
+        }) as { userIds?: unknown; next?: unknown };
+        const ids = Array.isArray(page?.userIds)
+          ? page.userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          : [];
+        count += new Set(ids).size;
+        const next = typeof page?.next === 'string' ? page.next.trim() : '';
+        if (!next || next === cursor || seen.has(next)) break;
+        seen.add(next);
+        cursor = next;
+      }
+      return count;
+    })(),
+  ]);
+  const registeredPlayers = registry && typeof registry === 'object'
+    ? Object.keys(registry as Record<string, unknown>).length
+    : 0;
+  const totalPlayers = Math.max(registeredPlayers, optedInPlayers);
+  return {
+    optedInPlayers,
+    totalPlayers,
+    percentage: totalPlayers > 0 ? Math.min(100, optedInPlayers / totalPlayers * 100) : 0,
+  };
+}
+
+interface ManualPushBroadcastState {
+  campaignId: string;
+  title: string;
+  body: string;
+  link: string;
+  status: 'queued' | 'sending' | 'complete' | 'failed';
+  cursor: string;
+  sent: number;
+  attributionTracked: number;
+  createdAt: number;
+  updatedAt: number;
+  error?: string;
+}
+
+function manualPushBroadcastKey(campaignId: string): string {
+  return NOTIFICATION_BROADCAST_PREFIX + campaignId;
+}
+
+export async function startManualPushNotificationCampaign(input: {
+  title: unknown;
+  body: unknown;
+}): Promise<{ campaignId: string; status: 'queued' }> {
+  const title = String(input.title ?? '').trim();
+  const body = String(input.body ?? '').trim();
+  if (!title || title.length > 60) throw new Error('Notification title must contain 1–60 characters.');
+  if (!body || body.length > 100) throw new Error('Notification body must contain 1–100 characters.');
+
+  const subredditName = String(context.subredditName ?? '').trim();
+  const storedPostId = String(await redis.get('io:global-game-post-id') ?? '').trim();
+  const postId = storedPostId.replace(/^t3_/, '');
+  const link = storedPostId && subredditName
+    ? `https://reddit.com/r/${subredditName}/comments/${postId}`
+    : subredditName
+      ? `https://reddit.com/r/${subredditName}`
+      : '';
+  if (!link) throw new Error('Could not determine an Infinity Orbs notification destination.');
+
+  const campaignId = secureServerToken('push-broadcast');
+  const now = Date.now();
+  const state: ManualPushBroadcastState = {
+    campaignId,
+    title,
+    body,
+    link,
+    status: 'queued',
+    cursor: '',
+    sent: 0,
+    attributionTracked: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const keyName = manualPushBroadcastKey(campaignId);
+  await redis.set(keyName, JSON.stringify(state), {
+    expiration: new Date(now + 7 * 24 * 60 * 60_000),
+  });
+  try {
+    await context.scheduler.runJob({
+      name: 'manual-push-broadcast',
+      data: { campaignId, cursor: '' },
+      runAt: new Date(now + 1_000),
+    });
+  } catch (error) {
+    await redis.del(keyName).catch(() => false);
+    throw error;
+  }
+  return { campaignId, status: 'queued' };
+}
+
+export async function processManualPushNotificationCampaign(input: {
+  campaignId: unknown;
+  cursor: unknown;
+}): Promise<void> {
+  const campaignId = String(input.campaignId ?? '').trim();
+  if (!/^push-broadcast-[a-f0-9-]{16,100}$/i.test(campaignId)) return;
+  const keyName = manualPushBroadcastKey(campaignId);
+  const raw = await redis.get(keyName);
+  if (typeof raw !== 'string') return;
+  let state: ManualPushBroadcastState;
+  try {
+    state = JSON.parse(raw) as ManualPushBroadcastState;
+  } catch {
+    console.error('[Notification Broadcast] Campaign state is malformed:', campaignId);
+    return;
+  }
+  if (!state || state.campaignId !== campaignId || state.status === 'complete' || state.status === 'failed') return;
+
+  const requestedCursor = String(input.cursor ?? '');
+  if (requestedCursor !== String(state.cursor ?? '')) return;
+  const pageLockKey = keyName + ':page:' + (requestedCursor ? encodeURIComponent(requestedCursor).slice(0, 160) : 'first');
+  const lockResult = await redis.set(pageLockKey, '1', {
+    nx: true,
+    expiration: new Date(Date.now() + 10 * 60_000),
+  });
+  if (lockResult !== 'OK') return;
+
+  state.status = 'sending';
+  state.updatedAt = Date.now();
+  await redis.set(keyName, JSON.stringify(state), { expiration: new Date(Date.now() + 7 * 24 * 60 * 60_000) });
+
+  try {
+    const page = await notifications.listOptedInUsers({
+      ...(requestedCursor ? { after: requestedCursor } : {}),
+      limit: NOTIFICATION_BROADCAST_BATCH_SIZE,
+    }) as { userIds?: unknown; next?: unknown };
+    const userIds = Array.isArray(page?.userIds)
+      ? Array.from(new Set(page.userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+    if (userIds.length > 0) {
+      await notifications.enqueue({
+        title: state.title,
+        body: state.body,
+        recipients: userIds.map(userId => ({ userId, link: state.link })),
+      });
+      state.sent += userIds.length;
+      const sentAt = Date.now();
+      for (let offset = 0; offset < userIds.length; offset += 20) {
+        const batch = userIds.slice(offset, offset + 20);
+        const outcomes = await Promise.allSettled(
+          batch.map(userId => markNotificationAttributionPending(userId, 'manual', sentAt)),
+        );
+        state.attributionTracked += outcomes.filter(outcome => outcome.status === 'fulfilled' && outcome.value).length;
+      }
+    }
+
+    const next = typeof page?.next === 'string' ? page.next.trim() : '';
+    state.cursor = next;
+    state.updatedAt = Date.now();
+    state.status = next ? 'queued' : 'complete';
+    await redis.set(keyName, JSON.stringify(state), { expiration: new Date(Date.now() + 7 * 24 * 60 * 60_000) });
+
+    if (next) {
+      await context.scheduler.runJob({
+        name: 'manual-push-broadcast',
+        data: { campaignId, cursor: next },
+        runAt: new Date(Date.now() + NOTIFICATION_BROADCAST_BATCH_DELAY_MS),
+      });
+    } else {
+      console.log('[Notification Broadcast] Completed:', {
+        campaignId,
+        sent: state.sent,
+        attributionTracked: state.attributionTracked,
+      });
+    }
+  } catch (error) {
+    state.status = 'failed';
+    state.error = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300);
+    state.updatedAt = Date.now();
+    await redis.set(keyName, JSON.stringify(state), { expiration: new Date(Date.now() + 7 * 24 * 60 * 60_000) });
+    console.error('[Notification Broadcast] Batch failed; campaign stopped to avoid duplicate sends.', campaignId, error);
+  }
+}
+
+export async function getManualPushNotificationCampaign(campaignId: unknown): Promise<ManualPushBroadcastState | null> {
+  const id = String(campaignId ?? '').trim();
+  if (!/^push-broadcast-[a-f0-9-]{16,100}$/i.test(id)) return null;
+  const raw = await redis.get(manualPushBroadcastKey(id));
+  if (typeof raw !== 'string') return null;
+  try {
+    const state = JSON.parse(raw) as ManualPushBroadcastState;
+    return state && state.campaignId === id ? state : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getNotificationState(userId = currentUserId()): Promise<boolean> {
   const id = String(userId ?? '').trim();
   if (!id) return false;
@@ -2071,6 +2309,11 @@ function playerKeyFor(userId: string): string {
 }
 
 const PLAYTIME_ACTIVE_GAP_MS = 5 * 60_000;
+const NOTIFICATION_ATTRIBUTION_TTL_MS = 7 * 24 * 60 * 60_000;
+const NOTIFICATION_BROADCAST_PREFIX = 'io:notification-broadcast:v1:';
+const NOTIFICATION_BROADCAST_BATCH_SIZE = 200;
+const NOTIFICATION_BROADCAST_BATCH_DELAY_MS = 1_500;
+type NotificationAttributionSource = 'offline-full' | 'manual';
 
 function validPastTimestamp(value: unknown, now: number): number {
   const timestamp = Number(value);
@@ -2089,6 +2332,10 @@ interface PlayerRegistryEntry {
   playtimeMs?: number;
   clientVersion?: string;
   clientVersionAt?: number;
+  notificationPendingSource?: NotificationAttributionSource;
+  notificationPendingAt?: number;
+  lastSessionNotificationSource?: NotificationAttributionSource;
+  lastSessionNotificationAt?: number;
 }
 
 function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial<PlayerRegistryEntry> {
@@ -2112,6 +2359,14 @@ function parsePlayerRegistryEntryForMutation(raw: unknown, now: number): Partial
     throw invalid();
   }
   if (record.username !== undefined && typeof record.username !== 'string') throw invalid();
+  for (const field of ['notificationPendingAt', 'lastSessionNotificationAt'] as const) {
+    if (record[field] !== undefined && !validTimestamp(record[field])) throw invalid();
+  }
+  for (const field of ['notificationPendingSource', 'lastSessionNotificationSource'] as const) {
+    if (record[field] !== undefined && record[field] !== 'offline-full' && record[field] !== 'manual') {
+      throw invalid();
+    }
+  }
 
   return record as Partial<PlayerRegistryEntry>;
 }
@@ -2145,6 +2400,8 @@ async function touchPlayerActivity(
       let firstSeenAt = activityNow;
       let lastLoginAt = activityNow;
       let playtimeMs = 0;
+      let previousActivityAt = 0;
+      let newSession = true;
       if (existingRaw != null) {
         try {
           existing = parsePlayerRegistryEntryForMutation(existingRaw, activityNow);
@@ -2155,24 +2412,49 @@ async function touchPlayerActivity(
           throw error;
         }
         firstSeenAt = existing.firstSeenAt!;
-        const previousActivityAt = Math.max(
+        previousActivityAt = Math.max(
           validPastTimestamp(existing.lastActivityAt, activityNow),
           validPastTimestamp(existing.lastSeenAt, activityNow),
         );
+        newSession = previousActivityAt <= 0 ||
+          activityNow - previousActivityAt > PLAYTIME_ACTIVE_GAP_MS;
         const previousPlaytimeMs = existing.playtimeMs ?? 0;
         const activityDelta = previousActivityAt > 0
           ? Math.min(PLAYTIME_ACTIVE_GAP_MS, Math.max(0, activityNow - previousActivityAt))
           : 0;
         playtimeMs = Math.min(Number.MAX_SAFE_INTEGER, previousPlaytimeMs + activityDelta);
         const existingLastLoginAt = validPastTimestamp(existing.lastLoginAt, activityNow);
-        if (
-          previousActivityAt > 0 &&
-          activityNow - previousActivityAt <= PLAYTIME_ACTIVE_GAP_MS &&
-          existingLastLoginAt > 0
-        ) {
+        if (!newSession && existingLastLoginAt > 0) {
           lastLoginAt = existingLastLoginAt;
         }
       }
+
+      const pendingAt = validPastTimestamp(existing?.notificationPendingAt, activityNow);
+      const pendingSource = existing?.notificationPendingSource === 'offline-full' ||
+        existing?.notificationPendingSource === 'manual'
+        ? existing.notificationPendingSource
+        : undefined;
+      const returnedAfterPush = Boolean(
+        pendingSource &&
+        pendingAt > previousActivityAt &&
+        pendingAt <= activityNow &&
+        activityNow - pendingAt <= NOTIFICATION_ATTRIBUTION_TTL_MS
+      );
+      if (returnedAfterPush) lastLoginAt = activityNow;
+      const lastSessionNotificationSource = returnedAfterPush
+        ? pendingSource
+        : newSession
+          ? undefined
+          : existing?.lastSessionNotificationSource;
+      const lastSessionNotificationAt = returnedAfterPush
+        ? pendingAt
+        : newSession
+          ? undefined
+          : validPastTimestamp(existing?.lastSessionNotificationAt, activityNow);
+      const keepPendingNotification = !returnedAfterPush &&
+        Boolean(pendingSource) &&
+        pendingAt > 0 &&
+        activityNow - pendingAt <= NOTIFICATION_ATTRIBUTION_TTL_MS;
 
       const clientVersion =
         reportedClientVersion ??
@@ -2189,6 +2471,14 @@ async function touchPlayerActivity(
         playtimeMs,
         ...(clientVersion ? { clientVersion } : {}),
         ...(clientVersionAt > 0 ? { clientVersionAt } : {}),
+        ...(keepPendingNotification ? {
+          notificationPendingSource: pendingSource,
+          notificationPendingAt: pendingAt,
+        } : {}),
+        ...(lastSessionNotificationSource && lastSessionNotificationAt ? {
+          lastSessionNotificationSource,
+          lastSessionNotificationAt,
+        } : {}),
       } satisfies PlayerRegistryEntry);
       await txn.multi();
       await txn.hSet(PLAYER_REGISTRY_KEY, { [userId]: next });
@@ -2257,6 +2547,8 @@ export interface PlayerListEntry {
   shards: number;
   clientVersion: string | null;
   isLatestVersion: boolean;
+  lastSessionNotificationSource?: NotificationAttributionSource;
+  lastSessionNotificationAt?: number;
   /** True when this entry was recovered from the legacy leaderboard index. */
   registryRecovered?: boolean;
   /** Old leaderboard-only entry with no account ID; safe to display but never target for admin actions. */
@@ -2351,6 +2643,12 @@ export async function listPlayers(): Promise<PlayerListEntry[]> {
       isLatestVersion: typeof registry.clientVersion === 'string' &&
         registry.clientVersion === APP_VERSION &&
         validPastTimestamp(registry.clientVersionAt, now) > now - 45_000,
+      ...(registry.lastSessionNotificationSource === 'offline-full' || registry.lastSessionNotificationSource === 'manual'
+        ? { lastSessionNotificationSource: registry.lastSessionNotificationSource }
+        : {}),
+      ...(validPastTimestamp(registry.lastSessionNotificationAt, now) > 0
+        ? { lastSessionNotificationAt: validPastTimestamp(registry.lastSessionNotificationAt, now) }
+        : {}),
     } satisfies PlayerListEntry;
   });
   const visiblePlayers = players.filter((player): player is PlayerListEntry => player !== null);
@@ -5488,6 +5786,11 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
       link: `https://reddit.com/r/${subredditName}`,
     }],
   });
+  try {
+    await markNotificationAttributionPending(userId, 'offline-full', Date.now());
+  } catch (error) {
+    console.warn('[Offline Notification] Could not record return-session attribution.', error);
+  }
 
   // Compare-and-set prevents a concurrent offline-roll claim from clearing the
   // sending marker and then having this request resurrect a stale receipt.
