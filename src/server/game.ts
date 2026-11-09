@@ -6211,14 +6211,23 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     return false;
   }
 
-  await notifications.enqueue({
-    title: 'Infinity Orbs',
-    body: 'your offline orbs are full, make sure to collect them! ',
-    recipients: [{
-      userId,
-      link: `https://reddit.com/r/${subredditName}`,
-    }],
-  });
+  try {
+    await notifications.enqueue({
+      title: 'Infinity Orbs',
+      body: 'your offline orbs are full, make sure to collect them! ',
+      recipients: [{
+        userId,
+        link: `https://reddit.com/r/${subredditName}`,
+      }],
+    });
+  } catch (error) {
+    if (isNotificationDailyLimitError(error)) {
+      await markNotificationDailyLimitReached(userId);
+      await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+      return false;
+    }
+    throw error;
+  }
   try {
     await markNotificationAttributionPending(userId, 'offline-full', Date.now());
   } catch (error) {
