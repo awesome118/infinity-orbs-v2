@@ -552,6 +552,7 @@ const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
+const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
@@ -1417,42 +1418,164 @@ async function markNotificationAttributionPending(
   });
 }
 
+export interface NotificationPreferences {
+  updates: boolean;
+  offlineOrbs: boolean;
+}
+
+export interface NotificationPreferenceState {
+  enabled: boolean;
+  preferences: NotificationPreferences;
+}
+
+function notificationPreferencesKey(userId: string): string {
+  return NOTIFICATION_PREFERENCES_PREFIX + userId;
+}
+
+function parseNotificationPreferences(
+  raw: unknown,
+  fallback: NotificationPreferences = { updates: true, offlineOrbs: true },
+): NotificationPreferences {
+  let value = raw;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return { ...fallback }; }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...fallback };
+  const record = value as Record<string, unknown>;
+  return {
+    updates: typeof record.updates === 'boolean' ? record.updates : fallback.updates,
+    offlineOrbs: typeof record.offlineOrbs === 'boolean' ? record.offlineOrbs : fallback.offlineOrbs,
+  };
+}
+
+async function readStoredNotificationPreferences(
+  userId: string,
+  fallback: NotificationPreferences = { updates: true, offlineOrbs: true },
+): Promise<NotificationPreferences> {
+  return parseNotificationPreferences(await redis.get(notificationPreferencesKey(userId)), fallback);
+}
+
+async function filterNotificationRecipients(
+  userIds: string[],
+  type: keyof NotificationPreferences,
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const stored = await readInBatches(
+    userIds.map(notificationPreferencesKey),
+    keys => redis.mGet(keys),
+  );
+  return userIds.filter((userId, index) =>
+    parseNotificationPreferences(stored[index], { updates: true, offlineOrbs: true })[type],
+  );
+}
+
+async function isNotificationPreferenceEnabled(
+  userId: string,
+  type: keyof NotificationPreferences,
+): Promise<boolean> {
+  const id = String(userId ?? '').trim();
+  if (!id || !(await notifications.isOptedIn(id))) return false;
+  const preferences = await readStoredNotificationPreferences(id, { updates: true, offlineOrbs: true });
+  return preferences[type];
+}
+
+export async function getNotificationPreferences(userId = currentUserId()): Promise<NotificationPreferenceState> {
+  const id = String(userId ?? '').trim();
+  if (!id) return { enabled: false, preferences: { updates: false, offlineOrbs: false } };
+  const enabled = await notifications.isOptedIn(id);
+  const preferences = enabled
+    ? await readStoredNotificationPreferences(id, { updates: true, offlineOrbs: true })
+    : { updates: false, offlineOrbs: false };
+  return { enabled, preferences };
+}
+
+export async function setNotificationPreferences(input: {
+  updates?: unknown;
+  offlineOrbs?: unknown;
+}): Promise<NotificationPreferenceState> {
+  const userId = currentUserId();
+  if (!userId) throw new Error('Could not identify your Reddit account.');
+
+  const current = await getNotificationPreferences(userId);
+  const preferences: NotificationPreferences = {
+    updates: input.updates === undefined ? current.preferences.updates : input.updates === true,
+    offlineOrbs: input.offlineOrbs === undefined ? current.preferences.offlineOrbs : input.offlineOrbs === true,
+  };
+  const shouldBeEnabled = preferences.updates || preferences.offlineOrbs;
+  const wasEnabled = await notifications.isOptedIn(userId);
+
+  if (shouldBeEnabled && !wasEnabled) await notifications.optInCurrentUser();
+  if (!shouldBeEnabled && wasEnabled) await notifications.optOutCurrentUser();
+
+  const enabled = await notifications.isOptedIn(userId);
+  if (shouldBeEnabled && !enabled) {
+    throw new Error('Reddit did not confirm notification opt-in. Please try again.');
+  }
+
+  await redis.set(notificationPreferencesKey(userId), JSON.stringify(preferences));
+  return {
+    enabled,
+    preferences: enabled ? preferences : { updates: false, offlineOrbs: false },
+  };
+}
+
 export async function getNotificationStats(): Promise<{
   optedInPlayers: number;
+  updatesEnabledPlayers: number;
+  offlineOrbsEnabledPlayers: number;
   totalPlayers: number;
   percentage: number;
+  updatesPercentage: number;
+  offlineOrbsPercentage: number;
 }> {
-  const [registry, optedInPlayers] = await Promise.all([
-    redis.hGetAll(PLAYER_REGISTRY_KEY),
-    (async () => {
-      let cursor = '';
-      let count = 0;
-      const seen = new Set<string>();
-      for (let pageIndex = 0; pageIndex < 10_000; pageIndex += 1) {
-        const page = await notifications.listOptedInUsers({
-          ...(cursor ? { after: cursor } : {}),
-          limit: 1_000,
-        }) as { userIds?: unknown; next?: unknown };
-        const ids = Array.isArray(page?.userIds)
-          ? page.userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-          : [];
-        count += new Set(ids).size;
-        const next = typeof page?.next === 'string' ? page.next.trim() : '';
-        if (!next || next === cursor || seen.has(next)) break;
-        seen.add(next);
-        cursor = next;
-      }
-      return count;
-    })(),
-  ]);
+  const registry = await redis.hGetAll(PLAYER_REGISTRY_KEY);
+  const seenCursors = new Set<string>();
+  const seenUsers = new Set<string>();
+  let cursor = '';
+  let updatesEnabledPlayers = 0;
+  let offlineOrbsEnabledPlayers = 0;
+
+  for (let pageIndex = 0; pageIndex < 10_000; pageIndex += 1) {
+    const page = await notifications.listOptedInUsers({
+      ...(cursor ? { after: cursor } : {}),
+      limit: 1_000,
+    }) as { userIds?: unknown; next?: unknown };
+    const ids = Array.isArray(page?.userIds)
+      ? Array.from(new Set(page.userIds.filter((id): id is string =>
+          typeof id === 'string' && id.trim().length > 0 && !seenUsers.has(id),
+        )))
+      : [];
+    for (const id of ids) seenUsers.add(id);
+
+    const stored = await readInBatches(
+      ids.map(notificationPreferencesKey),
+      keys => redis.mGet(keys),
+    );
+    for (let index = 0; index < ids.length; index += 1) {
+      const preferences = parseNotificationPreferences(stored[index], { updates: true, offlineOrbs: true });
+      if (preferences.updates) updatesEnabledPlayers += 1;
+      if (preferences.offlineOrbs) offlineOrbsEnabledPlayers += 1;
+    }
+
+    const next = typeof page?.next === 'string' ? page.next.trim() : '';
+    if (!next || next === cursor || seenCursors.has(next)) break;
+    seenCursors.add(next);
+    cursor = next;
+  }
+
+  const optedInPlayers = seenUsers.size;
   const registeredPlayers = registry && typeof registry === 'object'
     ? Object.keys(registry as Record<string, unknown>).length
     : 0;
   const totalPlayers = Math.max(registeredPlayers, optedInPlayers);
   return {
     optedInPlayers,
+    updatesEnabledPlayers,
+    offlineOrbsEnabledPlayers,
     totalPlayers,
     percentage: totalPlayers > 0 ? Math.min(100, optedInPlayers / totalPlayers * 100) : 0,
+    updatesPercentage: totalPlayers > 0 ? Math.min(100, updatesEnabledPlayers / totalPlayers * 100) : 0,
+    offlineOrbsPercentage: totalPlayers > 0 ? Math.min(100, offlineOrbsEnabledPlayers / totalPlayers * 100) : 0,
   };
 }
 
@@ -1563,16 +1686,17 @@ export async function processManualPushNotificationCampaign(input: {
     const userIds = Array.isArray(page?.userIds)
       ? Array.from(new Set(page.userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
       : [];
-    if (userIds.length > 0) {
+    const updateRecipients = await filterNotificationRecipients(userIds, 'updates');
+    if (updateRecipients.length > 0) {
       await notifications.enqueue({
         title: state.title,
         body: state.body,
-        recipients: userIds.map(userId => ({ userId, link: state.link })),
+        recipients: updateRecipients.map(userId => ({ userId, link: state.link })),
       });
-      state.sent += userIds.length;
+      state.sent += updateRecipients.length;
       const sentAt = Date.now();
-      for (let offset = 0; offset < userIds.length; offset += 20) {
-        const batch = userIds.slice(offset, offset + 20);
+      for (let offset = 0; offset < updateRecipients.length; offset += 20) {
+        const batch = updateRecipients.slice(offset, offset + 20);
         const outcomes = await Promise.allSettled(
           batch.map(userId => markNotificationAttributionPending(userId, 'manual', sentAt)),
         );
@@ -1622,18 +1746,11 @@ export async function getManualPushNotificationCampaign(campaignId: unknown): Pr
 }
 
 export async function getNotificationState(userId = currentUserId()): Promise<boolean> {
-  const id = String(userId ?? '').trim();
-  if (!id) return false;
-  return notifications.isOptedIn(id);
+  return (await getNotificationPreferences(userId)).enabled;
 }
 
 export async function setNotificationState(enabled: boolean): Promise<boolean> {
-  if (enabled) {
-    await notifications.optInCurrentUser();
-  } else {
-    await notifications.optOutCurrentUser();
-  }
-  return notifications.isOptedIn(currentUserId());
+  return (await setNotificationPreferences({ updates: enabled, offlineOrbs: enabled })).enabled;
 }
 
 function normalizePopupConfig(value: unknown): PopupConfig {
@@ -5724,7 +5841,7 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     throw new Error('Offline notification reservation is changing repeatedly; retry later.');
   }
 
-  if (!(await notifications.isOptedIn(userId))) return false;
+  if (!(await isNotificationPreferenceEnabled(userId, 'offlineOrbs'))) return false;
 
   // Reserve briefly before the external call. If SET or its verification GET
   // has an ambiguous failure, no provider call occurs, and a later job can
@@ -5905,7 +6022,7 @@ async function scheduleOfflineFullNotification(
       offlineNotificationPendingRetryAt(notificationMarker),
     );
   }
-  if (!(await notifications.isOptedIn(userId))) return;
+  if (!(await isNotificationPreferenceEnabled(userId, 'offlineOrbs'))) return;
 
   const jobKey = OFFLINE_FULL_JOB_PREFIX + userId;
   const now = Date.now();
