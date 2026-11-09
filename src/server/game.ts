@@ -6414,7 +6414,10 @@ export async function processOfflineFullNotification(
     const cleared = await clearOfflineReminderKeyIfUnchanged(jobKey, expectedJobValue);
     if (!sent && cleared) {
       const notificationMarker = await redis.get(notificationKey);
-      if (notificationMarker === '') {
+      if (notificationMarker === null && await isNotificationPreferenceEnabled(userId, 'offlineOrbs')) {
+        // Reddit's daily quota was already used. Re-attempt just after the UTC day resets.
+        await scheduleOfflineFullNotification(userId, subredditName, nextUtcNotificationDay());
+      } else if (notificationMarker === '') {
         // An older clear path may have left an empty-valued key that still blocks SET NX.
         await scheduleOfflineFullNotification(userId, subredditName, Date.now() + OFFLINE_FULL_RETRY_MS);
       } else if (isRetryableOfflineFullNotificationMarker(notificationMarker)) {
@@ -6551,6 +6554,13 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
 
         if (notificationMarker == null && !(await isNotificationPreferenceEnabled(userId, 'offlineOrbs'))) {
           await clearCurrentJob();
+          return;
+        }
+
+        if (notificationMarker == null) {
+          // The provider was not called because the shared daily notification budget is full.
+          await clearCurrentJob();
+          await scheduleOfflineFullNotification(userId, subredditName, nextUtcNotificationDay());
           return;
         }
 
