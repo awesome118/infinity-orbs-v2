@@ -617,10 +617,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [pushBroadcastTitle, setPushBroadcastTitle] = useState('Infinity Orbs');
   const [pushBroadcastBody, setPushBroadcastBody] = useState('');
   const [pushBroadcastLoading, setPushBroadcastLoading] = useState(false);
+  const [pushBroadcastError, setPushBroadcastError] = useState('');
   const [notificationStats, setNotificationStats] = useState<{
     optedInPlayers: number;
+    updatesEnabledPlayers: number;
+    offlineOrbsEnabledPlayers: number;
     totalPlayers: number;
     percentage: number;
+    updatesPercentage: number;
+    offlineOrbsPercentage: number;
   } | null>(null);
   const [notificationStatsLoading, setNotificationStatsLoading] = useState(false);
   const [notificationCampaignId, setNotificationCampaignId] = useState('');
@@ -1091,8 +1096,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!res.ok) throw new Error(data.error || 'Could not load notification audience statistics.');
       setNotificationStats({
         optedInPlayers: Math.max(0, Number(data.optedInPlayers) || 0),
+        updatesEnabledPlayers: Math.max(0, Number(data.updatesEnabledPlayers) || 0),
+        offlineOrbsEnabledPlayers: Math.max(0, Number(data.offlineOrbsEnabledPlayers) || 0),
         totalPlayers: Math.max(0, Number(data.totalPlayers) || 0),
         percentage: Math.max(0, Math.min(100, Number(data.percentage) || 0)),
+        updatesPercentage: Math.max(0, Math.min(100, Number(data.updatesPercentage) || 0)),
+        offlineOrbsPercentage: Math.max(0, Math.min(100, Number(data.offlineOrbsPercentage) || 0)),
       });
     } catch (error: any) {
       setNotificationStats(null);
@@ -1105,11 +1114,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const sendManualPushBroadcast = async () => {
     const title = pushBroadcastTitle.trim();
     const body = pushBroadcastBody.trim();
-    if (!title || title.length > 60 || !body || body.length > 100 || pushBroadcastLoading) return;
-    const audience = notificationStats
-      ? notificationStats.optedInPlayers.toLocaleString() + ' opted-in players'
-      : 'all opted-in players';
-    if (!window.confirm('Queue a Reddit push notification for ' + audience + '? Reddit enforces its notification frequency limits.')) return;
+    if (pushBroadcastLoading) return;
+    if (!title || title.length > 60) {
+      setPushBroadcastError('Enter a title between 1 and 60 characters.');
+      return;
+    }
+    if (!body || body.length > 100) {
+      setPushBroadcastError('Enter a message between 1 and 100 characters.');
+      return;
+    }
+    setPushBroadcastError('');
     setPushBroadcastLoading(true);
     setNotificationCampaign(null);
     setNotificationCampaignId('');
@@ -1124,9 +1138,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!res.ok) throw new Error(data.error || 'Could not queue the notification broadcast.');
       setNotificationCampaignId(String(data.campaignId ?? ''));
       setNotificationCampaign({ status: 'queued', sent: 0, attributionTracked: 0 });
-      setMessage('Notification broadcast queued. It will be sent in batches to Reddit-opted-in players.');
+      setMessage('Game update notification queued for players who enabled Game updates.');
     } catch (error: any) {
-      setMessage('Notification broadcast failed: ' + (error?.message || 'Unknown error.'));
+      setPushBroadcastError(error?.message || 'Could not queue the notification broadcast.');
     } finally {
       setPushBroadcastLoading(false);
       void loadNotificationStats();
@@ -1722,8 +1736,12 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (data.notificationStats && typeof data.notificationStats === 'object') {
         setNotificationStats({
           optedInPlayers: Math.max(0, Number(data.notificationStats.optedInPlayers) || 0),
+          updatesEnabledPlayers: Math.max(0, Number(data.notificationStats.updatesEnabledPlayers) || 0),
+          offlineOrbsEnabledPlayers: Math.max(0, Number(data.notificationStats.offlineOrbsEnabledPlayers) || 0),
           totalPlayers: Math.max(0, Number(data.notificationStats.totalPlayers) || 0),
           percentage: Math.max(0, Math.min(100, Number(data.notificationStats.percentage) || 0)),
+          updatesPercentage: Math.max(0, Math.min(100, Number(data.notificationStats.updatesPercentage) || 0)),
+          offlineOrbsPercentage: Math.max(0, Math.min(100, Number(data.notificationStats.offlineOrbsPercentage) || 0)),
         });
       }
       const activity = data.activity && typeof data.activity === 'object' ? data.activity : {};
@@ -5494,7 +5512,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
                 <Users className="w-4 h-4" /> Notification Audience
               </div>
               <p className="mt-1 text-[10px] text-slate-500">
-                Reddit opt-ins are counted directly. The rate is based on all registered Infinity Orbs accounts.
+                Audience counts are grouped by the notification type each player enabled. Percentages use all registered accounts.
               </p>
             </div>
             <button
@@ -5509,19 +5527,19 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
           </div>
           <div className="grid grid-cols-3 gap-2 mt-3">
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
-              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Enabled</div>
-              <div className="mt-1 text-lg font-mono font-black text-fuchsia-200">{notificationStats ? formatNumber(notificationStats.optedInPlayers) : '—'}</div>
-              <div className="text-[8px] text-slate-600">Reddit opt-ins</div>
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Game Updates</div>
+              <div className="mt-1 text-lg font-mono font-black text-fuchsia-200">{notificationStats ? formatNumber(notificationStats.updatesEnabledPlayers) : '—'}</div>
+              <div className="text-[8px] text-emerald-300">{notificationStats ? notificationStats.updatesPercentage.toFixed(1) + '%' : '—'} enabled</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Offline Orbs</div>
+              <div className="mt-1 text-lg font-mono font-black text-emerald-200">{notificationStats ? formatNumber(notificationStats.offlineOrbsEnabledPlayers) : '—'}</div>
+              <div className="text-[8px] text-emerald-300">{notificationStats ? notificationStats.offlineOrbsPercentage.toFixed(1) + '%' : '—'} enabled</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
               <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Players</div>
               <div className="mt-1 text-lg font-mono font-black text-cyan-200">{notificationStats ? formatNumber(notificationStats.totalPlayers) : '—'}</div>
               <div className="text-[8px] text-slate-600">Registered accounts</div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
-              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Opt-in rate</div>
-              <div className="mt-1 text-lg font-mono font-black text-emerald-200">{notificationStats ? notificationStats.percentage.toFixed(1) + '%' : '—'}</div>
-              <div className="text-[8px] text-slate-600">Of registered players</div>
             </div>
           </div>
         </section>
@@ -5531,13 +5549,13 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
             <Megaphone className="w-4 h-4" /> Manual Notification Broadcast
           </div>
           <p className="text-[10px] text-slate-500">
-            Send a Reddit push to every opted-in account, including offline players. Reddit must approve notification copy before it can be sent; title limit 60 characters and message limit 100.
+            Send a game update push to players who enabled Game updates. Players who only enabled Offline Orbs will not receive this broadcast. Reddit must approve notification copy before it can be sent; title limit 60 characters and message limit 100.
           </p>
           <label className="block text-[10px] font-bold text-slate-400">
             Title
             <input
               value={pushBroadcastTitle}
-              onChange={event => setPushBroadcastTitle(event.target.value.slice(0, 60))}
+              onChange={event => { setPushBroadcastTitle(event.target.value.slice(0, 60)); setPushBroadcastError(''); }}
               maxLength={60}
               placeholder="Infinity Orbs"
               className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-white p-3"
@@ -5547,7 +5565,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
             Message
             <textarea
               value={pushBroadcastBody}
-              onChange={event => setPushBroadcastBody(event.target.value.slice(0, 100))}
+              onChange={event => { setPushBroadcastBody(event.target.value.slice(0, 100)); setPushBroadcastError(''); }}
               maxLength={100}
               rows={2}
               placeholder="A short, useful reason to return to the game..."
@@ -5558,13 +5576,22 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
             <span className="text-[10px] text-slate-500">{pushBroadcastTitle.trim().length}/60 title · {pushBroadcastBody.trim().length}/100 message</span>
             <button
               type="button"
-              disabled={pushBroadcastLoading || !pushBroadcastTitle.trim() || !pushBroadcastBody.trim()}
-              onClick={() => void sendManualPushBroadcast()}
+              disabled={pushBroadcastLoading}
+              onClick={event => {
+                event.preventDefault();
+                event.stopPropagation();
+                void sendManualPushBroadcast();
+              }}
               className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
             >
-              {pushBroadcastLoading ? 'Queuing…' : 'Send to Opted-In Players'}
+              {pushBroadcastLoading ? 'Queuing…' : 'Send Notification'}
             </button>
           </div>
+          {pushBroadcastError && (
+            <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[10px] text-rose-200">
+              {pushBroadcastError}
+            </p>
+          )}
           {notificationCampaign && (
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[10px] text-slate-300">
               <strong>Broadcast:</strong> {notificationCampaign.status.toUpperCase()} · {formatNumber(notificationCampaign.sent)} sent · {formatNumber(notificationCampaign.attributionTracked)} offline returns tracked
