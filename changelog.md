@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.38
+
+- **Review Release:** Same gameplay and notification code as the dev-tested v2.2.37 build. No gameplay changes in this version bump.
+
 ### New in 2.2.37
 
 - **Game Update Preset:** Admins send a fixed Game Update notification rather than composing arbitrary copy. Players receive the title “Infinity Orbs Update” and the message “A new update is live! Jump back in and see what's changed.”
