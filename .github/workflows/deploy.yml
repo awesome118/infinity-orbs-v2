@@ -17,6 +17,7 @@ name: Deploy Devvit
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
 # Explicit user-requested dev-only upload of v2.2.35. Current marker: [deploy-dev:2.2.35].
+# Retry v2.2.35 after fixing the required PlayerRegistryEntry fields in notification attribution.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
 # Regression test asserts auth is checked before upload and the session ID reaches every Devvit CLI step.
