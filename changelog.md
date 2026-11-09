@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.35
+
+- **Manual Reddit Push Broadcasts:** Admins can send a short push notification to every Reddit account opted in to Infinity Orbs. The campaign is processed in bounded scheduled batches, with live send status in the admin console.
+- **Notification Audience Metrics:** The admin console shows the number of opted-in players and their percentage of all registered accounts.
+- **Push-Return Session Tracking:** The player list marks currently active sessions following an offline-full or manual push sent while that account was offline. This is a correlation signal, not a provider-confirmed notification click.
+- **Offline Orb Reminder Attribution:** The existing scheduled full-storage reminder records a return-session marker after Reddit accepts the push.
+
 ### New in 2.2.32
 
 - **Guild Name Attribution:** Restore direct custom guild names and the original 2–5 character tag field. Each member's Reddit user flair now reads `GuildName - HighestOrbTier`, with the guild name tied to their Reddit account. Existing pending custom-name requests are restored during a one-time migration.
