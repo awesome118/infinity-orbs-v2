@@ -447,10 +447,7 @@ debugRouter.get('/notifications/stats', async (_req, res) => {
 
 debugRouter.post('/notifications/send', async (req, res) => {
   try {
-    const result = await startManualPushNotificationCampaign({
-      title: req.body?.title,
-      body: req.body?.body,
-    });
+    const result = await startManualPushNotificationCampaign();
     res.status(202).json(result);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Could not start notification broadcast.' });
