@@ -62,6 +62,7 @@ import {
   chooseCelestialAlignment,
   getCollectionPage,
   processOfflineFullNotification,
+  processManualPushNotificationCampaign,
   getNotificationState,
   setNotificationState,
   getPopupConfig,
@@ -746,6 +747,20 @@ export function createApp() {
       return res.status(200).json({ status: 'ok' });
     } catch (e) {
       console.error('Offline-orbs-full scheduler failed:', e);
+      return res.status(200).json({ status: 'error' });
+    }
+  });
+
+  app.post('/internal/scheduler/manual-push-broadcast', async (req, res) => {
+    try {
+      const data = req.body?.data ?? {};
+      await processManualPushNotificationCampaign({
+        campaignId: data.campaignId,
+        cursor: data.cursor,
+      });
+      return res.status(200).json({ status: 'ok' });
+    } catch (error) {
+      console.error('[Notification Broadcast] Scheduler worker failed:', error);
       return res.status(200).json({ status: 'error' });
     }
   });
