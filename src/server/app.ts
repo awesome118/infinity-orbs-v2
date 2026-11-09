@@ -63,6 +63,7 @@ import {
   getCollectionPage,
   processOfflineFullNotification,
   processManualPushNotificationCampaign,
+  processPendingGameUpdateQueue,
   getNotificationPreferences,
   setNotificationPreferences,
   getPopupConfig,
@@ -761,6 +762,20 @@ export function createApp() {
       return res.status(200).json({ status: 'ok' });
     } catch (error) {
       console.error('[Notification Broadcast] Scheduler worker failed:', error);
+      return res.status(200).json({ status: 'error' });
+    }
+  });
+
+  app.post('/internal/scheduler/pending-game-update-drain', async (req, res) => {
+    try {
+      const data = req.body?.data ?? {};
+      await processPendingGameUpdateQueue({
+        token: data.token,
+        cursor: data.cursor,
+      });
+      return res.status(200).json({ status: 'ok' });
+    } catch (error) {
+      console.error('[Notification Broadcast] Queued update worker failed:', error);
       return res.status(200).json({ status: 'error' });
     }
   });
