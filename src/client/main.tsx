@@ -660,6 +660,7 @@ function App() {
   const adminStatusInFlightRef = useRef(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sound.enabled);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState({ updates: false, offlineOrbs: false });
   const [notificationSettingsLoaded, setNotificationSettingsLoaded] = useState(false);
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [notificationPromptPreview, setNotificationPromptPreview] = useState(false);
@@ -1236,15 +1237,20 @@ function App() {
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement')
           .then(value => { if (isCurrentRefresh()) setDeveloperAnnouncement(value?.message ? value : null); })
           .catch(() => undefined),
-        getJson<{ enabled: boolean }>('/api/notifications')
+        getJson<{ enabled: boolean; preferences?: { updates?: boolean; offlineOrbs?: boolean } }>('/api/notifications')
           .then(value => {
             if (!isCurrentRefresh()) return;
             setNotificationsEnabled(value.enabled === true);
+            setNotificationPreferences({
+              updates: value.enabled === true && value.preferences?.updates !== false,
+              offlineOrbs: value.enabled === true && value.preferences?.offlineOrbs !== false,
+            });
             setNotificationSettingsLoaded(true);
           })
           .catch(() => {
             if (!isCurrentRefresh()) return;
             setNotificationsEnabled(false);
+            setNotificationPreferences({ updates: false, offlineOrbs: false });
             setNotificationSettingsLoaded(true);
           }),
       ];
@@ -3414,22 +3420,39 @@ function App() {
 
   const handleToggleNotifications = async (): Promise<boolean> => {
     try {
-      const enabled = !notificationsEnabled;
-      const res = await getJson<{ enabled: boolean }>('/api/notifications', {
+      const nextPreferences = { updates: true, offlineOrbs: true };
+      const res = await getJson<{ enabled: boolean; preferences: { updates: boolean; offlineOrbs: boolean } }>('/api/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify(nextPreferences),
       });
-      const nextEnabled = res.enabled === true;
-      setNotificationsEnabled(nextEnabled);
-      showToast(
-        nextEnabled ? 'Reddit notifications enabled.' : 'Reddit notifications disabled.',
-        'success',
-      );
-      return nextEnabled === enabled;
+      setNotificationsEnabled(res.enabled === true);
+      setNotificationPreferences(res.preferences);
+      showToast('Game updates and Offline Orbs notifications enabled.', 'success');
+      return res.enabled === true && res.preferences.updates && res.preferences.offlineOrbs;
     } catch (e: any) {
       showToast(e.message || 'Could not update Reddit notification settings.', 'warn');
       return false;
+    }
+  };
+
+  const handleSetNotificationPreference = async (type: 'updates' | 'offlineOrbs', enabled: boolean) => {
+    const previous = notificationPreferences;
+    const next = { ...previous, [type]: enabled };
+    setNotificationPreferences(next);
+    try {
+      const res = await getJson<{ enabled: boolean; preferences: { updates: boolean; offlineOrbs: boolean } }>('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      setNotificationsEnabled(res.enabled === true);
+      setNotificationPreferences(res.preferences);
+      const label = type === 'updates' ? 'Game update' : 'Offline Orbs';
+      showToast(label + ' notifications ' + (enabled ? 'enabled.' : 'disabled.'), 'success');
+    } catch (e: any) {
+      setNotificationPreferences(previous);
+      showToast(e.message || 'Could not update notification preferences.', 'warn');
     }
   };
 
@@ -3775,7 +3798,9 @@ function App() {
         onRetryAdminStatus={() => { void refreshAdminStatus(); }}
         onOpenProfile={() => changeTab('profile')}
         notificationsEnabled={notificationsEnabled}
-        onToggleNotifications={() => void handleToggleNotifications()}
+        notificationPreferences={notificationPreferences}
+        notificationSettingsLoaded={notificationSettingsLoaded}
+        onSetNotificationPreference={(type, enabled) => void handleSetNotificationPreference(type, enabled)}
       />
 
       {/* Global Booster Activation Announcement */}
@@ -3940,7 +3965,7 @@ function App() {
               Allow push notifications?
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              We’ll only send notifications when your idle rewards are ready to claim or an Infinity Orbs update is ready.
+              We’ll only send the types of alerts you choose: game updates and reminders when your offline Orbs are full.
             </p>
             <div className="io-notification-prompt-note">
               <div className="text-[10px] uppercase tracking-widest font-black text-teal-200">Notifications are off by default</div>
