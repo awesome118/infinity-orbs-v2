@@ -16,7 +16,7 @@ name: Deploy Devvit
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# Explicit user-requested dev-only upload of v2.2.37. Current marker: [deploy-dev:2.2.37].
+# Explicit user-requested dev-only upload of v2.2.38. Current marker: [deploy-dev:2.2.38].
 # Retry v2.2.35 after fixing the required PlayerRegistryEntry fields in notification attribution.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
@@ -45,7 +45,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.37]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.38]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -231,7 +231,7 @@ jobs:
           npx devvit list installs r/infinity_orbs_dev
 
   submit-review:
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.37]') }}
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[submit-review:2.2.38]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -250,7 +250,7 @@ jobs:
 
       - name: Verify review candidate
         env:
-          VERSION: 2.2.37
+          VERSION: 2.2.38
         run: |
           set -euo pipefail
           ACTUAL_VERSION="$(node -p "require('./package.json').version")"
@@ -287,7 +287,7 @@ jobs:
           DEVVIT_SESSION_ID: ${{ secrets.DEVVIT_SESSION_ID }}
           DEVVIT_ALLOW_SOURCE_UPLOAD: "1"
           CI: "true"
-          VERSION: 2.2.37
+          VERSION: 2.2.38
         timeout-minutes: 15
         run: |
           set -euo pipefail
