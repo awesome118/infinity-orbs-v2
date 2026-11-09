@@ -20,7 +20,9 @@ interface HeaderProps {
   onRetryAdminStatus?: () => void;
   onOpenProfile?: () => void;
   notificationsEnabled: boolean;
-  onToggleNotifications: () => void;
+  notificationPreferences: { updates: boolean; offlineOrbs: boolean };
+  notificationSettingsLoaded: boolean;
+  onSetNotificationPreference: (type: 'updates' | 'offlineOrbs', enabled: boolean) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,12 +40,15 @@ export const Header: React.FC<HeaderProps> = ({
   onRetryAdminStatus,
   onOpenProfile,
   notificationsEnabled,
-  onToggleNotifications,
+  notificationPreferences,
+  notificationSettingsLoaded,
+  onSetNotificationPreference,
 }) => {
   const fmt = (n: number) => Number.isFinite(n) ? Math.max(0, n).toLocaleString() : '0';
   const onlineCountRaw = Number(state.onlinePlayers ?? 1);
   const onlineCount = Number.isFinite(onlineCountRaw) ? Math.max(1, Math.floor(onlineCountRaw)) : 1;
   const [combatMarks,setCombatMarks]=useState(0);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   useEffect(()=>{
     let cancelled=false;
     const refreshCombatMarks=async()=>{
@@ -261,22 +266,86 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Reddit Notification Toggle */}
-          <button
-            type="button"
-            aria-label={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
-            aria-pressed={notificationsEnabled}
-            onClick={() => {
-              sound.playClick();
-              onToggleNotifications();
-            }}
-            className="header-icon-button p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
-            title={notificationsEnabled ? 'Disable Reddit notifications' : 'Enable Reddit notifications'}
-          >
-            {notificationsEnabled
-              ? <Bell className="w-4 h-4 text-fuchsia-400" />
-              : <BellOff className="w-4 h-4 text-slate-500" />}
-          </button>
+          {/* Independent Reddit Notification Settings */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Notification settings"
+              aria-expanded={notificationSettingsOpen}
+              aria-haspopup="dialog"
+              onClick={() => {
+                sound.playClick();
+                setNotificationSettingsOpen(open => !open);
+              }}
+              className="header-icon-button p-2 text-slate-400 hover:text-fuchsia-300 hover:bg-slate-800/80 rounded-lg transition-colors"
+              title="Choose which Infinity Orbs notifications you receive"
+            >
+              {notificationsEnabled
+                ? <Bell className="w-4 h-4 text-fuchsia-400" />
+                : <BellOff className="w-4 h-4 text-slate-500" />}
+            </button>
+            {notificationSettingsOpen && (
+              <div
+                role="dialog"
+                aria-label="Notification preferences"
+                className="absolute right-0 top-full mt-2 z-[80] w-72 rounded-2xl border border-slate-700 bg-slate-950/98 p-3 shadow-2xl shadow-black/50"
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="text-xs font-black uppercase tracking-wider text-white">Push notifications</div>
+                  <button
+                    type="button"
+                    aria-label="Close notification settings"
+                    onClick={() => setNotificationSettingsOpen(false)}
+                    className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="mb-3 text-[10px] leading-relaxed text-slate-400">
+                  Choose each type independently. Reddit notifications are enabled while at least one type is on.
+                </p>
+                {!notificationSettingsLoaded ? (
+                  <div className="py-3 text-center text-[10px] text-slate-500">Loading preferences…</div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={notificationPreferences.updates}
+                      onClick={() => onSetNotificationPreference('updates', !notificationPreferences.updates)}
+                      className="w-full flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 text-left hover:border-fuchsia-500/40"
+                    >
+                      <span>
+                        <span className="block text-xs font-bold text-slate-100">Game updates</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">Announcements and new release alerts</span>
+                      </span>
+                      <span className={'relative h-5 w-9 shrink-0 rounded-full transition-colors ' + (notificationPreferences.updates ? 'bg-fuchsia-500' : 'bg-slate-700')}>
+                        <span className={'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ' + (notificationPreferences.updates ? 'translate-x-4' : 'translate-x-0.5')} />
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={notificationPreferences.offlineOrbs}
+                      onClick={() => onSetNotificationPreference('offlineOrbs', !notificationPreferences.offlineOrbs)}
+                      className="w-full flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 text-left hover:border-emerald-500/40"
+                    >
+                      <span>
+                        <span className="block text-xs font-bold text-slate-100">Offline Orbs</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-500">Reminder when your offline storage is full</span>
+                      </span>
+                      <span className={'relative h-5 w-9 shrink-0 rounded-full transition-colors ' + (notificationPreferences.offlineOrbs ? 'bg-emerald-500' : 'bg-slate-700')}>
+                        <span className={'absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ' + (notificationPreferences.offlineOrbs ? 'translate-x-4' : 'translate-x-0.5')} />
+                      </span>
+                    </button>
+                    <div className="pt-1 text-[9px] text-slate-500">
+                      {notificationsEnabled ? 'Reddit push permission is active.' : 'Both types are off.'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Sound Toggle */}
           <button
