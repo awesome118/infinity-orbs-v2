@@ -38,6 +38,9 @@ import {
   getFakeCcuBonus,
   getOnlinePlayers,
   getPlayerActivityStats,
+  getNotificationStats,
+  startManualPushNotificationCampaign,
+  getManualPushNotificationCampaign,
   getRollTicket,
   getCelestialAlignmentChoiceStats,
   forceCelestialAlignmentPromptForCurrentUser,
@@ -430,6 +433,38 @@ debugRouter.post('/push-test', async (_req, res) => {
     res.json({ ok: true, message: 'Push test notification enqueued.' });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || 'Failed to send push test notification.' });
+  }
+});
+
+debugRouter.get('/notifications/stats', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  try {
+    res.json(await getNotificationStats());
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load notification audience statistics.' });
+  }
+});
+
+debugRouter.post('/notifications/send', async (req, res) => {
+  try {
+    const result = await startManualPushNotificationCampaign({
+      title: req.body?.title,
+      body: req.body?.body,
+    });
+    res.status(202).json(result);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not start notification broadcast.' });
+  }
+});
+
+debugRouter.get('/notifications/campaign/:id', async (req, res) => {
+  try {
+    const campaign = await getManualPushNotificationCampaign(req.params.id);
+    if (!campaign) return res.status(404).json({ error: 'Notification campaign was not found.' });
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.json(campaign);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load notification campaign.' });
   }
 });
 
@@ -1145,11 +1180,15 @@ debugRouter.post('/guild-chat/unmute', async (req, res) => {
 debugRouter.get('/players', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   try {
-    const [players, activity] = await Promise.all([
+    const [players, activity, notificationStats] = await Promise.all([
       listPlayers(),
       getPlayerActivityStats(),
+      getNotificationStats().catch(error => {
+        console.warn('[Admin Notifications] Audience count unavailable while loading player list.', error);
+        return null;
+      }),
     ]);
-    res.json({ players, activity });
+    res.json({ players, activity, notificationStats });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load player list.' });
   }
