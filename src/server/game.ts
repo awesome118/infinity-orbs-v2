@@ -1,4 +1,4 @@
-import { redis, context, reddit } from './devvit-mock.js';
+import { redis, context, reddit, scheduler } from './devvit-mock.js';
 import { getPostFlairOptions } from './post-flair.js';
 import { parseGameBanRegistry, parseGameBanStatus, type GameBanRecord, type GameBanStatus } from './game-ban-registry.js';
 import { readInBatches } from './redis-batches.js';
@@ -553,6 +553,12 @@ const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
+const NOTIFICATION_DAILY_SEND_PREFIX = 'io:notification-daily-sends:v1:';
+const NOTIFICATION_PENDING_UPDATE_HASH = 'io:notification-pending-game-updates:v1';
+const NOTIFICATION_PENDING_UPDATE_JOB_KEY = 'io:notification-pending-game-updates-job:v1';
+const NOTIFICATION_DAILY_SEND_LIMIT = 2;
+const NOTIFICATION_PENDING_UPDATE_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+const NOTIFICATION_PENDING_UPDATE_BATCH_SIZE = 200;
 const OFFLINE_FULL_JOB_PREFIX = 'io:offline-full-job:';
 const OFFLINE_FULL_RETRY_MS = 5 * 60_000;
 const OFFLINE_FULL_RESERVATION_TTL_MS = 60_000;
@@ -1368,7 +1374,11 @@ export async function getOnlinePlayers(): Promise<number> {
 export async function sendPushNotificationTest(): Promise<void> {
   const userId = currentUserId();
   if (!(await notifications.isOptedIn(userId))) {
-    throw new Error('Enable Reddit notifications first, then run the push test.');
+    throw new Error('Enable at least one Infinity Orbs notification type first, then run the push test.');
+  }
+  const slot = await reserveNotificationDailySendSlot(userId);
+  if (!slot.allowed) {
+    throw new Error('This account has already received two push notifications today. The test can be sent after the next UTC day begins.');
   }
   const subredditName = String(context.subredditName ?? '').trim();
   await notifications.enqueue({
@@ -1519,6 +1529,220 @@ export async function setNotificationPreferences(input: {
   };
 }
 
+function notificationDailyWindow(now = Date.now()): { day: string; resetsAt: number } {
+  const date = new Date(now);
+  const resetsAt = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1);
+  return { day: date.toISOString().slice(0, 10), resetsAt };
+}
+
+function notificationDailySendKey(userId: string, day: string): string {
+  return NOTIFICATION_DAILY_SEND_PREFIX + day + ':' + userId;
+}
+
+async function getNotificationDailySendCount(userId: string, now = Date.now()): Promise<number> {
+  const { day } = notificationDailyWindow(now);
+  const value = Number(await redis.get(notificationDailySendKey(userId, day)) ?? 0);
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+
+/**
+ * Reserve one of the two daily Reddit push slots before calling the provider.
+ * A per-user mutation lock serializes Offline Orbs and Game Update sends so
+ * the two notification types share the same installation-level daily budget.
+ */
+async function reserveNotificationDailySendSlot(
+  userId: string,
+  now = Date.now(),
+): Promise<{ allowed: boolean; count: number; resetsAt: number }> {
+  const id = String(userId ?? '').trim();
+  if (!id) return { allowed: false, count: NOTIFICATION_DAILY_SEND_LIMIT, resetsAt: notificationDailyWindow(now).resetsAt };
+  return withPlayerMutationLockFor(`notification-daily-budget:${id}`, async () => {
+    const { day, resetsAt } = notificationDailyWindow(now);
+    const key = notificationDailySendKey(id, day);
+    const current = Number(await redis.get(key) ?? 0);
+    const count = Number.isSafeInteger(current) && current > 0 ? current : 0;
+    if (count >= NOTIFICATION_DAILY_SEND_LIMIT) {
+      return { allowed: false, count, resetsAt };
+    }
+    await redis.set(key, String(count + 1), { expiration: new Date(resetsAt + 2 * 24 * 60 * 60_000) });
+    return { allowed: true, count: count + 1, resetsAt };
+  });
+}
+
+interface PendingGameUpdate {
+  campaignId: string;
+  title: string;
+  body: string;
+  link: string;
+  queuedAt: number;
+}
+
+function parsePendingGameUpdates(raw: unknown, now = Date.now()): PendingGameUpdate[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is PendingGameUpdate =>
+      !!item &&
+      typeof item === 'object' &&
+      typeof item.campaignId === 'string' &&
+      typeof item.title === 'string' &&
+      typeof item.body === 'string' &&
+      typeof item.link === 'string' &&
+      Number.isSafeInteger(item.queuedAt) &&
+      item.queuedAt > 0 &&
+      item.queuedAt >= now - NOTIFICATION_PENDING_UPDATE_MAX_AGE_MS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function queueGameUpdateForUser(userId: string, item: PendingGameUpdate): Promise<boolean> {
+  const id = String(userId ?? '').trim();
+  if (!id) return false;
+  return withPlayerMutationLockFor(`notification-update-queue:${id}`, async () => {
+    const current = parsePendingGameUpdates(await redis.hGet(NOTIFICATION_PENDING_UPDATE_HASH, id));
+    if (current.some(entry => entry.campaignId === item.campaignId)) return false;
+    current.push(item);
+    await redis.hSet(NOTIFICATION_PENDING_UPDATE_HASH, { [id]: JSON.stringify(current) });
+    return true;
+  });
+}
+
+function nextUtcNotificationDay(now = Date.now()): number {
+  return notificationDailyWindow(now).resetsAt + 1_000;
+}
+
+async function deletePendingGameUpdateJobMarkerIfUnchanged(expected: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const txn = await redis.watch(NOTIFICATION_PENDING_UPDATE_JOB_KEY);
+    const current = await redis.get(NOTIFICATION_PENDING_UPDATE_JOB_KEY);
+    if (current == null || String(current) !== expected) {
+      await txn.unwatch();
+      return false;
+    }
+    await txn.multi();
+    await txn.del(NOTIFICATION_PENDING_UPDATE_JOB_KEY);
+    if (await txn.exec() !== null) return true;
+  }
+  return false;
+}
+
+async function schedulePendingGameUpdateDrain(
+  runAt = nextUtcNotificationDay(),
+  cursor = '',
+): Promise<void> {
+  const existing = await redis.get(NOTIFICATION_PENDING_UPDATE_JOB_KEY);
+  if (existing) return;
+
+  const safeRunAt = Math.max(Date.now() + 1_000, runAt);
+  const token = secureServerToken('update-queue');
+  const reservation = JSON.stringify({ token, runAt: safeRunAt, cursor });
+  const reserved = await redis.set(NOTIFICATION_PENDING_UPDATE_JOB_KEY, reservation, {
+    nx: true,
+    expiration: new Date(safeRunAt + 7 * 24 * 60 * 60_000),
+  });
+  if (reserved !== 'OK') return;
+
+  try {
+    await scheduler.runJob({
+      name: 'pending-game-update-drain',
+      data: { token, cursor },
+      runAt: new Date(safeRunAt),
+    });
+  } catch (error) {
+    await deletePendingGameUpdateJobMarkerIfUnchanged(reservation).catch(() => false);
+    throw error;
+  }
+}
+
+export async function processPendingGameUpdateQueue(input: {
+  token: unknown;
+  cursor: unknown;
+}): Promise<void> {
+  const token = String(input.token ?? '').trim();
+  const cursor = String(input.cursor ?? '');
+  if (!token) return;
+  const markerRaw = await redis.get(NOTIFICATION_PENDING_UPDATE_JOB_KEY);
+  if (typeof markerRaw !== 'string') return;
+  let marker: { token?: string; cursor?: string };
+  try { marker = JSON.parse(markerRaw); } catch { return; }
+  if (marker.token !== token || String(marker.cursor ?? '') !== cursor) return;
+
+  const allQueued = await redis.hGetAll(NOTIFICATION_PENDING_UPDATE_HASH);
+  const orderedIds = Object.keys(allQueued)
+    .filter(id => id && id > cursor)
+    .sort()
+    .slice(0, NOTIFICATION_PENDING_UPDATE_BATCH_SIZE);
+  const processedAt = Date.now();
+
+  for (const userId of orderedIds) {
+    await withPlayerMutationLockFor(`notification-update-queue:${userId}`, async () => {
+      const items = parsePendingGameUpdates(await redis.hGet(NOTIFICATION_PENDING_UPDATE_HASH, userId), processedAt);
+      if (items.length === 0) {
+        await redis.hDel(NOTIFICATION_PENDING_UPDATE_HASH, userId);
+        return;
+      }
+      if (
+        !(await notifications.isOptedIn(userId)) ||
+        !(await isNotificationPreferenceEnabled(userId, 'updates'))
+      ) {
+        await redis.hDel(NOTIFICATION_PENDING_UPDATE_HASH, userId);
+        return;
+      }
+
+      const remaining: PendingGameUpdate[] = [];
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        const slot = await reserveNotificationDailySendSlot(userId);
+        if (!slot.allowed) {
+          remaining.push(...items.slice(index));
+          break;
+        }
+        try {
+          await notifications.enqueue({
+            title: item.title,
+            body: item.body,
+            recipients: [{ userId, link: item.link }],
+          });
+          await markNotificationAttributionPending(userId, 'manual', Date.now()).catch(error => {
+            console.warn('[Notification Broadcast] Could not record queued update attribution.', error);
+          });
+        } catch (error) {
+          // Keep a failed or ambiguous item for the next daily window. The
+          // reserved slot stays consumed to avoid exceeding Reddit's limit.
+          console.warn('[Notification Broadcast] Queued update send failed; retaining it for retry.', userId, error);
+          remaining.push(...items.slice(index));
+          break;
+        }
+      }
+
+      if (remaining.length > 0) {
+        await redis.hSet(NOTIFICATION_PENDING_UPDATE_HASH, { [userId]: JSON.stringify(remaining) });
+      } else {
+        await redis.hDel(NOTIFICATION_PENDING_UPDATE_HASH, userId);
+      }
+    });
+  }
+
+  await deletePendingGameUpdateJobMarkerIfUnchanged(markerRaw);
+  const pendingAfter = await redis.hGetAll(NOTIFICATION_PENDING_UPDATE_HASH);
+  const remainingIds = Object.keys(pendingAfter).sort();
+  if (remainingIds.length === 0) return;
+
+  const hasMoreAfterPage = orderedIds.length === NOTIFICATION_PENDING_UPDATE_BATCH_SIZE &&
+    remainingIds.some(id => id > (orderedIds[orderedIds.length - 1] ?? cursor));
+  if (hasMoreAfterPage) {
+    await schedulePendingGameUpdateDrain(Date.now() + 65_000, orderedIds[orderedIds.length - 1] ?? cursor);
+  } else {
+    // All currently queued players have been checked. Any remaining entries
+    // have exhausted today's allowance, so resume immediately after UTC day reset.
+    await schedulePendingGameUpdateDrain(nextUtcNotificationDay(), '');
+  }
+}
+
+
 export async function getNotificationStats(): Promise<{
   optedInPlayers: number;
   updatesEnabledPlayers: number;
@@ -1587,25 +1811,24 @@ interface ManualPushBroadcastState {
   status: 'queued' | 'sending' | 'complete' | 'failed';
   cursor: string;
   sent: number;
+  queued: number;
   attributionTracked: number;
   createdAt: number;
   updatedAt: number;
   error?: string;
 }
 
+const GAME_UPDATE_NOTIFICATION_TITLE = 'Infinity Orbs Update';
+const GAME_UPDATE_NOTIFICATION_BODY = "A new update is live! Jump back in and see what's changed.";
+
 function manualPushBroadcastKey(campaignId: string): string {
   return NOTIFICATION_BROADCAST_PREFIX + campaignId;
 }
 
-export async function startManualPushNotificationCampaign(input: {
-  title: unknown;
-  body: unknown;
-}): Promise<{ campaignId: string; status: 'queued' }> {
-  const title = String(input.title ?? '').trim();
-  const body = String(input.body ?? '').trim();
-  if (!title || title.length > 60) throw new Error('Notification title must contain 1–60 characters.');
-  if (!body || body.length > 100) throw new Error('Notification body must contain 1–100 characters.');
-
+export async function startManualPushNotificationCampaign(): Promise<{ campaignId: string; status: 'queued' }> {
+  // Game Update is a fixed, pre-approved copy preset rather than a custom composer.
+  const title = GAME_UPDATE_NOTIFICATION_TITLE;
+  const body = GAME_UPDATE_NOTIFICATION_BODY;
   const subredditName = String(context.subredditName ?? '').trim();
   const storedPostId = String(await redis.get('io:global-game-post-id') ?? '').trim();
   const postId = storedPostId.replace(/^t3_/, '');
@@ -1626,6 +1849,7 @@ export async function startManualPushNotificationCampaign(input: {
     status: 'queued',
     cursor: '',
     sent: 0,
+    queued: 0,
     attributionTracked: 0,
     createdAt: now,
     updatedAt: now,
@@ -1635,7 +1859,7 @@ export async function startManualPushNotificationCampaign(input: {
     expiration: new Date(now + 7 * 24 * 60 * 60_000),
   });
   try {
-    await context.scheduler.runJob({
+    await scheduler.runJob({
       name: 'manual-push-broadcast',
       data: { campaignId, cursor: '' },
       runAt: new Date(now + 1_000),
@@ -1687,21 +1911,74 @@ export async function processManualPushNotificationCampaign(input: {
       ? Array.from(new Set(page.userIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
       : [];
     const updateRecipients = await filterNotificationRecipients(userIds, 'updates');
-    if (updateRecipients.length > 0) {
-      await notifications.enqueue({
-        title: state.title,
-        body: state.body,
-        recipients: updateRecipients.map(userId => ({ userId, link: state.link })),
-      });
-      state.sent += updateRecipients.length;
+    const immediateRecipients: string[] = [];
+    const queuedAt = Date.now();
+    for (const userId of updateRecipients) {
+      const slot = await reserveNotificationDailySendSlot(userId);
+      if (slot.allowed) {
+        immediateRecipients.push(userId);
+      } else {
+        const added = await queueGameUpdateForUser(userId, {
+          campaignId,
+          title: state.title,
+          body: state.body,
+          link: state.link,
+          queuedAt,
+        });
+        if (added) state.queued += 1;
+      }
+    }
+
+    if (immediateRecipients.length > 0) {
+      const recipients = immediateRecipients.map(userId => ({ userId, link: state.link }));
+      let delivered: string[] = [];
+      try {
+        await notifications.enqueue({
+          title: state.title,
+          body: state.body,
+          recipients,
+        });
+        delivered = immediateRecipients;
+      } catch (bulkError) {
+        // A prior-version send may not exist in our local daily counter. Fall
+        // back to one recipient at a time so one Reddit rate-limit rejection
+        // does not prevent the rest of this campaign from being delivered.
+        console.warn('[Notification Broadcast] Bulk send failed; retrying recipients individually.', bulkError);
+        for (const userId of immediateRecipients) {
+          try {
+            await notifications.enqueue({
+              title: state.title,
+              body: state.body,
+              recipients: [{ userId, link: state.link }],
+            });
+            delivered.push(userId);
+          } catch (error) {
+            const added = await queueGameUpdateForUser(userId, {
+              campaignId,
+              title: state.title,
+              body: state.body,
+              link: state.link,
+              queuedAt,
+            });
+            if (added) state.queued += 1;
+            console.warn('[Notification Broadcast] Recipient deferred to the next daily window.', userId, error);
+          }
+        }
+      }
+
+      state.sent += delivered.length;
       const sentAt = Date.now();
-      for (let offset = 0; offset < updateRecipients.length; offset += 20) {
-        const batch = updateRecipients.slice(offset, offset + 20);
+      for (let offset = 0; offset < delivered.length; offset += 20) {
+        const batch = delivered.slice(offset, offset + 20);
         const outcomes = await Promise.allSettled(
           batch.map(userId => markNotificationAttributionPending(userId, 'manual', sentAt)),
         );
         state.attributionTracked += outcomes.filter(outcome => outcome.status === 'fulfilled' && outcome.value).length;
       }
+    }
+
+    if (state.queued > 0) {
+      await schedulePendingGameUpdateDrain(nextUtcNotificationDay());
     }
 
     const next = typeof page?.next === 'string' ? page.next.trim() : '';
@@ -1711,7 +1988,7 @@ export async function processManualPushNotificationCampaign(input: {
     await redis.set(keyName, JSON.stringify(state), { expiration: new Date(Date.now() + 7 * 24 * 60 * 60_000) });
 
     if (next) {
-      await context.scheduler.runJob({
+      await scheduler.runJob({
         name: 'manual-push-broadcast',
         data: { campaignId, cursor: next },
         runAt: new Date(Date.now() + NOTIFICATION_BROADCAST_BATCH_DELAY_MS),
@@ -5898,6 +6175,13 @@ async function sendOfflineFullNotification(userId: string, subredditName: string
     throw new Error('Offline notification reservation changed before sending; retry later.');
   }
 
+  const dailySlot = await reserveNotificationDailySendSlot(userId);
+  if (!dailySlot.allowed) {
+    // No provider call was made, so release the in-flight notification marker.
+    await deleteOfflineFullNotificationMarkerIfUnchanged(notificationKey, sendingToken);
+    return false;
+  }
+
   await notifications.enqueue({
     title: 'Infinity Orbs',
     body: 'your offline orbs are full, make sure to collect them! ',
@@ -6056,7 +6340,7 @@ async function scheduleOfflineFullNotification(
   if (!reserved) throw new Error('Offline reminder scheduling changed repeatedly. Please retry.');
 
   try {
-    const jobId = await context.scheduler.runJob({
+    const jobId = await scheduler.runJob({
       name: 'offline-orbs-full',
       data: { userId, subredditName, jobToken: token },
       runAt: new Date(safeRunAt),
