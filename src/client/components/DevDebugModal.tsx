@@ -614,6 +614,22 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [leaderboardDiagnosticsCopied, setLeaderboardDiagnosticsCopied] = useState(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
+  const [pushBroadcastTitle, setPushBroadcastTitle] = useState('Infinity Orbs');
+  const [pushBroadcastBody, setPushBroadcastBody] = useState('');
+  const [pushBroadcastLoading, setPushBroadcastLoading] = useState(false);
+  const [notificationStats, setNotificationStats] = useState<{
+    optedInPlayers: number;
+    totalPlayers: number;
+    percentage: number;
+  } | null>(null);
+  const [notificationStatsLoading, setNotificationStatsLoading] = useState(false);
+  const [notificationCampaignId, setNotificationCampaignId] = useState('');
+  const [notificationCampaign, setNotificationCampaign] = useState<{
+    status: 'queued' | 'sending' | 'complete' | 'failed';
+    sent: number;
+    attributionTracked: number;
+    error?: string;
+  } | null>(null);
 
   const [fullTestRunning, setFullTestRunning] = useState(false);
   const [fullTestCurrentAction, setFullTestCurrentAction] = useState('');
@@ -813,6 +829,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     currentSessionMs: number;
     clientVersion: string | null;
     isLatestVersion: boolean;
+    lastSessionNotificationSource?: 'offline-full' | 'manual';
+    lastSessionNotificationAt?: number;
     legacyOnly?: boolean;
   }>>([]);
   const [playerActivity, setPlayerActivity] = useState({
@@ -1064,6 +1082,98 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPushTestLoading(false);
     }
   };
+
+  const loadNotificationStats = async () => {
+    setNotificationStatsLoading(true);
+    try {
+      const res = await fetch('/api/dev/notifications/stats', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load notification audience statistics.');
+      setNotificationStats({
+        optedInPlayers: Math.max(0, Number(data.optedInPlayers) || 0),
+        totalPlayers: Math.max(0, Number(data.totalPlayers) || 0),
+        percentage: Math.max(0, Math.min(100, Number(data.percentage) || 0)),
+      });
+    } catch (error: any) {
+      setNotificationStats(null);
+      setMessage('Notification stats unavailable: ' + (error?.message || 'Could not read Reddit opt-ins.'));
+    } finally {
+      setNotificationStatsLoading(false);
+    }
+  };
+
+  const sendManualPushBroadcast = async () => {
+    const title = pushBroadcastTitle.trim();
+    const body = pushBroadcastBody.trim();
+    if (!title || title.length > 60 || !body || body.length > 100 || pushBroadcastLoading) return;
+    const audience = notificationStats
+      ? notificationStats.optedInPlayers.toLocaleString() + ' opted-in players'
+      : 'all opted-in players';
+    if (!window.confirm('Queue a Reddit push notification for ' + audience + '? Reddit enforces its notification frequency limits.')) return;
+    setPushBroadcastLoading(true);
+    setNotificationCampaign(null);
+    setNotificationCampaignId('');
+    setMessage('');
+    try {
+      const res = await fetch('/api/dev/notifications/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, body }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not queue the notification broadcast.');
+      setNotificationCampaignId(String(data.campaignId ?? ''));
+      setNotificationCampaign({ status: 'queued', sent: 0, attributionTracked: 0 });
+      setMessage('Notification broadcast queued. It will be sent in batches to Reddit-opted-in players.');
+    } catch (error: any) {
+      setMessage('Notification broadcast failed: ' + (error?.message || 'Unknown error.'));
+    } finally {
+      setPushBroadcastLoading(false);
+      void loadNotificationStats();
+    }
+  };
+
+  useEffect(() => {
+    void loadNotificationStats();
+  }, []);
+
+  useEffect(() => {
+    if (!notificationCampaignId) return;
+    let cancelled = false;
+    let inFlight = false;
+    let interval: number | undefined;
+    const refreshCampaign = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const res = await fetch('/api/dev/notifications/campaign/' + encodeURIComponent(notificationCampaignId), { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not load broadcast status.');
+        if (!cancelled) {
+          setNotificationCampaign({
+            status: data.status,
+            sent: Math.max(0, Number(data.sent) || 0),
+            attributionTracked: Math.max(0, Number(data.attributionTracked) || 0),
+            ...(typeof data.error === 'string' ? { error: data.error } : {}),
+          });
+        }
+        if (data.status === 'complete' || data.status === 'failed') {
+          if (interval !== undefined) window.clearInterval(interval);
+          void loadNotificationStats();
+        }
+      } catch (error) {
+        if (!cancelled) console.warn('[Notification Broadcast] Status refresh failed.', error);
+      } finally {
+        inFlight = false;
+      }
+    };
+    void refreshCampaign();
+    interval = window.setInterval(() => void refreshCampaign(), 5000);
+    return () => {
+      cancelled = true;
+      if (interval !== undefined) window.clearInterval(interval);
+    };
+  }, [notificationCampaignId]);
 
   const loadSaveLogs = async () => {
     setSaveLogsLoading(true);
@@ -1609,6 +1719,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!res.ok) throw new Error(data.error || 'Could not load player list.');
       const players = Array.isArray(data.players) ? data.players : [];
       setPlayerList(players);
+      if (data.notificationStats && typeof data.notificationStats === 'object') {
+        setNotificationStats({
+          optedInPlayers: Math.max(0, Number(data.notificationStats.optedInPlayers) || 0),
+          totalPlayers: Math.max(0, Number(data.notificationStats.totalPlayers) || 0),
+          percentage: Math.max(0, Math.min(100, Number(data.notificationStats.percentage) || 0)),
+        });
+      }
       const activity = data.activity && typeof data.activity === 'object' ? data.activity : {};
       setPlayerActivity({
         dailyActiveUsers: Math.max(0, Number(activity.dailyActiveUsers ?? 0) || 0),
@@ -5370,6 +5487,92 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
           </div>
         </section>
 
+        <section className={panelBase + ' border border-fuchsia-500/30'}>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+                <Users className="w-4 h-4" /> Notification Audience
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Reddit opt-ins are counted directly. The rate is based on all registered Infinity Orbs accounts.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={notificationStatsLoading}
+              onClick={() => void loadNotificationStats()}
+              className={buttonBase + ' bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-3 py-2'}
+            >
+              <RefreshCw className={'inline w-3.5 h-3.5 mr-1 ' + (notificationStatsLoading ? 'animate-spin' : '')} />
+              Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Enabled</div>
+              <div className="mt-1 text-lg font-mono font-black text-fuchsia-200">{notificationStats ? formatNumber(notificationStats.optedInPlayers) : '—'}</div>
+              <div className="text-[8px] text-slate-600">Reddit opt-ins</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Players</div>
+              <div className="mt-1 text-lg font-mono font-black text-cyan-200">{notificationStats ? formatNumber(notificationStats.totalPlayers) : '—'}</div>
+              <div className="text-[8px] text-slate-600">Registered accounts</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-center">
+              <div className="text-[8px] font-black uppercase tracking-wider text-slate-500">Opt-in rate</div>
+              <div className="mt-1 text-lg font-mono font-black text-emerald-200">{notificationStats ? notificationStats.percentage.toFixed(1) + '%' : '—'}</div>
+              <div className="text-[8px] text-slate-600">Of registered players</div>
+            </div>
+          </div>
+        </section>
+
+        <section className={panelBase + ' border border-fuchsia-500/30'}>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
+            <Megaphone className="w-4 h-4" /> Manual Notification Broadcast
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Send a Reddit push to every opted-in account, including offline players. Reddit must approve notification copy before it can be sent; title limit 60 characters and message limit 100.
+          </p>
+          <label className="block text-[10px] font-bold text-slate-400">
+            Title
+            <input
+              value={pushBroadcastTitle}
+              onChange={event => setPushBroadcastTitle(event.target.value.slice(0, 60))}
+              maxLength={60}
+              placeholder="Infinity Orbs"
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-white p-3"
+            />
+          </label>
+          <label className="block text-[10px] font-bold text-slate-400">
+            Message
+            <textarea
+              value={pushBroadcastBody}
+              onChange={event => setPushBroadcastBody(event.target.value.slice(0, 100))}
+              maxLength={100}
+              rows={2}
+              placeholder="A short, useful reason to return to the game..."
+              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-white p-3 resize-y"
+            />
+          </label>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-slate-500">{pushBroadcastTitle.trim().length}/60 title · {pushBroadcastBody.trim().length}/100 message</span>
+            <button
+              type="button"
+              disabled={pushBroadcastLoading || !pushBroadcastTitle.trim() || !pushBroadcastBody.trim()}
+              onClick={() => void sendManualPushBroadcast()}
+              className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
+            >
+              {pushBroadcastLoading ? 'Queuing…' : 'Send to Opted-In Players'}
+            </button>
+          </div>
+          {notificationCampaign && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[10px] text-slate-300">
+              <strong>Broadcast:</strong> {notificationCampaign.status.toUpperCase()} · {formatNumber(notificationCampaign.sent)} sent · {formatNumber(notificationCampaign.attributionTracked)} offline returns tracked
+              {notificationCampaign.error && <div className="mt-1 text-rose-300">{notificationCampaign.error}</div>}
+            </div>
+          )}
+        </section>
+
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
             <Megaphone className="w-4 h-4" /> Developer Announcement
@@ -6050,7 +6253,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
               <RefreshCw className="inline w-3.5 h-3.5 mr-1" /> Refresh Player List
             </button>
           </div>
-          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 90 seconds. Version badges compare the latest heartbeat with v{APP_VERSION}.</p>
+          <p className="text-[10px] text-slate-500">Active means the account contacted the game within the last 90 seconds. “Push Return” means this session began after a push was sent while the account was offline; Reddit does not provide a per-player click receipt. Version badges compare the latest heartbeat with v{APP_VERSION}.</p>
           <div className="grid grid-cols-3 gap-2 mt-3">
             {[
               ['DAU', playerActivity.dailyActiveUsers, 'Last 24 hours'],
@@ -6072,6 +6275,14 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-200 truncate">u/{player.username}</span>
                       {player.active && <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-1.5 py-0.5">Active</span>}
+                      {player.active && player.lastSessionNotificationSource && (
+                        <span
+                          title={'This active session followed a ' + (player.lastSessionNotificationSource === 'offline-full' ? 'full offline Orbs' : 'manual broadcast') + ' push sent while the player was offline.'}
+                          className="text-[9px] font-black uppercase text-fuchsia-200 bg-fuchsia-500/10 border border-fuchsia-500/25 rounded-full px-1.5 py-0.5"
+                        >
+                          Push Return
+                        </span>
+                      )}
                       {player.legacyOnly
                         ? <span className="text-[9px] font-bold text-slate-300 bg-slate-700/50 border border-slate-600 rounded-full px-1.5 py-0.5">Legacy · ID unavailable</span>
                         : player.isLatestVersion
