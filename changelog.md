@@ -1,5 +1,12 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.36
+
+- **Independent Push Notification Types:** Players can separately enable or disable Game Updates and Offline Orbs reminders from the header bell menu. Existing Reddit notification opt-ins retain both alert types until changed.
+- **Targeted Update Broadcasts:** Manual admin notifications now go only to players who enabled Game Updates; Offline Orbs-only players are excluded. Offline storage reminders respect the separate Offline Orbs preference.
+- **Notification Audience Breakdown:** Admin statistics show separate counts and opt-in rates for Game Updates and Offline Orbs.
+- **Admin Broadcast Button Fix:** The Send Notification button remains clickable when the composer needs input and now shows inline validation rather than silently disabling or relying on a native confirmation dialog.
+
 ### New in 2.2.35
 
 - **Manual Reddit Push Broadcasts:** Admins can send a short push notification to every Reddit account opted in to Infinity Orbs. The campaign is processed in bounded scheduled batches, with live send status in the admin console.
