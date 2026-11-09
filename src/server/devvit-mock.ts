@@ -247,6 +247,14 @@ const localContext = {
   postId: 't3_localmaingame',
 };
 
+const localScheduler = {
+  runJob: async (job: { name: string; runAt?: Date; cron?: string; data?: unknown }): Promise<string> => {
+    const id = `local-scheduled-${job.name}-${Date.now()}`;
+    console.log('[Scheduler Mock] Job scheduled:', { id, name: job.name, runAt: job.runAt?.toISOString() ?? null });
+    return id;
+  },
+};
+
 const localReddit = {
   modMail: {
     createModInboxConversation: async (options: {
@@ -296,13 +304,16 @@ const localReddit = {
 export let redis: any = localRedis;
 export let context: any = localContext;
 export let reddit: any = localReddit;
+export let scheduler: any = localScheduler;
 
 export function configureDevvitRuntime(runtime: {
   redis: unknown;
   context: unknown;
   reddit: unknown;
+  scheduler?: unknown;
 }) {
   redis = runtime.redis;
   context = runtime.context;
   reddit = runtime.reddit;
+  scheduler = runtime.scheduler ?? localScheduler;
 }
