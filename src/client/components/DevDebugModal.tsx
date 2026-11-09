@@ -614,8 +614,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [leaderboardDiagnosticsCopied, setLeaderboardDiagnosticsCopied] = useState(false);
   const [fakeCcuInput, setFakeCcuInput] = useState('0');
   const [pushTestLoading, setPushTestLoading] = useState(false);
-  const [pushBroadcastTitle, setPushBroadcastTitle] = useState('Infinity Orbs');
-  const [pushBroadcastBody, setPushBroadcastBody] = useState('');
   const [pushBroadcastLoading, setPushBroadcastLoading] = useState(false);
   const [pushBroadcastError, setPushBroadcastError] = useState('');
   const [notificationStats, setNotificationStats] = useState<{
@@ -632,6 +630,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [notificationCampaign, setNotificationCampaign] = useState<{
     status: 'queued' | 'sending' | 'complete' | 'failed';
     sent: number;
+    queued: number;
     attributionTracked: number;
     error?: string;
   } | null>(null);
@@ -1112,17 +1111,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const sendManualPushBroadcast = async () => {
-    const title = pushBroadcastTitle.trim();
-    const body = pushBroadcastBody.trim();
     if (pushBroadcastLoading) return;
-    if (!title || title.length > 60) {
-      setPushBroadcastError('Enter a title between 1 and 60 characters.');
-      return;
-    }
-    if (!body || body.length > 100) {
-      setPushBroadcastError('Enter a message between 1 and 100 characters.');
-      return;
-    }
     setPushBroadcastError('');
     setPushBroadcastLoading(true);
     setNotificationCampaign(null);
@@ -1132,15 +1121,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       const res = await fetch('/api/dev/notifications/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body }),
+        body: JSON.stringify({}),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not queue the notification broadcast.');
+      if (!res.ok) throw new Error(data.error || 'Could not queue the Game Update preset.');
       setNotificationCampaignId(String(data.campaignId ?? ''));
-      setNotificationCampaign({ status: 'queued', sent: 0, attributionTracked: 0 });
-      setMessage('Game update notification queued for players who enabled Game updates.');
+      setNotificationCampaign({ status: 'queued', sent: 0, queued: 0, attributionTracked: 0 });
+      setMessage('Game Update preset queued for players who enabled Game updates.');
     } catch (error: any) {
-      setPushBroadcastError(error?.message || 'Could not queue the notification broadcast.');
+      setPushBroadcastError(error?.message || 'Could not queue the Game Update preset.');
     } finally {
       setPushBroadcastLoading(false);
       void loadNotificationStats();
@@ -1167,6 +1156,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           setNotificationCampaign({
             status: data.status,
             sent: Math.max(0, Number(data.sent) || 0),
+            queued: Math.max(0, Number(data.queued) || 0),
             attributionTracked: Math.max(0, Number(data.attributionTracked) || 0),
             ...(typeof data.error === 'string' ? { error: data.error } : {}),
           });
@@ -5546,34 +5536,18 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
 
         <section className={panelBase + ' border border-fuchsia-500/30'}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300">
-            <Megaphone className="w-4 h-4" /> Manual Notification Broadcast
+            <Megaphone className="w-4 h-4" /> Game Update Preset
           </div>
           <p className="text-[10px] text-slate-500">
-            Send a game update push to players who enabled Game updates. Players who only enabled Offline Orbs will not receive this broadcast. Reddit must approve notification copy before it can be sent; title limit 60 characters and message limit 100.
+            Sends the fixed Game Update notification to players who enabled Game updates. Offline-Orbs-only subscribers are excluded. Players who have already received two pushes today are queued for the next UTC day.
           </p>
-          <label className="block text-[10px] font-bold text-slate-400">
-            Title
-            <input
-              value={pushBroadcastTitle}
-              onChange={event => { setPushBroadcastTitle(event.target.value.slice(0, 60)); setPushBroadcastError(''); }}
-              maxLength={60}
-              placeholder="Infinity Orbs"
-              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-white p-3"
-            />
-          </label>
-          <label className="block text-[10px] font-bold text-slate-400">
-            Message
-            <textarea
-              value={pushBroadcastBody}
-              onChange={event => { setPushBroadcastBody(event.target.value.slice(0, 100)); setPushBroadcastError(''); }}
-              maxLength={100}
-              rows={2}
-              placeholder="A short, useful reason to return to the game..."
-              className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-800 text-sm text-white p-3 resize-y"
-            />
-          </label>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] text-slate-500">{pushBroadcastTitle.trim().length}/60 title · {pushBroadcastBody.trim().length}/100 message</span>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Title</div>
+            <div className="mt-1 text-sm font-bold text-white">Infinity Orbs Update</div>
+            <div className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Message sent to players</div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-200">A new update is live! Jump back in and see what's changed.</p>
+          </div>
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               disabled={pushBroadcastLoading}
@@ -5584,7 +5558,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
               }}
               className={buttonBase + ' bg-fuchsia-600 hover:bg-fuchsia-500 border-fuchsia-500 text-white px-3 py-2'}
             >
-              {pushBroadcastLoading ? 'Queuing…' : 'Send Notification'}
+              {pushBroadcastLoading ? 'Queuing…' : 'Send Game Update'}
             </button>
           </div>
           {pushBroadcastError && (
@@ -5594,7 +5568,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
           )}
           {notificationCampaign && (
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-[10px] text-slate-300">
-              <strong>Broadcast:</strong> {notificationCampaign.status.toUpperCase()} · {formatNumber(notificationCampaign.sent)} sent · {formatNumber(notificationCampaign.attributionTracked)} offline returns tracked
+              <strong>Broadcast:</strong> {notificationCampaign.status.toUpperCase()} · {formatNumber(notificationCampaign.sent)} sent now · {formatNumber(notificationCampaign.queued)} queued for the next day
               {notificationCampaign.error && <div className="mt-1 text-rose-300">{notificationCampaign.error}</div>}
             </div>
           )}
