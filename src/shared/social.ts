@@ -1,7 +1,8 @@
 import { weekKey, weekEndMs, type GuildComboState } from './game.js';
 
 export type GuildRole = 'owner' | 'officer' | 'member';
-export type ChallengeType = 'rolls' | 'value' | 'rare';
+export const GUILD_TASK_TYPES = ['rolls', 'value', 'rare'] as const;
+export type ChallengeType = (typeof GUILD_TASK_TYPES)[number];
 
 /**
  * Guild task targets grow exponentially. Keep the generated tier finite while
@@ -223,18 +224,20 @@ export interface GuildPerks {
   comboRank?: number; // +5% Guild Combo time per rank.
 }
 
-export type GuildPerkId =
-  | 'luckRank'
-  | 'speedRank'
-  | 'vaultRank'
-  | 'shardRank'
-  | 'critRank'
-  | 'coinRank'
-  | 'memberCapacityRank'
-  | 'tokenYieldRank'
-  | 'taskBountyRank'
-  | 'comboRank'
-;
+/** Canonical accepted Guild perk IDs, including the legacy token-yield alias. */
+export const GUILD_PERK_IDS = [
+  'luckRank',
+  'speedRank',
+  'vaultRank',
+  'shardRank',
+  'critRank',
+  'coinRank',
+  'memberCapacityRank',
+  'tokenYieldRank',
+  'taskBountyRank',
+  'comboRank',
+] as const;
+export type GuildPerkId = (typeof GUILD_PERK_IDS)[number];
 
 export interface Guild {
   id: string;
@@ -429,11 +432,7 @@ export function createGuildTask(
 }
 
 export function createInitialGuildTasks(): GuildTask[] {
-  return [
-    createGuildTask('rolls', 1),
-    createGuildTask('value', 1),
-    createGuildTask('rare', 1),
-  ];
+  return GUILD_TASK_TYPES.map(type => createGuildTask(type, 1));
 }
 
 export function challengeForWeek() {

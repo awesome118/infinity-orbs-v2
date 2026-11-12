@@ -1,21 +1,34 @@
 import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
 
-export type UpgradeId =
-  | 'speed'
-  | 'multi'
-  | 'clusterRoll'
-  | 'auto'
-  | 'luck'
-  | 'coinBonus'
-  | 'shardChance'
-  | 'xpBonus'
-  | 'critChance'
-  | 'critPower'
-  | 'offlineRate'
-  | 'valueBonus'
-  | 'offlineFoundry'
-  | 'orbFingers'
-  | 'criticalDividend';
+/** Canonical standard Coin upgrade catalog; the ID type is derived from this tuple. */
+export const UPGRADE_IDS = [
+  'speed',
+  'multi',
+  'clusterRoll',
+  'auto',
+  'luck',
+  'coinBonus',
+  'shardChance',
+  'xpBonus',
+  'critChance',
+  'critPower',
+  'offlineRate',
+  'valueBonus',
+  'offlineFoundry',
+  'orbFingers',
+  'criticalDividend',
+] as const;
+export type UpgradeId = (typeof UPGRADE_IDS)[number];
+
+/** Preserve the intended priority when Buy All spends a limited wallet. */
+export const BUY_ALL_UPGRADE_ORDER = [
+  'speed', 'multi', 'luck', 'coinBonus', 'auto',
+  'xpBonus', 'shardChance', 'critChance', 'valueBonus', 'critPower', 'offlineRate',
+  'offlineFoundry', 'orbFingers', 'criticalDividend', 'clusterRoll',
+] as const satisfies readonly UpgradeId[];
+
+/** Bound one Buy All request so large balances cannot monopolize a gameplay request. */
+export const MAX_UPGRADE_PURCHASES_PER_REQUEST = 5_000;
 
 /**
  * Minimum player levels for standard Coin upgrades.
@@ -188,9 +201,9 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
-export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
+export const CELESTIAL_ALIGNMENT_CHOICES = ['starseeker', 'goldenOrbit', 'clockwork'] as const;
+export type CelestialAlignmentChoice = (typeof CELESTIAL_ALIGNMENT_CHOICES)[number];
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
-const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
 
 export function normalizeCelestialAlignmentInstances(value: unknown, legacyChoice?: unknown, legacyUntil?: unknown, now = Date.now()): CelestialAlignmentInstance[] {
   const source = Array.isArray(value) ? value : [];
@@ -1503,6 +1516,17 @@ export function addCoinAmount(current: unknown, increment: unknown): number {
   const gain = normalizeCoinAmount(increment);
   const sum = balance + gain;
   return Number.isFinite(sum) ? Math.min(Number.MAX_VALUE, sum) : Number.MAX_VALUE;
+}
+
+/**
+ * Altar offerings use whole-number Coins and whole, safe-integer Shards.
+ * Coin balances intentionally support values above Number.MAX_SAFE_INTEGER.
+ */
+export function isValidAltarOfferingAmounts(coinsValue: unknown, shardsValue: unknown): boolean {
+  const coins = Number(coinsValue);
+  const shards = Number(shardsValue);
+  return Number.isFinite(coins) && coins >= 0 && Number.isInteger(coins) &&
+    Number.isSafeInteger(shards) && shards >= 0;
 }
 
 export function formatNumber(value: number): string {

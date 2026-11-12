@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createInitialGuildTasks, GUILD_TASK_TYPES } from '../src/shared/social.js';
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
@@ -111,4 +112,24 @@ test('Production Guild parser accepts current level-free Guild records', () => {
   const createEnd = social.indexOf('export async function joinGuild(', createStart);
   assert.ok(createStart >= 0 && createEnd > createStart, 'Guild creator must exist');
   assert.doesNotMatch(social.slice(createStart, createEnd), /\blevel\s*:|\bxp\s*:/);
+});
+
+test('Guild task type validators and recovery paths share the canonical task-type catalog', () => {
+  const shared = source('src/shared/social.ts');
+  const social = source('src/server/social.ts');
+
+  assert.match(shared, /export type ChallengeType = \(typeof GUILD_TASK_TYPES\)\[number\]/);
+  assert.match(social, /GUILD_TASK_TYPES,/);
+  assert.equal((social.match(/GUILD_TASK_TYPES\.includes/g) ?? []).length, 6);
+  assert.doesNotMatch(social, /\['rolls', 'value', 'rare'\]\.includes/);
+  assert.deepEqual(GUILD_TASK_TYPES, ['rolls', 'value', 'rare']);
+});
+
+test('initial Guild tasks and malformed-task recovery follow the shared task-type catalog order', () => {
+  const shared = source('src/shared/social.ts');
+  const social = source('src/server/social.ts');
+  assert.deepEqual(createInitialGuildTasks().map(task => task.type), [...GUILD_TASK_TYPES]);
+  assert.match(shared, /return GUILD_TASK_TYPES\.map\(type => createGuildTask\(type, 1\)\)/);
+  assert.match(social, /return GUILD_TASK_TYPES\[safeIndex % GUILD_TASK_TYPES\.length\]!/);
+  assert.doesNotMatch(social, /return index === 0 \? 'rolls' : index === 1 \? 'value' : 'rare'/);
 });
