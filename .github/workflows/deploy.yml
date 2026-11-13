@@ -355,3 +355,5 @@ jobs:
 # Retry 2.2.29 after restoring Guild word-list imports used by adjacent name-validation UI.
 
 # Manual retry of the existing v2.2.38 unlisted Reddit review submission on 2026-11-13.
+
+# Retry existing Infinity Orbs 2.2.38 Reddit review submission on 2026-11-13.
