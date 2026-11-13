@@ -1,5 +1,9 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.39
+
+- **Reddit Review Retry:** Reissues the existing 2.2.38 candidate under a new patch version because Devvit does not allow an already-created AppVersion to be submitted again. No gameplay changes.
+
 ### New in 2.2.38
 
 - **Review Release:** Same gameplay and notification code as the dev-tested v2.2.37 build. No gameplay changes in this version bump.
