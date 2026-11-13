@@ -353,3 +353,5 @@ jobs:
 # Explicit dev-only production-outage resilience fix: read only the requested user's ban row without WATCH/MULTI and isolate unrelated malformed rows; v2.1.65 on 2026-11-01.
 # Retry the v2.2.25 dev-only deployment from the synchronized main head after lockfile refresh.
 # Retry 2.2.29 after restoring Guild word-list imports used by adjacent name-validation UI.
+
+# Manual retry of the existing v2.2.38 unlisted Reddit review submission on 2026-11-13.
