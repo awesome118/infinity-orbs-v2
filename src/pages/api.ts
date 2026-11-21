@@ -310,7 +310,7 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
       case '/api/combat/forge':
         return jsonResponse(await combat.forgeCombatGear(body.slot, body.quality));
       case '/api/combat/auto-scrap': {
-        const settings = await combat.updateCombatAutoScrapSettings(body.enabled, body.maxQuality);
+        const settings = await game.updateCombatAutoScrapSettings(body.enabled, body.maxQuality);
         await combat.getCombatSnapshot();
         return jsonResponse({ settings });
       }
