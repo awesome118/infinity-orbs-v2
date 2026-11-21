@@ -38,9 +38,8 @@ npx vite preview --config vite.pages.config.ts
 
 ## Publish the test site
 
-1. In the repository settings, open **Settings → Pages**.
-2. Set **Build and deployment → Source** to **GitHub Actions**.
-3. Push commits to the `github-pages-test` branch, or manually run **Deploy Infinity Orbs Pages test build** from the Actions tab.
-4. GitHub Actions builds `dist-pages/` and deploys that folder to Pages.
+1. Push a commit to the `github-pages-test` branch, or manually run **Deploy Infinity Orbs Pages test build** from the Actions tab.
+2. The workflow asks GitHub to enable Pages automatically, then builds `dist-pages/` and deploys that folder.
+3. If repository policy blocks automatic Pages enablement, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**, then rerun the workflow.
 
 The Pages workflow only runs for the `github-pages-test` branch. It does not run the Devvit upload or publish commands. The normal Reddit build and deployment path remains separate.
