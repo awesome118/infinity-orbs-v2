@@ -18,7 +18,8 @@
     "preflight": "npm run preflight:guard && npm run type-check && npm test && npm run build",
     "deploy": "npm run preflight && devvit upload --version $(node -p 'require(\"./package.json\").version')",
     "launch": "npm run deploy && devvit publish",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "build:pages": "vite build --config vite.pages.config.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
