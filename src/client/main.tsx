@@ -325,6 +325,7 @@ function App() {
   }, []);
 
   const [state, setState] = useState<PlayerState | null>(null);
+
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
   const journeyReadyReportedRef = useRef(false);
   const journeyEndedRef = useRef(false);
