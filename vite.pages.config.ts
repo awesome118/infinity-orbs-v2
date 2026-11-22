@@ -47,5 +47,11 @@ export default defineConfig({
     outDir: path.join(projectRoot, 'dist-pages'),
     emptyOutDir: true,
     target: 'es2022',
+    rollupOptions: {
+      input: {
+        index: path.join(clientRoot, 'index.html'),
+        frenzy: path.join(clientRoot, 'frenzy.html'),
+      },
+    },
   },
 });
