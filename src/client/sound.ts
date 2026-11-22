@@ -17,21 +17,22 @@ class SoundFX {
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
-  private playSample(url: string, volume = 0.24, allowSonarMode = false): void {
+  private playSample(url: string, volume = 0.14, allowSonarMode = false): void {
     if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
     try {
       if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
       const clip = new Audio(url);
       clip.preload = 'auto';
-      clip.volume = Math.max(0, Math.min(1, volume));
+      // Keep downloaded samples deliberately restrained; frequent UI sounds should stay in the background.
+      clip.volume = Math.max(0, Math.min(1, volume * 0.4));
       void clip.play().catch(() => undefined);
     } catch {
       // Blocked or unsupported samples must never interrupt gameplay.
     }
   }
 
-  public playEquip(): void { this.playSample(SOUND_ASSETS.confirmation, 0.28); }
-  public playError(): void { this.playSample(SOUND_ASSETS.error, 0.18); }
+  public playEquip(): void { this.playSample(SOUND_ASSETS.confirmation, 0.11); }
+  public playError(): void { this.playSample(SOUND_ASSETS.error, 0.08); }
 
   constructor() {
     try {
@@ -191,9 +192,8 @@ class SoundFX {
     try { localStorage.setItem('orbs_sonar_alignment_sounds', String(this.sonarAlignmentSoundsAllowed)); } catch {}
   }
 
-  public playClick() {
-    this.playSample(SOUND_ASSETS.click, 0.2);
-  }
+  // Generic UI clicks were too repetitive. Keep this method as a compatibility no-op.
+  public playClick() {}
 
   public playChime(freq = 523.25, type: OscillatorType = 'sine', duration = 0.25) {
     this.withAudio((ctx, now) => {
@@ -205,7 +205,7 @@ class SoundFX {
   }
 
   public playRollNormal() {
-    this.playSample(SOUND_ASSETS.drop, 0.24);
+    this.playSample(SOUND_ASSETS.drop, 0.09);
   }
 
   public setAlignmentSoundEnabled(enabled: boolean): void {
@@ -236,25 +236,23 @@ class SoundFX {
   }
 
   public playRareRiser() {
-    this.playSample(SOUND_ASSETS.glass, 0.28);
+    this.playSample(SOUND_ASSETS.glass, 0.12);
   }
 
   public playEpicFanfare() {
-    this.playSample(SOUND_ASSETS.glass, 0.36, true);
+    this.playSample(SOUND_ASSETS.glass, 0.14, true);
   }
 
   public playMythicFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.4, true);
-    this.playSample(SOUND_ASSETS.glass, 0.22, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.16, true);
   }
 
   public playLevelUpFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.3, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.12, true);
   }
 
   public playNewBestFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.42, true);
-    this.playSample(SOUND_ASSETS.glass, 0.3, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.15, true);
   }
 
   public playSacrificeSound() {
