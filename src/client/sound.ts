@@ -1,10 +1,9 @@
-// Downloaded Kenney CC0 sound samples, complemented by hand-authored Web Audio cues.
+// Downloaded human-made CC0 cues from artisticdude's 2011 OpenGameArt RPG Sound Pack.
 const SOUND_ASSETS = {
-  click: new URL('./assets/audio/click_001.ogg', import.meta.url).href,
-  confirmation: new URL('./assets/audio/confirmation_002.ogg', import.meta.url).href,
-  drop: new URL('./assets/audio/drop_001.ogg', import.meta.url).href,
-  glass: new URL('./assets/audio/glass_004.ogg', import.meta.url).href,
-  error: new URL('./assets/audio/error_001.ogg', import.meta.url).href,
+  confirmation: new URL('./assets/audio/equip-interface.wav', import.meta.url).href,
+  drop: new URL('./assets/audio/roll-bubble.wav', import.meta.url).href,
+  glass: new URL('./assets/audio/rarity-magic.wav', import.meta.url).href,
+  error: new URL('./assets/audio/error-interface.wav', import.meta.url).href,
 };
 
 class SoundFX {
@@ -17,14 +16,13 @@ class SoundFX {
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
-  private playSample(url: string, volume = 0.14, allowSonarMode = false): void {
+  private playSample(url: string, volume = 0.18, allowSonarMode = false): void {
     if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
     try {
       if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
       const clip = new Audio(url);
       clip.preload = 'auto';
-      // Keep downloaded samples deliberately restrained; frequent UI sounds should stay in the background.
-      clip.volume = Math.max(0, Math.min(1, volume * 0.4));
+      clip.volume = Math.max(0, Math.min(1, volume));
       void clip.play().catch(() => undefined);
     } catch {
       // Blocked or unsupported samples must never interrupt gameplay.
@@ -32,7 +30,7 @@ class SoundFX {
   }
 
   public playEquip(): void { this.playSample(SOUND_ASSETS.confirmation, 0.11); }
-  public playError(): void { this.playSample(SOUND_ASSETS.error, 0.08); }
+  public playError(): void { this.playSample(SOUND_ASSETS.error, 0.12); }
 
   constructor() {
     try {
@@ -205,7 +203,7 @@ class SoundFX {
   }
 
   public playRollNormal() {
-    this.playSample(SOUND_ASSETS.drop, 0.09);
+    this.playSample(SOUND_ASSETS.drop, 0.16);
   }
 
   public setAlignmentSoundEnabled(enabled: boolean): void {
@@ -236,23 +234,23 @@ class SoundFX {
   }
 
   public playRareRiser() {
-    this.playSample(SOUND_ASSETS.glass, 0.12);
+    this.playSample(SOUND_ASSETS.glass, 0.17);
   }
 
   public playEpicFanfare() {
-    this.playSample(SOUND_ASSETS.glass, 0.14, true);
+    this.playSample(SOUND_ASSETS.glass, 0.19, true);
   }
 
   public playMythicFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.16, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.20, true);
   }
 
   public playLevelUpFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.12, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.17, true);
   }
 
   public playNewBestFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.15, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.19, true);
   }
 
   public playSacrificeSound() {

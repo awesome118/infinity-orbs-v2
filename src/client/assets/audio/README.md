@@ -1,15 +1,17 @@
 # Bundled sound effects
 
-These unmodified OGG files are original sound effects by Kenney (Kenney Vleugels), downloaded from the Kenney Interface Sounds pack.
+The game now uses four replacement WAV cues from **RPG Sound Pack** by artisticdude, published on OpenGameArt on May 19, 2011.
 
-Source: https://kenney.nl/assets/interface-sounds
-License: Creative Commons CC0 1.0 Universal (public-domain dedication).
-License text: https://creativecommons.org/publicdomain/zero/1.0/
+The OpenGameArt source page lists the pack under **CC0 1.0**. These are human-created sound effects from a 2011 asset pack, not AI-generated audio.
 
-- click_001.ogg: UI button clicks
-- confirmation_002.ogg: successful equipment and rare reward feedback
-- drop_001.ogg: ordinary Orb rolls
-- glass_004.ogg: rare Orb feedback
-- error_001.ogg: error feedback
+Source: https://opengameart.org/content/rpg-sound-pack
+License: https://creativecommons.org/publicdomain/zero/1.0/
 
-These are downloaded recordings from the original asset pack. They are not AI-generated and have not been modified.
+| File | Original pack file | Use |
+|---|---|---|
+| `equip-interface.wav` | `interface/interface2.wav` | Equipment and positive feedback |
+| `roll-bubble.wav` | `inventory/bubble.wav` | Ordinary Orb rolls |
+| `rarity-magic.wav` | `battle/magic1.wav` | Rare and high-rarity Orb feedback |
+| `error-interface.wav` | `interface/interface6.wav` | Failed actions |
+
+The generic UI click remains silent to avoid adding a sound to every button press. The existing Web Audio effects for the game's specialized alignment and sonar features are separate from these downloaded assets.
