@@ -1436,8 +1436,8 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     bgGradient: 'radial-gradient(circle at 35% 30%, #B7F7DD, #43AA8B 52%, #064E3B 100%)',
   },
   Rare: {
-    color: '#4895EF',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #4895EF 52%, #1E3A8A 100%)',
+    color: '#4361EE',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #4361EE 52%, #1E3A8A 100%)',
   },
   Epic: {
     color: '#F3722C',
@@ -1468,16 +1468,16 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     bgGradient: 'radial-gradient(circle at 35% 30%, #FECACA, #F94144 52%, #7F1D1D 100%)',
   },
   Eternal: {
-    color: '#2A9D8F',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #99F6E4, #2A9D8F 52%, #134E4A 100%)',
+    color: '#007F5F',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #99F6E4, #007F5F 52%, #134E4A 100%)',
   },
   Celestial: {
-    color: '#E76F51',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD2C5, #E76F51 52%, #7C2D12 100%)',
+    color: '#F4A261',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFE0BD, #F4A261 52%, #7C2D12 100%)',
   },
   Infinite: {
-    color: '#3A86FF',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #3A86FF 52%, #1E40AF 100%)',
+    color: '#4CC9F0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C4F1FF, #4CC9F0 52%, #1E40AF 100%)',
   },
   Absolute: {
     color: '#B56576',
@@ -1516,8 +1516,8 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
     bgGradient: 'radial-gradient(circle at 35% 30%, #E8D1B8, #B08968 52%, #422006 100%)',
   },
   Primordial: {
-    color: '#06D6A0',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFE8, #06D6A0 52%, #065F46 100%)',
+    color: '#00BFA6',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00BFA6 52%, #065F46 100%)',
   },
   Unfathomable: {
     color: '#BE123C',
