@@ -29,3 +29,5 @@ Pages preview test refinement: assert that the preview has no executable Reddit 
 Pages update: extend roll confetti particle lifetime to 320 ticks.
 
 Deploy prompt: restore multiball orbit satellites and add nine animated e3 rarity tiers with unique legacy colors.
+
+Deploy prompt: faster rarity animations and multicolor gradients for rarity tiers 19-27.
