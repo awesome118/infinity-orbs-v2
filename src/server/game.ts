@@ -8475,6 +8475,40 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
 
   });}
 
+type FrenzyPostSubmission = {
+  runAs: 'USER';
+  subredditName: string;
+  title: string;
+  flairId?: string;
+  entry: 'frenzy';
+  userGeneratedContent: { text: string };
+};
+
+/** The single source of truth for the Reddit submission made by a Frenzy. */
+async function buildFrenzyPostSubmission(
+  ownerUsername: string,
+  subredditName: string,
+  rarity: number,
+  isInfinity: boolean,
+): Promise<FrenzyPostSubmission> {
+  const rarityText = `1/${formatRarity(rarity, isInfinity)}`;
+  const body =
+    `u/${ownerUsername} got a ${rarityText} Orb in their Frenzy.\n\n` +
+    `Click below to claim it! Each player can claim up to ${FRENZY_CLAIMS_PER_DAY} Frenzies per day.\n\n` +
+    `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
+    `This owner reward is granted separately from roll-earned Shards.\n\n` +
+    `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
+
+  return {
+    runAs: 'USER',
+    subredditName,
+    title: `u/${ownerUsername} got a ${rarityText} Orb in their Frenzy`,
+    ...(await getPostFlairOptions(subredditName, 'frenzy')),
+    entry: 'frenzy',
+    userGeneratedContent: { text: body },
+  };
+}
+
 export async function startOrbFrenzy(options: {
   bypassDailyLimit?: boolean;
   forcedRarity?: number;
@@ -8507,20 +8541,8 @@ export async function startOrbFrenzy(options: {
     const isInfinity = result.bestOrb.isInfinity === true;
     const createdAt = Date.now();
     const expiresAt = frenzyPostExpiresAt(createdAt);
-    const postText =
-      `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
-      `Click below to claim it! Each player can claim up to ${FRENZY_CLAIMS_PER_DAY} Frenzies per day.\n\n` +
-      `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-      `This owner reward is granted separately from roll-earned Shards.\n\n` +
-      `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
-    const post = await reddit.submitCustomPost({
-      runAs: 'USER',
-      subredditName,
-      title: `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`,
-      ...(await getPostFlairOptions(subredditName, 'frenzy')),
-      entry: 'frenzy',
-      userGeneratedContent: { text: postText },
-    });
+    const postSubmission = await buildFrenzyPostSubmission(ownerUsername, subredditName, rarity, isInfinity);
+    const post = await reddit.submitCustomPost(postSubmission);
     const postId = String(post?.id ?? '').trim();
     if (!postId) throw new Error('Could not create the Frenzy post.');
 
@@ -8693,6 +8715,11 @@ export async function createFrenzySimulatorPost(requestedRarity: unknown): Promi
   postId: string;
   title: string;
   body: string;
+  subredditName: string;
+  ownerUsername: string;
+  runAs: 'USER';
+  entry: 'frenzy';
+  flairId: string | null;
   rarity: number;
   isInfinity: boolean;
   createdAt: number;
@@ -8706,51 +8733,55 @@ export async function createFrenzySimulatorPost(requestedRarity: unknown): Promi
   if (!Number.isFinite(rawRarity) || !Number.isInteger(rawRarity) || rawRarity < 2) {
     throw new Error('Enter a valid Orb rarity of at least 2.');
   }
-  const rarity = Math.min(MAX_ORB_RARITY, rawRarity);
-  const isInfinity = rarity >= MAX_ORB_RARITY;
-  const s = await loadRaw({ registerActivity: false });
-  const ownerUsername = String(context.username ?? s.username ?? 'Redditor')
-    .trim()
-    .replace(/^u\//i, '') || 'Redditor';
-  const subredditName = String(context.subredditName ?? 'infinityorbs').trim() || 'infinityorbs';
-  const createdAt = Date.now();
-  const expiresAt = frenzyPostExpiresAt(createdAt);
-  const title = `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`;
-  const body =
-    `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
-    `Click below to claim it! Each player can claim up to ${FRENZY_CLAIMS_PER_DAY} Frenzies per day.\n\n` +
-    `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-    `This owner reward is granted separately from roll-earned Shards.\n\n` +
-    `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
-  const submitted = await reddit.submitCustomPost({
-    runAs: 'USER',
-    subredditName,
-    title,
-    ...(await getPostFlairOptions(subredditName, 'frenzy')),
-    entry: 'frenzy',
-    userGeneratedContent: { text: body },
+
+  return withPlayerMutationLock(async () => {
+    const rarity = Math.min(MAX_ORB_RARITY, rawRarity);
+    const isInfinity = rarity >= MAX_ORB_RARITY;
+    const state = await loadRaw({ registerActivity: false });
+    const ownerUsername = String(context.username ?? state.username ?? 'Redditor')
+      .trim()
+      .replace(/^u\\//i, '') || 'Redditor';
+    const subredditName = String(context.subredditName ?? 'infinityorbs').trim() || 'infinityorbs';
+    const createdAt = Date.now();
+    const expiresAt = frenzyPostExpiresAt(createdAt);
+
+    // This is the exact payload builder used by startOrbFrenzy immediately before
+    // reddit.submitCustomPost. Only the irreversible Reddit submission is skipped.
+    const submission = await buildFrenzyPostSubmission(ownerUsername, subredditName, rarity, isInfinity);
+    const postId = 't3_pages_preview-' + createSecureId();
+    const record: FrenzyPostRecord = {
+      ownerId,
+      ownerUsername,
+      rarity,
+      isInfinity,
+      subredditName,
+      adminTest: true,
+      inGame: true,
+      createdAt,
+      expiresAt,
+      consumedAt: null,
+    };
+    await redis.set(
+      FRENZY_POST_PREFIX + postId,
+      JSON.stringify(record),
+      { expiration: new Date(expiresAt + FRENZY_POST_RECEIPT_RETENTION_MS) },
+    );
+
+    return {
+      postId,
+      title: submission.title,
+      body: submission.userGeneratedContent.text,
+      subredditName: submission.subredditName,
+      ownerUsername,
+      runAs: submission.runAs,
+      entry: submission.entry,
+      flairId: submission.flairId ?? null,
+      rarity,
+      isInfinity,
+      createdAt,
+      expiresAt,
+    };
   });
-  const submittedPostId = String(submitted?.id ?? '').trim();
-  if (!submittedPostId) throw new Error('Could not create the local Reddit post preview.');
-  const postId = submittedPostId + '-' + createSecureId().slice(0, 12);
-  const record: FrenzyPostRecord = {
-    ownerId,
-    ownerUsername,
-    rarity,
-    isInfinity,
-    subredditName,
-    adminTest: true,
-    inGame: true,
-    createdAt,
-    expiresAt,
-    consumedAt: null,
-  };
-  await redis.set(
-    FRENZY_POST_PREFIX + postId,
-    JSON.stringify(record),
-    { expiration: new Date(expiresAt + FRENZY_POST_RECEIPT_RETENTION_MS) },
-  );
-  return { postId, title, body, rarity, isInfinity, createdAt, expiresAt };
 }
 
 export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTestOwner?: boolean } = {}): Promise<{
