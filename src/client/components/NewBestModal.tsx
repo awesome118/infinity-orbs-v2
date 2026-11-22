@@ -23,7 +23,6 @@ export const NewBestModal: React.FC<NewBestModalProps> = ({
 
   useEffect(() => {
     if (isMinorDiscovery) {
-      sound.playChime(587.33, 'sine', 0.25);
       return;
     }
 

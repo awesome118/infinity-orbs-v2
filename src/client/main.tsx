@@ -2526,7 +2526,7 @@ function App() {
     stateRef.current = nextState;
     stateRevisionRef.current += 1;
     setState(nextState);
-    sound.playChime(659.25, 'sine', 0.2);
+    sound.playPurchaseSound();
 
     return new Promise<boolean>((resolve) => {
       upgradeBatchQueueRef.current.push({ id, resolve });
@@ -2604,7 +2604,7 @@ function App() {
     stateRef.current = next;
     stateRevisionRef.current += 1;
     setState(next);
-    sound.playChime(523.25, 'triangle', 0.3);
+    sound.playPurchaseSound();
 
     pendingMutationCountRef.current += 1;
     return enqueueMutation(async () => {
@@ -2657,7 +2657,7 @@ function App() {
     try {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
-      sound.playChime(880, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       const turboDescription = durationMinutes === 60
         ? '35% faster cooldowns for 60 minutes'
         : '25% faster cooldowns for 30 minutes';
@@ -2715,7 +2715,7 @@ function App() {
       }
 
       setFrenzyArmed(true);
-      sound.playChime(1040, 'sawtooth', 0.22);
+      sound.playPowerUpSound();
       showToast('⚡ Frenzy armed. Your next manual Roll will submit it.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Could not arm Orb Frenzy', 'warn');
@@ -2765,7 +2765,7 @@ function App() {
         setBoosterAnnouncement(null);
         boosterAnnouncementTimerRef.current = null;
       }, 5000);
-      sound.playChime(960, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       showToast(
         res.usedCredit ? 'Global Booster activated with a free credit.' : 'Global Booster activated.',
         'success',
@@ -2800,7 +2800,7 @@ function App() {
         body: JSON.stringify({ id }),
       });
       applyPlayerState(res.state);
-      sound.playChime(1046, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
       rollback?.();
@@ -2854,7 +2854,7 @@ function App() {
       }>('/api/community/reward/claim', { method: 'POST' });
       applyPlayerState(res.state);
       if (res.rewardCoins > 0) {
-        sound.playChime(880, 'triangle', 0.3);
+        sound.playRewardSound();
         showToast(
           `Community cache claimed! +${formatNumber(res.rewardCoins)} Coins, +${formatNumber(res.rewardXp)} XP.`,
           'success',
@@ -3120,7 +3120,7 @@ function App() {
         { method: 'POST' }
       );
       applyPlayerState(res.state);
-      sound.playChime(784, 'triangle', 0.3);
+      sound.playRewardSound();
       showToast(
         `Streak claimed! +${formatNumber(res.rewardCoins)} Coins ${res.rewardShards > 0 ? `+${formatNumber(res.rewardShards)} Shards` : ''}`,
         'success'
@@ -3171,7 +3171,7 @@ function App() {
         }
       );
       applyPlayerState(res.state);
-      sound.playChime(700, 'sine', 0.25);
+      sound.playRewardSound();
       showToast(`Quest completed! +${formatNumber(res.rewardCoins)} Coins`, 'success');
     } catch (e: any) {
       rollback?.();
@@ -3247,7 +3247,7 @@ function App() {
         body: JSON.stringify({ id }),
       });
       applyPlayerState(res.state);
-      sound.playChime(659.25, 'sine', 0.25);
+      sound.playPurchaseSound();
       showToast('Permanent cosmic upgrade obtained!', 'success');
     } catch (e: any) {
       rollback?.();
@@ -3274,7 +3274,7 @@ function App() {
         method: 'POST',
       });
       applyPlayerState(res.state);
-      sound.playChime(1046.5, 'triangle', 0.4);
+      sound.playPowerUpSound();
       showToast(`+${res.dustEarned} Cosmic Dust forged in the Astral Forge!`, 'success');
       void refreshAll();
     } catch (e: any) {
@@ -3294,7 +3294,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ perk }),
       });
-      sound.playChime(784, 'triangle', 0.3);
+      sound.playLevelUpFanfare();
       showToast('Guild Perk leveled up for all members!', 'success');
       void refreshGuildData().catch(() => undefined);
     } catch (e: any) {

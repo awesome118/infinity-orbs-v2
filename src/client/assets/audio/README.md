@@ -1,17 +1,34 @@
 # Bundled sound effects
 
-The game now uses four replacement WAV cues from **RPG Sound Pack** by artisticdude, published on OpenGameArt on May 19, 2011.
+Infinity Orbs uses bundled sound-effect files by human sound designers. Runtime-generated oscillator tones and noise have been removed; all audible cues now play source audio files.
 
-The OpenGameArt source page lists the pack under **CC0 1.0**. These are human-created sound effects from a 2011 asset pack, not AI-generated audio.
+## OpenGameArt
 
+**RPG Sound Pack** by artisticdude, published May 19, 2011. The source page lists the pack as CC0 1.0.
 Source: https://opengameart.org/content/rpg-sound-pack
 License: https://creativecommons.org/publicdomain/zero/1.0/
 
-| File | Original pack file | Use |
-|---|---|---|
-| `equip-interface.wav` | `interface/interface2.wav` | Equipment and positive feedback |
-| `roll-bubble.wav` | `inventory/bubble.wav` | Ordinary Orb rolls |
-| `rarity-magic.wav` | `battle/magic1.wav` | Rare and high-rarity Orb feedback |
-| `error-interface.wav` | `interface/interface6.wav` | Failed actions |
+- `equip-interface.wav` — `interface/interface2.wav`: equipment feedback
+- `roll-bubble.wav` — `inventory/bubble.wav`: normal Orb rolls
+- `rarity-magic.wav` — `battle/magic1.wav`: rare Orb feedback
+- `error-interface.wav` — `interface/interface6.wav`: failed actions
+- `reward-coin.wav` — `inventory/coin.wav`: coin, streak, and quest rewards
 
-The generic UI click remains silent to avoid adding a sound to every button press. The existing Web Audio effects for the game's specialized alignment and sonar features are separate from these downloaded assets.
+**Level up, power up, Coin get (13 Sounds)** by wobbleboxx, published November 16, 2014. The source page lists the pack as CC0 1.0.
+Source: https://opengameart.org/content/level-up-power-up-coin-get-13-sounds
+License: https://creativecommons.org/publicdomain/zero/1.0/
+
+- `level-up.wav` — `Rise01.wav`: purchases and progression
+- `sacrifice-downer.wav` — `Downer01.wav`: Altar and Rune sacrifice feedback
+
+## Kenney
+
+**Digital Audio** by Kenney Vleugels. The original pack is licensed CC0 1.0.
+Source: https://kenney.nl/assets/digital-audio
+License: https://creativecommons.org/publicdomain/zero/1.0/
+
+- `sonar-ping.ogg` — `highUp.ogg`: Silent Sonar
+- `alignment-phase.ogg` — `phaseJump1.ogg`: Celestial Alignment prompt and Mythic cue
+- `power-up.ogg` — `powerUp2.ogg`: boosters and new-best feedback
+
+No AI-generated audio is bundled. No runtime audio is synthesized. Generic button clicks stay silent so routine navigation does not produce constant noise.

@@ -1,13 +1,19 @@
-// Downloaded human-made CC0 cues from artisticdude's 2011 OpenGameArt RPG Sound Pack.
+// Every audible game cue is loaded from bundled, human-authored sound-effect files.
+// This module does not synthesize audio at runtime.
 const SOUND_ASSETS = {
   confirmation: new URL('./assets/audio/equip-interface.wav', import.meta.url).href,
   drop: new URL('./assets/audio/roll-bubble.wav', import.meta.url).href,
   glass: new URL('./assets/audio/rarity-magic.wav', import.meta.url).href,
   error: new URL('./assets/audio/error-interface.wav', import.meta.url).href,
+  levelUp: new URL('./assets/audio/level-up.wav', import.meta.url).href,
+  reward: new URL('./assets/audio/reward-coin.wav', import.meta.url).href,
+  sacrifice: new URL('./assets/audio/sacrifice-downer.wav', import.meta.url).href,
+  sonar: new URL('./assets/audio/sonar-ping.ogg', import.meta.url).href,
+  alignment: new URL('./assets/audio/alignment-phase.ogg', import.meta.url).href,
+  powerUp: new URL('./assets/audio/power-up.ogg', import.meta.url).href,
 };
 
 class SoundFX {
-  private ctx: AudioContext | null = null;
   public enabled = true;
   public sonarMode = false;
   public sonarThreshold = 100;
@@ -16,7 +22,7 @@ class SoundFX {
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
 
-  private playSample(url: string, volume = 0.18, allowSonarMode = false): void {
+  private playSample(url: string, volume = 0.16, allowSonarMode = false): void {
     if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
     try {
       if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
@@ -54,103 +60,12 @@ class SoundFX {
     }
   }
 
-  private initCtx(): AudioContext | null {
-    if (!this.ctx && typeof window !== 'undefined') {
-      const browserWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
-      const AudioCtx = window.AudioContext || browserWindow.webkitAudioContext;
-      if (AudioCtx) this.ctx = new AudioCtx();
-    }
-    if (this.ctx?.state === 'suspended') {
-      void this.ctx.resume().catch(() => {});
-    }
-    return this.ctx;
-  }
-
-  private withAudio(play: (ctx: AudioContext, now: number) => void, allowSonarMode = false) {
-    if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
-    try {
-      const ctx = this.initCtx();
-      if (ctx) play(ctx, ctx.currentTime);
-    } catch {}
-  }
-
-  private tone(
-    ctx: AudioContext,
-    frequency: number,
-    startAt: number,
-    duration: number,
-    volume: number,
-    type: OscillatorType = 'sine',
-    endFrequency?: number,
-    detune = 0,
-  ) {
-    const oscillator = ctx.createOscillator();
-    const envelope = ctx.createGain();
-    const endAt = startAt + Math.max(0.025, duration);
-    const safeFrequency = Math.max(20, Math.min(8_000, frequency));
-
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(safeFrequency, startAt);
-    oscillator.detune.setValueAtTime(detune, startAt);
-    if (endFrequency && endFrequency > 0) {
-      oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), endAt);
-    }
-
-    const peak = Math.max(0.001, Math.min(0.25, volume));
-    const attack = Math.min(0.012, duration * 0.2);
-    envelope.gain.setValueAtTime(0.0001, startAt);
-    envelope.gain.linearRampToValueAtTime(peak, startAt + attack);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
-
-    oscillator.connect(envelope);
-    envelope.connect(ctx.destination);
-    oscillator.start(startAt);
-    oscillator.stop(endAt + 0.01);
-  }
-
-  private filteredNoise(
-    ctx: AudioContext,
-    startAt: number,
-    duration: number,
-    volume: number,
-    cutoff: number,
-    seed: number,
-    filterType: BiquadFilterType = 'bandpass',
-  ) {
-    const frameCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
-    const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
-    const samples = buffer.getChannelData(0);
-    let state = seed >>> 0 || 1;
-    for (let i = 0; i < frameCount; i++) {
-      state = (state * 1_664_525 + 1_013_904_223) >>> 0;
-      samples[i] = ((state / 0x1_0000_0000) * 2 - 1) * (1 - i / frameCount);
-    }
-
-    const source = ctx.createBufferSource();
-    const filter = ctx.createBiquadFilter();
-    const envelope = ctx.createGain();
-    const endAt = startAt + duration;
-    source.buffer = buffer;
-    filter.type = filterType;
-    filter.frequency.setValueAtTime(Math.max(80, Math.min(10_000, cutoff)), startAt);
-    filter.Q.setValueAtTime(0.7, startAt);
-    envelope.gain.setValueAtTime(0.0001, startAt);
-    envelope.gain.linearRampToValueAtTime(Math.max(0.001, Math.min(0.18, volume)), startAt + 0.006);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
-
-    source.connect(filter);
-    filter.connect(envelope);
-    envelope.connect(ctx.destination);
-    source.start(startAt);
-    source.stop(endAt + 0.01);
-  }
-
   public toggle(): boolean {
     this.enabled = !this.enabled;
     try {
       localStorage.setItem('orbs_sound_enabled', String(this.enabled));
     } catch {}
-    if (this.enabled) this.playChime(440, 'sine', 0.1);
+    if (this.enabled) this.playEquip();
     return this.enabled;
   }
 
@@ -190,20 +105,23 @@ class SoundFX {
     try { localStorage.setItem('orbs_sonar_alignment_sounds', String(this.sonarAlignmentSoundsAllowed)); } catch {}
   }
 
-  // Generic UI clicks were too repetitive. Keep this method as a compatibility no-op.
+  // General interface clicks remain silent; action/reward sounds are event-specific.
   public playClick() {}
 
-  public playChime(freq = 523.25, type: OscillatorType = 'sine', duration = 0.25) {
-    this.withAudio((ctx, now) => {
-      const safeFrequency = Number.isFinite(freq) ? Math.max(40, Math.min(4_000, freq)) : 523.25;
-      const safeDuration = Number.isFinite(duration) ? Math.max(0.06, Math.min(1.6, duration)) : 0.25;
-      this.tone(ctx, safeFrequency, now, safeDuration, 0.075, type, undefined, -3);
-      this.tone(ctx, safeFrequency * 2.01, now + 0.008, safeDuration * 0.72, 0.022, 'sine', undefined, 2);
-    });
+  public playPurchaseSound(): void {
+    this.playSample(SOUND_ASSETS.levelUp, 0.12);
   }
 
-  public playRollNormal() {
-    this.playSample(SOUND_ASSETS.drop, 0.16);
+  public playPowerUpSound(): void {
+    this.playSample(SOUND_ASSETS.powerUp, 0.14);
+  }
+
+  public playRewardSound(): void {
+    this.playSample(SOUND_ASSETS.reward, 0.13);
+  }
+
+  public playRollNormal(): void {
+    this.playSample(SOUND_ASSETS.drop, 0.13);
   }
 
   public setAlignmentSoundEnabled(enabled: boolean): void {
@@ -211,57 +129,39 @@ class SoundFX {
     try { localStorage.setItem('io_alignment_sound', String(this.alignmentSoundEnabled)); } catch { /* Session setting remains active. */ }
   }
 
-  /** This alert bypasses Silent Sonar; only its dedicated switch or global mute can silence it. */
   public playAlignmentPrompt(): void {
     if (!this.alignmentSoundEnabled) return;
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 1.15, 0.018, 1_350, 13, 'lowpass');
-      this.tone(ctx, 523.25, now, 0.72, 0.07, 'sine', 392);
-      this.tone(ctx, 783.99, now + 0.18, 0.95, 0.075, 'sine', 659.25);
-      this.tone(ctx, 1_046.5, now + 0.43, 1.18, 0.065, 'triangle', 880);
-      this.tone(ctx, 1_568, now + 0.82, 0.8, 0.024, 'sine');
-    }, this.sonarAlignmentSoundsAllowed);
+    this.playSample(SOUND_ASSETS.alignment, 0.14, this.sonarAlignmentSoundsAllowed);
   }
 
-  /** A rarity-scaled sonar mark, retained while Silent Sonar mode is active. */
-  public playSonarPing(rarity: number) {
-    this.withAudio((ctx, now) => {
-      const base = rarity >= 10_000 ? 1_318.51 : rarity >= 1_000 ? 1_046.5 : 880;
-      this.tone(ctx, base, now, 0.42, 0.12, 'sine', base * 0.985);
-      this.tone(ctx, base * 1.5, now + 0.055, 0.48, 0.065, 'sine');
-      this.tone(ctx, base * 2, now + 0.12, 0.31, 0.022, 'triangle');
-    }, true);
+  public playSonarPing(rarity: number): void {
+    const volume = rarity >= 10_000 ? 0.16 : rarity >= 1_000 ? 0.14 : 0.12;
+    this.playSample(SOUND_ASSETS.sonar, volume, true);
   }
 
-  public playRareRiser() {
-    this.playSample(SOUND_ASSETS.glass, 0.17);
+  public playRareRiser(): void {
+    this.playSample(SOUND_ASSETS.glass, 0.13);
   }
 
-  public playEpicFanfare() {
-    this.playSample(SOUND_ASSETS.glass, 0.19, true);
+  public playEpicFanfare(): void {
+    this.playSample(SOUND_ASSETS.glass, 0.16, true);
   }
 
-  public playMythicFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.20, true);
+  public playMythicFanfare(): void {
+    this.playSample(SOUND_ASSETS.alignment, 0.17, true);
   }
 
-  public playLevelUpFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.17, true);
+  public playLevelUpFanfare(): void {
+    this.playSample(SOUND_ASSETS.levelUp, 0.15, true);
   }
 
-  public playNewBestFanfare() {
-    this.playSample(SOUND_ASSETS.confirmation, 0.19, true);
+  public playNewBestFanfare(): void {
+    this.playSample(SOUND_ASSETS.powerUp, 0.17, true);
   }
 
-  public playSacrificeSound() {
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.32, 0.055, 520, 59, 'lowpass');
-      this.tone(ctx, 130.81, now, 0.52, 0.085, 'triangle', 523.25);
-      this.tone(ctx, 261.63, now + 0.19, 0.62, 0.045, 'sine', 196);
-      this.tone(ctx, 392, now + 0.46, 0.38, 0.03, 'sine');
-    }, true);
+  public playSacrificeSound(): void {
+    this.playSample(SOUND_ASSETS.sacrifice, 0.12, true);
   }
 }
 
 export const sound = new SoundFX();
-

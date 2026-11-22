@@ -6,3 +6,5 @@ Deploy prompt: quieter, less repetitive sound effects.
 Deploy prompt: replace the original Kenney UI samples with human-made OpenGameArt CC0 sounds.
 
 Clean Pages deployment retry after duplicate artifact metadata from the prior workflow run.
+
+Deploy prompt: replace all runtime-synthesized game audio with sourced non-AI sound-effect files, including sonar, alignment, sacrifice, and progression cues.
