@@ -1387,9 +1387,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'boost <fortune|hyperdrive|barrage|prosperity|ascension> <minutes>',
         'offline add|set <amount>      cooldown ready',
         'menus disable [reason]        menus enable',
+        'maintenance on [reason]     maintenance off',
         'features                       List global feature switches',
         'feature <name> disable [reason]',
         'feature <name> enable',
+        'feature gameplay disable [reason] stops all mapped game actions',
         'announce <message>            announce clear',
         '',
         'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
@@ -1407,7 +1409,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
-    const isGlobal = /^(?:menus?|announce(?:ment)?|features?)\b/i.test(command);
+    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance)\b/i.test(command);
     const target = executeAsUsername.trim().replace(/^u\//i, '');
     if (isGlobal && target) {
       appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
