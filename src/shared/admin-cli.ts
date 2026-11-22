@@ -1,4 +1,4 @@
-import { validateLiveBalanceValue } from './live-balance.js';
+import { getLiveBalanceSetting, validateLiveBalanceValue } from './live-balance.js';
 /**
  * Admin Console command grammar. Intentionally not a JavaScript interpreter.
  * The caller still has to pass the server-side admin gate before this parser
@@ -204,13 +204,13 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
 
     const balanceGetMatch = /^balance\s+get\s+(\S+)$/i.exec(line);
     if (balanceGetMatch) {
-      validateLiveBalanceValue(balanceGetMatch[1]!, 0);
+      if (!getLiveBalanceSetting(balanceGetMatch[1]!)) throw new Error('Unknown balance setting "' + balanceGetMatch[1] + '". Use "balance list" to see supported settings.');
       return { kind: 'balance', action: 'get', key: balanceGetMatch[1]! };
     }
 
     const balanceResetMatch = /^balance\s+reset\s+(\S+)$/i.exec(line);
     if (balanceResetMatch) {
-      validateLiveBalanceValue(balanceResetMatch[1]!, 0);
+      if (!getLiveBalanceSetting(balanceResetMatch[1]!)) throw new Error('Unknown balance setting "' + balanceResetMatch[1] + '". Use "balance list" to see supported settings.');
       return { kind: 'balance', action: 'reset', key: balanceResetMatch[1]! };
     }
 
