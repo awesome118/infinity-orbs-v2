@@ -101,12 +101,12 @@ export const RarityTableModal: React.FC<RarityTableModalProps> = ({ onClose, hig
             <div
               role="row"
               key={tier.tier}
-              className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tierIndex === 3 ? 'io-rarity-tier-row--shifting' : ''} ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'}`}
+              className={`io-rarity-tier-row grid grid-cols-2 sm:grid-cols-4 items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3 text-xs transition-all duration-200 ${tierIndex === 3 ? 'io-rarity-tier-row--shifting' : ''} ${tier.minRarity >= 1e19 ? 'io-rarity-new-tier bg-violet-950/15' : 'hover:bg-slate-900/50'} ${tier.minRarity >= 1e38 ? 'io-rarity-tier-row--animated' : ''}`}
               style={{ borderLeftColor: tier.color, '--io-rarity-tier-color': tier.color } as React.CSSProperties}
             >
               <div role="cell" aria-label={`${tier.tier} tier`} className="io-rarity-tier-name-cell flex min-w-0 items-center gap-2">
                 <RarityOrbIcon rarity={tier.minRarity} unlocked={highestRarity >= tier.minRarity} compact />
-                <span className="font-bold text-white break-words" style={{ color: tier.color }}>{tier.tier}</span>
+                <span className={`font-bold text-white break-words ${tier.minRarity >= 1e38 ? 'io-rarity-color-cycle' : ''}`} style={{ color: tier.color }}>{tier.tier}</span>
               </div>
 
               <div role="cell" className="min-w-0 break-words font-mono text-slate-300 font-bold">
