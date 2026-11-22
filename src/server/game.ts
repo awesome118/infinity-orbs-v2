@@ -5506,6 +5506,7 @@ export async function applyRolls(
   let extraCoinsEstimate = 0;
   let lowRarityCoinsEstimate = 0;
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
+  const liveBalance = await getLiveBalanceConfig();
   const now = Date.now();
   const spyUserId = currentUserId();
   const spyBefore = {
@@ -6100,6 +6101,10 @@ export async function applyRolls(
         xpForSupernovaOrb * groupSupernovaCount -
         xpForTopBaseline + xpForGroupMaximum,
     );
+    const balancedEarnedXp = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.round(earnedXp * liveBalance['rewards.xpMultiplier']),
+    );
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
@@ -6115,7 +6120,8 @@ export async function applyRolls(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025 *
+      liveBalance['rewards.shardChanceMultiplier']
     );
     if (sampleWeight > 1) {
       const combinedShardChance = 1 -
@@ -6143,7 +6149,7 @@ export async function applyRolls(
     }
 
     shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + earnedShards);
-    xpGained += earnedXp;
+    xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + balancedEarnedXp);
 
     // Shard Constellation retains charge between activations and pays only once per activation.
     if (runeAbilityEffects.shardConstellationPct > 0) {
@@ -6245,7 +6251,7 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
-  coinsGained = normalizeCoinAmount(coinsGained);
+  coinsGained = normalizeCoinAmount(Math.round(coinsGained * liveBalance['rewards.coinMultiplier']));
   if (!previewOnly) {
     const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
     const rareOrbCount = countGuildTaskRareOrbs(rarities, rarityWeights);
@@ -6266,7 +6272,10 @@ export async function applyRolls(
   shardsGained = grantRollShards(s, shardsGained);
 
   // Ascension increases XP by 10× while preserving the existing level logic.
-  const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
+  const effectiveXpGained = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.round(isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained),
+  );
   s.xp += effectiveXpGained;
   xpGained = effectiveXpGained;
 
@@ -6943,7 +6952,8 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   }
   s.offlineRolls = Math.min(offlineCap, savedOfflineRolls);
 
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const diff = now - (s.lastSeenAt || now);
   if (diff >= tickMs) {
     const earned = Math.floor(diff / tickMs);
@@ -7166,7 +7176,8 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const diff = now - (s.lastSeenAt || now);
   if (diff >= tickMs) {
     const earned = Math.floor(diff / tickMs);
@@ -7343,8 +7354,9 @@ export async function roll(
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.
-    const cd = cooldownMs(s, isAuto);
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, isAuto);
+    const liveBalance = await getLiveBalanceConfig();
+    const cd = cooldownMs(s, isAuto, liveBalance);
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, isAuto, liveBalance);
     if (useTimeEnergy && (isAuto || usingChainPatcher)) {
       throw new Error('Time Energy can only power a manual, non-patched activation.');
     }
@@ -7734,7 +7746,8 @@ export async function claimOffline(): Promise<RollResponse> {
   const offlineCap = offlineRollCap(s);
   const batches = Math.min(offlineCap, s.offlineRolls);
   if (batches <= 0) throw new Error('No offline rolls waiting.');
-  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
   s.offlineRolls = 0;
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   grantCooldownReclaimerTimeEnergy(s, batches, reclaimedPerActivation);
@@ -7769,7 +7782,7 @@ export async function claimOffline(): Promise<RollResponse> {
     shardsGained,
     xpGained,
     state: s,
-    rollsRemainingUntilNext: cooldownMs(s),
+    rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
     rollsProcessed: rollCount,
     dramaticReveal: bestOrb.rarity >= 100,
   };
