@@ -35,10 +35,12 @@ export function OrbOrbit({ orbs, radius = 152, primaryOrb }: Props) {
         orb.name === primaryOrb.name
       )
     : -1;
-  const mobileBatchOrbs = primaryIndex >= 0
+  // The centerpiece is the best result, so only its companion multiballs orbit it.
+  const companionOrbs = primaryIndex >= 0
     ? orbs.filter((_orb, index) => index !== primaryIndex)
     : orbs;
-  const visibleOrbs = isMobile ? mobileBatchOrbs.slice(0, 2) : orbs.slice(0, 8);
+  const visibleOrbs = isMobile ? companionOrbs.slice(0, 2) : companionOrbs.slice(0, 7);
+  const orbitRadius = isMobile ? Math.min(radius, 104) : radius;
 
   if (visibleOrbs.length === 0) return null;
 
@@ -46,7 +48,7 @@ export function OrbOrbit({ orbs, radius = 152, primaryOrb }: Props) {
     <div aria-hidden="true" className="io-orbit-layer absolute inset-0 flex items-center justify-center pointer-events-none">
       <div
         className="io-orbit-track absolute rounded-full border border-dashed border-slate-700/50"
-        style={{ width: radius * 2, height: radius * 2 }}
+        style={{ width: orbitRadius * 2, height: orbitRadius * 2 }}
       />
       <div className="relative w-0 h-0 animate-orbit-ring">
         {visibleOrbs.map((orb, index) => {
@@ -57,11 +59,11 @@ export function OrbOrbit({ orbs, radius = 152, primaryOrb }: Props) {
               key={orb.rarity + ':' + (orb.isInfinity ? 1 : 0) + ':' + index}
               className="io-orbit-satellite absolute -translate-x-1/2 -translate-y-1/2"
               style={{
-                left: Math.cos(angle) * radius,
-                top: Math.sin(angle) * radius,
+                left: Math.cos(angle) * orbitRadius,
+                top: Math.sin(angle) * orbitRadius,
               }}
             >
-              <span className="io-orbit-satellite-core animate-orbit-counter" style={{ background: info.bgGradient }} />
+              <span className={`io-orbit-satellite-core animate-orbit-counter ${info.animated ? 'io-rarity-color-cycle' : ''}`} style={{ background: info.bgGradient }} />
             </div>
           );
         })}
