@@ -1341,7 +1341,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const loadExecuteAsSave = async (quiet = false) => {
-    const username = executeAsUsername.trim().replace(/^u\\//i, '');
+    const username = executeAsUsername.trim().replace(/^u\//i, '');
     if (!username) {
       setExecuteAsResult('Enter a Reddit username first.');
       return false;
@@ -1355,7 +1355,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setExecuteAsSavePreview(JSON.stringify(data.save ?? {}, null, 2));
       if (!quiet) setExecuteAsResult(
         'Loaded u/' + (data.username ?? username) + ' · ID ' + String(data.userId ?? '').slice(-10) +
-        (data.codexStoredSeparately ? '\\nThe Codex is stored separately and is not included in this save preview.' : ''),
+        (data.codexStoredSeparately ? '\nThe Codex is stored separately and is not included in this save preview.' : ''),
       );
       return true;
     } catch (error: any) {
@@ -1367,8 +1367,8 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const executeAs = async () => {
-    const username = executeAsUsername.trim().replace(/^u\\//i, '');
-    const commandCount = executeAsCommands.split(/\\r?\\n/).filter(line => line.trim() && !line.trim().startsWith('#')).length;
+    const username = executeAsUsername.trim().replace(/^u\//i, '');
+    const commandCount = executeAsCommands.split(/\r?\n/).filter(line => line.trim() && !line.trim().startsWith('#')).length;
     if (!username) {
       setExecuteAsResult('Enter a Reddit username first.');
       return;
@@ -1398,7 +1398,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         ...(data.codexStoredSeparately ? ['The separately stored Codex was left unchanged.'] : []),
         '',
         JSON.stringify(data.results ?? [], null, 2),
-      ].join('\\n');
+      ].join('\n');
       setExecuteAsResult(summary);
       await loadExecuteAsSave(true);
     } catch (error: any) {
