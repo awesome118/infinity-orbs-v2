@@ -2368,3 +2368,88 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
     display: none !important;
   }
 }
+
+
+/* Multiball preview: give each result a visible glass satellite around the
+   centerpiece. The rotating ring moves the satellites; their counter-rotation
+   keeps each tiny orb visually upright. */
+.io-ui .io-orbit-layer {
+  z-index: 2;
+  overflow: visible;
+}
+.io-ui .io-orbit-track {
+  box-sizing: border-box;
+  border-color: rgba(139, 174, 224, .24) !important;
+  border-style: dashed;
+  opacity: .9;
+  box-shadow: 0 0 18px rgba(93, 145, 218, .08), inset 0 0 18px rgba(93, 145, 218, .035);
+  transform: none !important;
+}
+.io-ui .io-orbit-satellite {
+  z-index: 2;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .55));
+}
+.io-ui .io-orbit-satellite-core {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(235, 245, 255, .62);
+  border-radius: 50%;
+  box-shadow:
+    0 0 11px rgba(190, 215, 255, .24),
+    inset 0 1px 3px rgba(255, 255, 255, .52),
+    inset 0 -3px 6px rgba(0, 0, 0, .48);
+}
+.io-ui .io-orbit-satellite-core::before {
+  position: absolute;
+  inset: 1px;
+  content: "";
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 31% 23%, rgba(255, 255, 255, .92), rgba(255, 255, 255, .2) 23%, transparent 44%),
+    linear-gradient(145deg, rgba(255, 255, 255, .18), transparent 54%, rgba(0, 0, 0, .26));
+  pointer-events: none;
+}
+.io-ui .io-orbit-satellite-core::after {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 5px;
+  height: 5px;
+  content: "";
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .22);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+/* The nine newest rarities continuously cycle hue, slowly enough to read. */
+.io-rarity-color-cycle {
+  animation: io-rarity-color-cycle 48s linear infinite;
+}
+.io-rarity-tier-row--animated {
+  border-left-color: var(--io-rarity-tier-color) !important;
+  background-image: linear-gradient(100deg, rgba(255, 255, 255, .025), rgba(0, 0, 0, .035)) !important;
+}
+@keyframes io-rarity-color-cycle {
+  from { filter: hue-rotate(0deg) saturate(1.12); }
+  to { filter: hue-rotate(360deg) saturate(1.12); }
+}
+@media (max-width: 760px) {
+  .io-ui .io-orbit-satellite { width: 19px; height: 19px; }
+  .io-ui .io-orbit-satellite-core { width: 16px; height: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-rarity-color-cycle,
+  .io-ui .animate-orbit-ring,
+  .io-ui .animate-orbit-counter {
+    animation: none !important;
+  }
+}
