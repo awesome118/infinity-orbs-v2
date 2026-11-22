@@ -51,3 +51,5 @@ Admin feature switches: master maintenance, granular feature controls, and route
 Roll cooldown recovery: separate manual/auto timers and reset invalid future timestamps.
 Deploy prompt: validated live balance settings, runtime reward/cooldown tuning, audit history, and revision rollback.
 Pages validation retry: manual cooldown regression test now expects the live balance config parameter.
+
+Pages update: expanded Admin CLI feature controls, server-side granular route gating, and read-only mode.
