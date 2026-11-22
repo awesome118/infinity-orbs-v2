@@ -4,3 +4,5 @@ Deploy prompt: desktop combat equip, orb reveal visuals, and original Kenney CC0
 Deploy prompt: quieter, less repetitive sound effects.
 
 Deploy prompt: replace the original Kenney UI samples with human-made OpenGameArt CC0 sounds.
+
+Clean Pages deployment retry after duplicate artifact metadata from the prior workflow run.
