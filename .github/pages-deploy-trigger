@@ -21,3 +21,5 @@ Pages update: manual cooldown, income-based quest rewards, and server-backed Fre
 Pages correction: use the real Frenzy post payload builder and embedded custom-post entry for simulator previews.
 
 Pages preview refinement: skip Reddit impressions for the embedded local Frenzy preview.
+
+Pages preview compile fix: correct escaped username-prefix regex in Frenzy simulator.
