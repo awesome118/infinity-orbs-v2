@@ -325,6 +325,11 @@ function App() {
   }, []);
 
   const [state, setState] = useState<PlayerState | null>(null);
+  const [globalMenuControl, setGlobalMenuControl] = useState<{ enabled: boolean; reason: string; updatedAt: number; updatedBy: string }>({
+    enabled: true, reason: '', updatedAt: 0, updatedBy: '',
+  });
+  const menusDisabled = globalMenuControl.enabled === false;
+
 
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
   const journeyReadyReportedRef = useRef(false);
@@ -682,10 +687,6 @@ function App() {
   const leaderboardLoadedAtRef = useRef(0);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
-  const [globalMenuControl, setGlobalMenuControl] = useState<{ enabled: boolean; reason: string; updatedAt: number; updatedBy: string }>({
-    enabled: true, reason: '', updatedAt: 0, updatedBy: '',
-  });
-  const menusDisabled = globalMenuControl.enabled === false;
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   // Modals
