@@ -54,6 +54,6 @@ test('manual Roll readiness uses the manual cooldown instead of Auto Roll timing
   const start = main.indexOf('Keep the manual Roll button aligned with the manual server cooldown.');
   const end = main.indexOf('// Auto Roll uses a single scheduled wake-up', start);
   assert.ok(start >= 0 && end > start);
-  assert.match(main.slice(start, end), /cooldownMs\(timingState, false\)/);
+  assert.match(main.slice(start, end), /cooldownMs\(timingState, false, liveBalance\)/);
   assert.doesNotMatch(main.slice(start, end), /cooldownMs\(timingState, true\)/);
 });
