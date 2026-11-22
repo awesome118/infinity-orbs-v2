@@ -123,6 +123,19 @@ test('nine new rarity tiers scale by e3 and the original 27 colors are unique', 
 
 
 
+test('animated Orb borders inherit the same color source as each Orb fill', () => {
+  const roll = readFileSync(resolve(process.cwd(), 'src/client/components/RollSection.tsx'), 'utf8');
+  const orbit = readFileSync(resolve(process.cwd(), 'src/client/components/OrbOrbit.tsx'), 'utf8');
+  const css = readFileSync(resolve(process.cwd(), 'src/client/mobile-experience.css'), 'utf8');
+
+  assert.ok(roll.includes("borderColor: orbInfo?.color ?? '#6366f1'"));
+  assert.ok(roll.includes('io-rarity-color-cycle'));
+  assert.ok(orbit.includes('background: info.bgGradient, borderColor: info.color'));
+  assert.ok(css.includes('.io-ui .io-main-orb'));
+  assert.ok(css.includes('border-color: var(--io-orb-current-color'));
+  assert.ok(css.includes('.io-ui .io-orbit-satellite-core'));
+});
+
 test('rarities 19–27 use distinct multi-color orb gradients', () => {
   const expected = ['Empyrean', 'Hyperversal', 'Transfinite', 'Metacosmic', 'Primordial', 'Unfathomable', 'Axiom', 'Omniscient', 'Omega'];
   const tiers = CONTINUUM_TIERS.slice(18, 27);
