@@ -17,3 +17,5 @@ Deploy validation fix: import Reddit simulator Bell icon and preserve floating r
 
 Deploy validation refinement: run focused Frenzy, quest-scaling, offline-reward, and Pages simulator tests after type-checking; full legacy suite has unrelated stale source-contract failures.
 Pages update: manual cooldown, income-based quest rewards, and server-backed Frenzy simulator.
+
+Pages correction: use the real Frenzy post payload builder and embedded custom-post entry for simulator previews.
