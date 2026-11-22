@@ -197,38 +197,6 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const pityProgressPct = (pityRollsIntoTier / pityInterval) * 100;
 
   const [isShaking, setIsShaking] = useState(false);
-  const [rewardBurstActive, setRewardBurstActive] = useState(false);
-  const rewardBurstKeyRef = useRef(0);
-  const previousBatchSummaryRef = useRef<typeof batchSummary>(null);
-
-  // Show the exact reward totals returned by the roll response. Manual rolls get
-  // the full burst; Auto Roll keeps the persistent reward readout without turning
-  // the screen into a constant fireworks machine.
-  useEffect(() => {
-    if (!batchSummary || previousBatchSummaryRef.current === batchSummary) return;
-    previousBatchSummaryRef.current = batchSummary;
-
-    if (reducedMotion) {
-      setRewardBurstActive(false);
-      return;
-    }
-    const shouldAnimate =
-      !autoRoll ||
-      Boolean(lastOrb?.isCrit) ||
-      (lastOrb?.rarity ?? 0) >= 1_000;
-
-    if (!shouldAnimate) return;
-
-    rewardBurstKeyRef.current += 1;
-    setRewardBurstActive(true);
-    const timer = window.setTimeout(() => setRewardBurstActive(false), 1100);
-    return () => window.clearTimeout(timer);
-  }, [batchSummary, autoRoll, lastOrb, reducedMotion]);
-
-  useEffect(() => {
-    if (reducedMotion) setRewardBurstActive(false);
-  }, [reducedMotion]);
-
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
   const cd = cooldownMs(state, false);
   const timeEnergyRollsAvailable = timeEnergyActivationsAvailable(timeEnergy, cd);
@@ -547,7 +515,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''} ${isShaking ? 'animate-screen-shake' : ''}`}>
+      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -588,50 +556,15 @@ export const RollSection: React.FC<RollSectionProps> = ({
             }
           }}
           className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
-            isRevealing ? 'scale-105 ring-4 ring-white/60' : 'hover:scale-102'
-          }`}
+            isRevealing ? 'is-revealing' : 'hover:scale-102'
+          } ${isShaking ? 'is-shaking' : ''}`}
           style={{
             background: orbInfo
               ? orbInfo.bgGradient
               : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
           }}
         >
-          {/* Exact reward burst. These values come from the authoritative roll response. */}
-          {batchSummary && rewardBurstActive && (
-            <div
-              key={rewardBurstKeyRef.current}
-              className="reward-burst"
-              aria-live="polite"
-              role="group"
-              aria-label="Rewards from the latest roll"
-            >
-              <div className="reward-burst-ring" />
-              <div className="reward-burst-title">REWARD</div>
-              <div className="reward-burst-row">
-                <div className="reward-chip reward-chip-coins">
-                  <Coins className="w-4 h-4" />
-                  <strong>+{formatNumber(batchSummary.coins)}</strong>
-                  <span>Coins</span>
-                </div>
-                <div className="reward-chip reward-chip-xp">
-                  <Sparkles className="w-4 h-4" />
-                  <strong>+{formatNumber(batchSummary.xp)}</strong>
-                  <span>XP</span>
-                </div>
-                <div className="reward-chip reward-chip-shards">
-                  <Zap className="w-4 h-4" />
-                  <strong>+{formatShardAmount(batchSummary.shards)}</strong>
-                  <span>Shards</span>
-                </div>
-                <div className="reward-chip reward-chip-value">
-                  <Award className="w-4 h-4" />
-                  <strong>+{formatNumber(batchSummary.totalVal)}</strong>
-                  <span>Value</span>
-                </div>
-              </div>
-              {lastOrb?.isCrit && <div className="reward-burst-crit">⚡ Critical roll</div>}
-            </div>
-          )}
+          {/* Reward totals remain in the persistent summary below the Orb. */}
 
           {/* Layered glass details keep the Orb tactile without adding noisy decoration. */}
           <span className="io-orb-glint" aria-hidden="true" />

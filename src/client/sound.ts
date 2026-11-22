@@ -1,5 +1,12 @@
-// Hand-authored Web Audio effects. Every sound is synthesized from oscillator
-// patterns and filtered noise; there are no sampled or AI-generated assets.
+// Downloaded Kenney CC0 sound samples, complemented by hand-authored Web Audio cues.
+const SOUND_ASSETS = {
+  click: new URL('./assets/audio/click_001.ogg', import.meta.url).href,
+  confirmation: new URL('./assets/audio/confirmation_002.ogg', import.meta.url).href,
+  drop: new URL('./assets/audio/drop_001.ogg', import.meta.url).href,
+  glass: new URL('./assets/audio/glass_004.ogg', import.meta.url).href,
+  error: new URL('./assets/audio/error_001.ogg', import.meta.url).href,
+};
+
 class SoundFX {
   private ctx: AudioContext | null = null;
   public enabled = true;
@@ -9,6 +16,22 @@ class SoundFX {
   public sonarAlignmentSoundsAllowed = false;
   public alignmentSoundEnabled = true;
   private sonarModeListeners = new Set<(active: boolean) => void>();
+
+  private playSample(url: string, volume = 0.24, allowSonarMode = false): void {
+    if (!this.enabled || (this.sonarMode && !allowSonarMode)) return;
+    try {
+      if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
+      const clip = new Audio(url);
+      clip.preload = 'auto';
+      clip.volume = Math.max(0, Math.min(1, volume));
+      void clip.play().catch(() => undefined);
+    } catch {
+      // Blocked or unsupported samples must never interrupt gameplay.
+    }
+  }
+
+  public playEquip(): void { this.playSample(SOUND_ASSETS.confirmation, 0.28); }
+  public playError(): void { this.playSample(SOUND_ASSETS.error, 0.18); }
 
   constructor() {
     try {
@@ -169,10 +192,7 @@ class SoundFX {
   }
 
   public playClick() {
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.035, 0.035, 2_600, 17);
-      this.tone(ctx, 520, now, 0.055, 0.035, 'triangle', 360);
-    });
+    this.playSample(SOUND_ASSETS.click, 0.2);
   }
 
   public playChime(freq = 523.25, type: OscillatorType = 'sine', duration = 0.25) {
@@ -185,11 +205,7 @@ class SoundFX {
   }
 
   public playRollNormal() {
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.055, 0.025, 2_000, 23, 'lowpass');
-      this.tone(ctx, 659.25, now + 0.008, 0.115, 0.045, 'sine', 523.25);
-      this.tone(ctx, 392, now + 0.052, 0.09, 0.025, 'triangle', 440);
-    });
+    this.playSample(SOUND_ASSETS.drop, 0.24);
   }
 
   public setAlignmentSoundEnabled(enabled: boolean): void {
@@ -220,54 +236,25 @@ class SoundFX {
   }
 
   public playRareRiser() {
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.42, 0.045, 1_400, 31, 'lowpass');
-      this.tone(ctx, 330, now, 0.42, 0.04, 'triangle', 660);
-      this.tone(ctx, 880, now + 0.37, 0.32, 0.055, 'sine');
-    });
+    this.playSample(SOUND_ASSETS.glass, 0.28);
   }
 
   public playEpicFanfare() {
-    this.withAudio((ctx, now) => {
-      [523.25, 659.25, 783.99, 1_046.5].forEach((frequency, index) => {
-        this.tone(ctx, frequency, now + index * 0.09, 0.42, 0.085, 'triangle');
-      });
-      this.tone(ctx, 1_568, now + 0.29, 0.36, 0.028, 'sine');
-    }, true);
+    this.playSample(SOUND_ASSETS.glass, 0.36, true);
   }
 
   public playMythicFanfare() {
-    this.withAudio((ctx, now) => {
-      [392, 493.88, 587.33, 783.99, 987.77, 1_174.66, 1_567.98].forEach((frequency, index) => {
-        const startAt = now + index * 0.085;
-        this.tone(ctx, frequency, startAt, 0.72, 0.075, index % 2 ? 'triangle' : 'sine');
-        this.tone(ctx, frequency * 2, startAt + 0.018, 0.43, 0.018, 'sine');
-      });
-    }, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.4, true);
+    this.playSample(SOUND_ASSETS.glass, 0.22, true);
   }
 
   public playLevelUpFanfare() {
-    this.withAudio((ctx, now) => {
-      [392, 493.88, 587.33, 783.99].forEach((frequency, index) => {
-        this.tone(ctx, frequency, now + index * 0.085, 0.34, 0.07, 'triangle');
-      });
-      [392, 587.33, 783.99].forEach(frequency => {
-        this.tone(ctx, frequency, now + 0.28, 0.42, 0.028, 'sine');
-      });
-    }, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.3, true);
   }
 
   public playNewBestFanfare() {
-    this.withAudio((ctx, now) => {
-      this.filteredNoise(ctx, now, 0.85, 0.075, 180, 47, 'lowpass');
-      this.tone(ctx, 82, now, 1.05, 0.12, 'sine', 42);
-      [261.63, 329.63, 392, 523.25, 659.25, 783.99, 1_046.5, 1_318.51].forEach((frequency, index) => {
-        this.tone(ctx, frequency, now + index * 0.52, 0.82, 0.072, index % 2 ? 'triangle' : 'sine');
-      });
-      [523.25, 659.25, 783.99, 1_046.5].forEach((frequency, index) => {
-        this.tone(ctx, frequency, now + 4.02 + index * 0.12, 0.82, 0.042, 'sine');
-      });
-    }, true);
+    this.playSample(SOUND_ASSETS.confirmation, 0.42, true);
+    this.playSample(SOUND_ASSETS.glass, 0.3, true);
   }
 
   public playSacrificeSound() {

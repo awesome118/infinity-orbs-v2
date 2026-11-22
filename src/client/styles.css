@@ -2828,3 +2828,15 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 #root.io-inline-post .io-launch-card {
   margin-bottom: 0;
 }
+
+
+/* Desktop combat equip actions do not depend on hover tooltips. */
+.io-combat-skill-icon-wrap { flex-direction: column; align-items: center; gap: .4rem; }
+.io-combat-skill-equip-button { display: none; width: 100%; max-width: 90px; min-height: 29px; padding: 5px 6px; font-size: 9px; white-space: normal; line-height: 1.2; }
+@media (min-width: 761px) { .io-combat-skill-equip-button { display: inline-flex; } }
+.io-runes-icon-wrap { display: flex; flex-direction: column; align-items: center; gap: .38rem; }
+.io-runes-equip-button { width: 100%; max-width: 76px; min-height: 28px; padding: .35rem .4rem; font-size: .62rem; }
+.io-runes-equip-button.is-equipped { color: #d9f99d; border-color: rgba(190,242,100,.32); background: rgba(132,204,22,.1); }
+.io-ui .io-main-orb.is-revealing { scale: 1.05; border-color: rgba(255,255,255,.78); box-shadow: 0 0 0 2px rgba(255,255,255,.32), 0 0 28px rgba(173,216,255,.48), inset 0 0 22px rgba(255,255,255,.22), 0 14px 42px rgba(0,0,0,.38); }
+.io-ui .io-main-orb.is-shaking { animation: io-orb-shake 450ms ease-in-out both; }
+@keyframes io-orb-shake { 0%,100% { translate: 0 0; } 18% { translate: -3px 1px; } 36% { translate: 3px -1px; } 54% { translate: -2px -1px; } 72% { translate: 2px 1px; } 90% { translate: -1px 0; } }
