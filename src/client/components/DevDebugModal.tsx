@@ -1388,10 +1388,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'offline add|set <amount>      cooldown ready',
         'menus disable [reason]        menus enable',
         'maintenance on [reason]     maintenance off',
+        'read-only on [reason]       read-only off',
         'features                       List global feature switches',
         'feature <name> disable [reason]',
         'feature <name> enable',
         'feature gameplay disable [reason] stops all mapped game actions',
+        'feature player-actions disable blocks writes but keeps reads available',
+        'Feature switches include bulk upgrades, Chain Patcher, Altar, Prestige upgrades,',
+        'combat tactics/gear/runes, guild actions, Frenzy setup/rewards, and presence.',
         'announce <message>            announce clear',
         'balance list                  Show all live balance settings',
         'balance get <key>             Read one value',
@@ -1402,7 +1406,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'balance rollback <revision>   Restore the configuration before that revision',
         '',
         'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
-        'Global menu, feature, announcement, and balance commands never run as a player.',
+        'Global menu, feature, read-only, announcement, and balance commands never run as a player.',
         'Only registered commands are accepted. JavaScript and shell commands are not executed.',
       ].join('\n'), true);
       setExecuteAsCommands('');
@@ -1416,7 +1420,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
-    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance|balance)\b/i.test(command);
+    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance|read-only|balance)\b/i.test(command);
     const target = executeAsUsername.trim().replace(/^u\//i, '');
     if (isGlobal && target) {
       appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
