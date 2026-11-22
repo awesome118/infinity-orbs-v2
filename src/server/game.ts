@@ -11,6 +11,7 @@ import * as notificationsModule from '@devvit/notifications';
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
 import { GLOBAL_FEATURES, type GlobalFeatureId } from '../shared/admin-cli.js';
+import { normalizeLastRollTimestamp } from '../shared/auto-roll-timing.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
 import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
@@ -5119,16 +5120,6 @@ function normalizeCooldownTimestamp(value: unknown, fallback = 0): number {
   // A present but malformed cooldown marker fails closed for one full cooldown.
   return Date.now();
 }
-
-function normalizeLastRollTimestamp(value: unknown, now = Date.now()): number {
-  if (value == null) return 0;
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return 0;
-  // lastRollAt is written by the server in milliseconds. A future value cannot
-  // represent a legitimate completed roll; treating it as zero prevents a
-  // corrupt/clock-shifted timestamp from locking an account out indefinitely.
-  return Math.min(value, now);
-}
-
 
 function normalizeEntitlementLots(
   value: unknown,
