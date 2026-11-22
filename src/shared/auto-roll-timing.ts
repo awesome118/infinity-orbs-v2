@@ -51,5 +51,6 @@ export function autoRollReadyAt(
 export function normalizeLastRollTimestamp(value: unknown, now = Date.now()): number {
   if (value == null) return 0;
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return 0;
-  return Math.min(value, Math.max(0, Math.floor(now)));
+  const safeNow = Math.max(0, Math.floor(now));
+  return value > safeNow ? 0 : value;
 }
