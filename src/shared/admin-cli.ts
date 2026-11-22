@@ -81,7 +81,7 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
       };
     }
 
-    const giveMatch = /^give\s+(coins?|shards?|dust|offline|rolls)\s+([+-]?[\d.]+)$/i.exec(line);
+    const giveMatch = /^give\\s+(coins?|shards?|dust|offline|rolls)\\s+([+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[+-]?\\d+)?)$/i.exec(line);
     if (giveMatch) {
       const resource = giveMatch[1]!.toLowerCase();
       const amount = numericText(giveMatch[2]!, 'Grant amount');
