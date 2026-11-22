@@ -114,6 +114,7 @@ import { getImpressionDashboard } from './impressions.js';
 import { estimateKnownRedisStorage, getServerMonitorSnapshot } from './server-monitor.js';
 import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import { APP_VERSION } from '../shared/version.js';
+import { applyAdminSaveCommands } from '../shared/admin-save-commands.js';
 
 const DEBUG_USERS = new Set([
   'shadow_fen',
@@ -602,6 +603,110 @@ function parseAdminPlayerSave(raw: unknown): Record<string, any> {
   if (!state) throw new Error('The target player save could not be read safely.');
   return state;
 }
+
+async function readPlayerSaveForAdmin(userId: string): Promise<Record<string, any>> {
+  const storedRaw = await redis.get('player:' + userId);
+  const raw = await readPlayerSaveForUser(userId, storedRaw);
+  return parseAdminPlayerSave(raw);
+}
+
+debugRouter.get('/execute-as/save', async (req, res) => {
+  try {
+    const username = targetUsername(req.query.username);
+    const userId = await resolveUserId(username);
+    const state = await withPlayerMutationLockFor(userId, async () => {
+      const save = await readPlayerSaveForAdmin(userId);
+      const visible = { ...save };
+      // The Codex is stored separately in Redis hashes. Never imply that this
+      // partial player-save projection contains the collection itself.
+      delete visible.collection;
+      return visible;
+    });
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.json({ ok: true, username, userId, save: state, codexStoredSeparately: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not load the target player save.';
+    res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+  }
+});
+
+debugRouter.post('/execute-as/execute', async (req, res) => {
+  const username = targetUsername(req.body?.username);
+  const commands = String(req.body?.commands ?? '');
+  let userId = '';
+  try {
+    userId = await resolveUserId(username);
+    const playerKey = 'player:' + userId;
+    const generationKey = 'player-generation:' + userId;
+    const result = await withPlayerMutationLockFor(userId, async () => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const txn = await redis.watch(playerKey, generationKey);
+        let transactionClosed = false;
+        let writePlan: Awaited<ReturnType<typeof createPlayerSaveWritePlanForUser>> | null = null;
+        let writeCommitted = false;
+        try {
+          const generationRaw = await redis.get(generationKey);
+          const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+          const storedRaw = await redis.get(playerKey);
+          const raw = await readPlayerSaveForUser(userId, storedRaw);
+          const state = parseAdminPlayerSave(raw);
+          const storedGeneration = Math.max(0, Number(state.saveGeneration ?? generation) || 0);
+          if (storedGeneration !== generation) {
+            throw new Error('The target player save generation changed. Reload the save before executing commands.');
+          }
+
+          const currentRevision = Number(state.stateRevision ?? 0);
+          if (!Number.isSafeInteger(currentRevision) || currentRevision < 0 || currentRevision >= Number.MAX_SAFE_INTEGER) {
+            throw new Error('The target player save revision is invalid or exhausted.');
+          }
+          state.username = String(state.username || username).slice(0, 100);
+          state.saveGeneration = generation;
+          const applied = applyAdminSaveCommands(state, commands);
+          applied.state.username = String(state.username || username).slice(0, 100);
+          applied.state.saveGeneration = generation;
+          applied.state.stateRevision = currentRevision + 1;
+
+          writePlan = await createPlayerSaveWritePlanForUser(
+            userId,
+            applied.state as unknown as PlayerState,
+          );
+          await txn.multi();
+          await txn.set(playerKey, writePlan.storedValue);
+          const committed = await txn.exec();
+          transactionClosed = true;
+          if (committed !== null) {
+            writeCommitted = true;
+            await cleanupPreviousPlayerSave(userId, storedRaw);
+            console.info('[Admin Execute As]', JSON.stringify({
+              actor: context.username ?? 'unknown',
+              target: username,
+              targetUserId: userId,
+              stateRevision: applied.state.stateRevision,
+              commands: applied.results.map(item => ({ action: item.action, path: item.path })),
+            }));
+            return {
+              ok: true,
+              username,
+              userId,
+              stateRevision: applied.state.stateRevision,
+              results: applied.results,
+              codexStoredSeparately: true,
+            };
+          }
+        } finally {
+          if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+          if (writePlan && !writeCommitted) await discardPlayerSaveWritePlan(writePlan);
+        }
+      }
+      throw new Error('The target player save changed repeatedly. No commands were committed; reload and retry.');
+    });
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Execute As failed.';
+    res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+  }
+});
 
 function parseGlobalBoosterCreditGrantManifest(
   raw: unknown,
