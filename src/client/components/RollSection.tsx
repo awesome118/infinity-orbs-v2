@@ -666,7 +666,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
               handleRollClick();
             }
           }}
-          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${
+          className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${orbInfo?.animated ? 'io-rarity-color-cycle' : ''} ${
             isRevealing ? 'is-revealing' : 'hover:scale-102'
           } ${isShaking ? 'is-shaking' : ''}`}
           style={{
@@ -698,7 +698,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           {/* Rarity & Name Presentation */}
           <div className="relative z-10 text-center px-4">
             <span
-              className="text-[11px] font-black uppercase tracking-widest block mb-1 drop-shadow"
+              className={`text-[11px] font-black uppercase tracking-widest block mb-1 drop-shadow ${orbInfo?.animated ? 'io-rarity-color-cycle' : ''}`}
               style={{ color: orbInfo ? orbInfo.color : '#cbd5e1' }}
             >
               {orbInfo ? orbInfo.tier : 'Ready'}
