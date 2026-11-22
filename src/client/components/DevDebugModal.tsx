@@ -1416,7 +1416,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
-    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance)\b/i.test(command);
+    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance|balance)\b/i.test(command);
     const target = executeAsUsername.trim().replace(/^u\//i, '');
     if (isGlobal && target) {
       appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
@@ -1457,14 +1457,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             return Number.isFinite(numeric) ? String(Number(numeric.toFixed(4))) + unit : String(value ?? '?');
           };
           if (balance.action === 'list') {
-            output += 'Live balance settings · revision ' + balance.revision + '\\n' +
+            output += 'Live balance settings · revision ' + balance.revision + '\n' +
               (balance.settings ?? []).map((setting: any) =>
                 setting.key + ' = ' + formatValue(setting.value, setting.unit) +
                 ' (default ' + formatValue(setting.defaultValue, setting.unit) +
-                ', range ' + setting.min + '–' + setting.max + ')\\n  ' + setting.description,
-              ).join('\\n');
+                ', range ' + setting.min + '–' + setting.max + ')\n  ' + setting.description,
+              ).join('\n');
           } else if (balance.action === 'history') {
-            output += 'Live balance history · current revision ' + balance.revision + '\\n' +
+            output += 'Live balance history · current revision ' + balance.revision + '\n' +
               (balance.history?.length
                 ? balance.history.map((entry: any) =>
                     '#' + entry.revision + ' ' + entry.action +
@@ -1472,18 +1472,18 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
                     ' by ' + (entry.updatedBy || 'unknown') +
                     (entry.rollbackOf ? ' (rollback of #' + entry.rollbackOf + ')' : '') +
                     ' · ' + new Date(entry.updatedAt).toLocaleString(),
-                  ).join('\\n')
+                  ).join('\n')
                 : 'No balance changes have been made.');
           } else if (balance.setting) {
             const setting = balance.setting;
             output += setting.key + ' = ' + formatValue(setting.value, setting.unit);
             if (balance.action === 'preview') {
-              output += '\\nProposed: ' + formatValue(setting.proposedValue, setting.unit);
-              output += '\\n' + (setting.changed ? 'No changes applied.' : 'This is already the active value.');
+              output += '\nProposed: ' + formatValue(setting.proposedValue, setting.unit);
+              output += '\n' + (setting.changed ? 'No changes applied.' : 'This is already the active value.');
             }
           } else if (balance.action === 'set') {
             output += balance.changed
-              ? 'Updated ' + balance.key + ': ' + formatValue(balance.previousValue, '') + ' → ' + formatValue(balance.value, '') + '.\\nRevision ' + balance.revision + '.'
+              ? 'Updated ' + balance.key + ': ' + formatValue(balance.previousValue, '') + ' → ' + formatValue(balance.value, '') + '.\nRevision ' + balance.revision + '.'
               : balance.key + ' is already ' + formatValue(balance.value, '') + '. No new revision created.';
           } else if (balance.action === 'reset') {
             output += balance.changed
