@@ -63,7 +63,7 @@ export function OrbOrbit({ orbs, radius = 152, primaryOrb }: Props) {
                 top: Math.sin(angle) * orbitRadius,
               }}
             >
-              <span className={`io-orbit-satellite-core animate-orbit-counter ${info.animated ? 'io-rarity-color-cycle' : ''}`} style={{ background: info.bgGradient }} />
+              <span className={`io-orbit-satellite-core animate-orbit-counter ${info.animated ? 'io-rarity-color-cycle' : ''}`} style={{ background: info.bgGradient, borderColor: info.color }} />
             </div>
           );
         })}
