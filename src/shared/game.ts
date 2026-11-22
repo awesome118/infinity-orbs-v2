@@ -1,3 +1,4 @@
+import type { LiveBalanceConfig } from './live-balance.js';
 import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
 
 export type UpgradeId =
@@ -2695,7 +2696,7 @@ export function effectiveRollCritChance(s: PlayerState): number {
  * This value is intentionally allowed below 300ms so Cooldown Reclaimer can
  * recover the overflow. Only cooldownMs() applies the live activation floor.
  */
-export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
+export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
   const chronoFlowLevel = Math.max(0, Math.min(20, Math.floor(Number(s.masterySkills?.chronoFlow ?? 0) || 0)));
@@ -2707,7 +2708,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
 
   // Roll speed: 20 levels × 150ms = 3.0s total maximum reduction.
   const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
-  const coinReduction = speedLevel * 150;
+  const coinReduction = speedLevel * (liveBalance?.['roll.speedPerLevelMs'] ?? 150);
 
   // Upgrades can remove the base floor entirely. No intermediate Speed layer
   // is clamped: all multipliers compound before the one final 300ms safety cap.
@@ -2725,7 +2726,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
     permReduction + steadyHandsReduction + temporalCompressionReduction;
   let cd = Math.max(
     floor,
-    BASE_COOLDOWN_MS - coinReduction - directCooldownReduction,
+    (liveBalance?.['roll.baseCooldownMs'] ?? BASE_COOLDOWN_MS) - coinReduction - directCooldownReduction,
   );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
@@ -2762,6 +2763,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
     const clockworkStacks = celestialAlignmentStackCount(canonicalInstances, 'clockwork');
     if (clockworkStacks > 0) cd *= Math.pow(0.80, clockworkStacks);
   }
+  if (isAuto) cd *= liveBalance?.['roll.autoCooldownMultiplier'] ?? 1;
 
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
@@ -2769,19 +2771,20 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   return Number.isFinite(cd) ? Math.max(0, Math.round(cd)) : 0;
 }
 
-export function cooldownMs(s: PlayerState, isAuto = false): number {
-  return Math.max(300, theoreticalCooldownMs(s, isAuto));
+export function cooldownMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
+  const floor = Math.max(300, liveBalance?.['roll.minimumCooldownMs'] ?? 300);
+  return Math.max(floor, theoreticalCooldownMs(s, isAuto, liveBalance));
 }
 
 /**
  * Earn 1% of the current live roll cooldown per Cooldown Reclaimer level
  * for each eligible completed activation. This works at the 300ms floor too.
  */
-export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false): number {
+export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
   const level = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.cooldownReclaimer ?? 0) || 0)));
   if (level <= 0) return 0;
 
-  const currentCooldownMs = cooldownMs(s, isAuto);
+  const currentCooldownMs = cooldownMs(s, isAuto, liveBalance);
   return Math.min(TIME_ENERGY_MAX_MS, Math.floor(currentCooldownMs * level * 0.01));
 }
 
