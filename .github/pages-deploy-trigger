@@ -50,3 +50,4 @@ Deploy prompt: add nine global feature switches and enforce them on server route
 Admin feature switches: master maintenance, granular feature controls, and route-map enforcement.
 Roll cooldown recovery: separate manual/auto timers and reset invalid future timestamps.
 Deploy prompt: validated live balance settings, runtime reward/cooldown tuning, audit history, and revision rollback.
+Pages validation retry: manual cooldown regression test now expects the live balance config parameter.
