@@ -397,6 +397,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       confetti({
         particleCount: isNewBest ? 110 : 48,
         spread: isNewBest ? 82 : 58,
+        ticks: 320,
         origin: { y: 0.6 },
         colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
       });
