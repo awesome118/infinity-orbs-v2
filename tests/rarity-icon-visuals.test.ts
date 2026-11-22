@@ -121,7 +121,21 @@ test('nine new rarity tiers scale by e3 and the original 27 colors are unique', 
   assert.equal(getOrbInfo(Number.MAX_VALUE, true).animated, false);
 });
 
-test('restored multiball satellites and slow rarity color cycling have visible styles', () => {
+
+
+test('rarities 19–27 use distinct multi-color orb gradients', () => {
+  const expected = ['Empyrean', 'Hyperversal', 'Transfinite', 'Metacosmic', 'Primordial', 'Unfathomable', 'Axiom', 'Omniscient', 'Omega'];
+  const tiers = CONTINUUM_TIERS.slice(18, 27);
+
+  assert.deepEqual(tiers.map(tier => tier.tier), expected);
+  for (const tier of tiers) {
+    const info = getOrbInfo(tier.minRarity);
+    const colors = [...new Set(info.bgGradient.match(/#[0-9A-F]{6}/gi) ?? [])];
+    assert.ok(colors.length >= 4, `${tier.tier} should render with at least four gradient colors`);
+  }
+});
+
+test('restored multiball satellites and faster rarity color cycling have visible styles', () => {
   const orbit = readFileSync(resolve(process.cwd(), 'src/client/components/OrbOrbit.tsx'), 'utf8');
   const css = readFileSync(resolve(process.cwd(), 'src/client/mobile-experience.css'), 'utf8');
   const table = readFileSync(resolve(process.cwd(), 'src/client/components/RarityTableModal.tsx'), 'utf8');
@@ -131,7 +145,7 @@ test('restored multiball satellites and slow rarity color cycling have visible s
   assert.ok(orbit.includes("info.animated ? 'io-rarity-color-cycle' : ''"));
   assert.ok(css.includes('.io-ui .io-orbit-satellite-core'));
   assert.ok(css.includes('@keyframes io-rarity-color-cycle'));
-  assert.ok(css.includes('animation: io-rarity-color-cycle 48s linear infinite'));
+  assert.ok(css.includes('animation: io-rarity-color-cycle 16s linear infinite'));
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'));
   assert.ok(table.includes('io-rarity-tier-row--animated'));
   assert.ok(icon.includes("info.animated ? 'io-rarity-color-cycle' : ''"));
