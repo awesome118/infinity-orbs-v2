@@ -120,7 +120,7 @@ function getParent(root: Record<string, unknown>, parts: string[]): { parent: Re
   for (let index = 0; index < parts.length - 1; index += 1) {
     const part = parts[index]!;
     if (Array.isArray(current)) {
-      if (!/^\\d+$/.test(part)) throw new Error('Array paths must use a numeric index.');
+      if (!/^\d+$/.test(part)) throw new Error('Array paths must use a numeric index.');
       const position = Number(part);
       if (position >= current.length) throw new Error('Array index is out of range: ' + part);
       const child = current[position];
@@ -129,7 +129,7 @@ function getParent(root: Record<string, unknown>, parts: string[]): { parent: Re
     } else {
       let child = current[part];
       if (child === undefined) {
-        if (/^\\d+$/.test(parts[index + 1]!)) throw new Error('Array paths must use an existing array.');
+        if (/^\d+$/.test(parts[index + 1]!)) throw new Error('Array paths must use an existing array.');
         child = {};
         current[part] = child;
       }
@@ -139,7 +139,7 @@ function getParent(root: Record<string, unknown>, parts: string[]): { parent: Re
   }
   const key = parts[parts.length - 1]!;
   if (Array.isArray(current)) {
-    if (!/^\\d+$/.test(key)) throw new Error('Array paths must use a numeric index.');
+    if (!/^\d+$/.test(key)) throw new Error('Array paths must use a numeric index.');
     const index = Number(key);
     if (index >= current.length) throw new Error('Array index is out of range: ' + key);
     return { parent: current, key, value: current[index] };
