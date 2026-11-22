@@ -77,6 +77,10 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
           return jsonResponse(await game.getOrbFrenzyHandoff());
         case '/api/frenzy/info':
           return jsonResponse(await game.getOrbFrenzyInfo());
+        case '/api/frenzy/simulator/info': {
+          const postId = String(url.searchParams.get('postId') ?? '').trim();
+          return jsonResponse(await game.getOrbFrenzyInfo({ postId, allowAdminTestOwner: true }));
+        }
         case '/api/frenzy/progress':
           return jsonResponse(await game.getOrbFrenzyClaimProgress());
         case '/api/time-energy/progress':
@@ -209,6 +213,21 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await game.claimCommunityReward());
       case '/api/frenzy/start':
         return jsonResponse(await game.startOrbFrenzy());
+      case '/api/frenzy/simulator/create':
+        return jsonResponse(await game.createFrenzySimulatorPost(body.rarity));
+      case '/api/frenzy/simulator/claim': {
+        const postId = String(body.postId ?? '').trim();
+        if (!postId) throw new Error('Choose a Frenzy post before claiming it.');
+        const result = await game.claimOrbFrenzy({
+          postId,
+          allowAdminTestOwner: true,
+          attemptId: typeof body.attemptId === 'string' ? body.attemptId : undefined,
+        });
+        if (result.orb) {
+          try { await combat.setCombatOrbFocus(result.orb.rarity, result.orb.name); } catch { /* Focus sync is secondary. */ }
+        }
+        return jsonResponse(result);
+      }
       case '/api/frenzy/arm':
         return jsonResponse(await game.armOrbFrenzyClaim());
       case '/api/frenzy/offline-reward/ack':

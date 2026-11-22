@@ -2285,8 +2285,8 @@ function App() {
     combatMode,
   ]);
 
-  // Recalculate an already-running Auto Roll wait when an Alignment starts or expires.
-  // Clockwork must shorten the current wait immediately, not only the next server response.
+  // Keep the manual Roll button aligned with the manual server cooldown.
+  // Auto Roll has its own scheduler and computes its separate faster cadence.
   useEffect(() => {
     if (!state) return;
     const lastRollAt = Number(state.lastRollAt ?? 0);
@@ -2297,7 +2297,7 @@ function App() {
       ...state,
       alignmentActiveInstances: activeInstances,
     };
-    const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true);
+    const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, false);
     setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current));
   }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
@@ -4315,7 +4315,23 @@ function App() {
         )}
 
         {IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator' && (
-          <RedditPostSimulator state={state} />
+          <RedditPostSimulator
+            state={state}
+            onClaimed={res => {
+              applyPlayerState(res.state);
+              setLastOrb(res.orb);
+              setLastBatch(res.batch ?? [res.orb]);
+              setBatchSummary({
+                totalVal: res.totalRollValue,
+                coins: res.coinsGained,
+                shards: res.shardsGained,
+                xp: res.xpGained,
+                frenzyCount: res.frenzyCount ?? 0,
+              });
+              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+              showToast(`Simulator Frenzy claimed. ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`, 'success');
+            }}
+          />
         )}
           </>
         )}

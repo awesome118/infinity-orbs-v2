@@ -114,6 +114,7 @@ import {
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
+  estimateQuestCoinsPerMinute,
   levelAdjustedXpReward,
   highestCodexChain,
   recordRollingSessionActivity,
@@ -3274,7 +3275,7 @@ function isValidQuestList(value: unknown): value is QuestItem[] {
       typeof quest.desc === 'string' &&
       Number.isSafeInteger(quest.target) && Number(quest.target) > 0 &&
       Number.isSafeInteger(quest.progress) && Number(quest.progress) >= 0 &&
-      Number.isSafeInteger(quest.rewardCoins) && Number(quest.rewardCoins) >= 0 &&
+      typeof quest.rewardCoins === 'number' && Number.isFinite(quest.rewardCoins) && Number.isInteger(quest.rewardCoins) && quest.rewardCoins >= 0 &&
       typeof quest.claimed === 'boolean' &&
       (quest.unlocked === undefined || typeof quest.unlocked === 'boolean') &&
       optionalRewardIsValid('rewardShards') &&
@@ -5093,14 +5094,15 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
 
 function checkPeriodicResets(s: PlayerState, now: number) {
   const today = new Date(now).toISOString().slice(0, 10);
+  const coinsPerMinute = estimateQuestCoinsPerMinute(s);
   if (s.lastDailyReset !== today) {
-    s.dailyQuests = createInitialDailyQuests(s.highestRarity);
+    s.dailyQuests = createInitialDailyQuests(s.highestRarity, coinsPerMinute);
     s.lastDailyReset = today;
   }
   const currentWeek = weekKey(now);
   const lastWeek = s.lastWeeklyReset ? weekKey(new Date(s.lastWeeklyReset).getTime()) : -1;
   if (currentWeek !== lastWeek) {
-    s.weeklyQuests = createInitialWeeklyQuests(s.highestRarity);
+    s.weeklyQuests = createInitialWeeklyQuests(s.highestRarity, coinsPerMinute);
     s.lastWeeklyReset = today;
     // Community rewards are weekly. A new week starts the claim ladder over at Tier 1.
     s.communityRewardClaimedTier = 0;
@@ -6559,8 +6561,9 @@ function rescaleQuestList(
 
 function rescaleQuestsForHighestRarity(s: PlayerState): void {
   const highest = Math.max(2, Number(s.highestRarity) || 2);
-  s.dailyQuests = rescaleQuestList(s.dailyQuests ?? [], createInitialDailyQuests(highest), highest);
-  s.weeklyQuests = rescaleQuestList(s.weeklyQuests ?? [], createInitialWeeklyQuests(highest), highest);
+  const coinsPerMinute = estimateQuestCoinsPerMinute(s);
+  s.dailyQuests = rescaleQuestList(s.dailyQuests ?? [], createInitialDailyQuests(highest, coinsPerMinute), highest);
+  s.weeklyQuests = rescaleQuestList(s.weeklyQuests ?? [], createInitialWeeklyQuests(highest, coinsPerMinute), highest);
 }
 
 export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean; previewOnly?: boolean } = {}): Promise<PlayerState> {
@@ -8682,7 +8685,75 @@ export async function startOrbFrenzy(options: {
   });
 }
 
-export async function getOrbFrenzyInfo(): Promise<{
+/**
+ * Create a Frenzy post record in the Pages-only mock runtime. Its persisted
+ * schema and public info/claim paths are identical to an ordinary post.
+ */
+export async function createFrenzySimulatorPost(requestedRarity: unknown): Promise<{
+  postId: string;
+  title: string;
+  body: string;
+  rarity: number;
+  isInfinity: boolean;
+  createdAt: number;
+  expiresAt: number;
+}> {
+  const ownerId = currentUserId();
+  if (!ownerId.startsWith('github-pages-test-')) {
+    throw new Error('The Reddit post simulator is only available in the GitHub Pages test build.');
+  }
+  const rawRarity = Number(requestedRarity);
+  if (!Number.isFinite(rawRarity) || !Number.isInteger(rawRarity) || rawRarity < 2) {
+    throw new Error('Enter a valid Orb rarity of at least 2.');
+  }
+  const rarity = Math.min(MAX_ORB_RARITY, rawRarity);
+  const isInfinity = rarity >= MAX_ORB_RARITY;
+  const s = await loadRaw({ registerActivity: false });
+  const ownerUsername = String(context.username ?? s.username ?? 'Redditor')
+    .trim()
+    .replace(/^u\//i, '') || 'Redditor';
+  const subredditName = String(context.subredditName ?? 'infinityorbs').trim() || 'infinityorbs';
+  const createdAt = Date.now();
+  const expiresAt = frenzyPostExpiresAt(createdAt);
+  const title = `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`;
+  const body =
+    `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
+    `Click below to claim it! Each player can claim up to ${FRENZY_CLAIMS_PER_DAY} Frenzies per day.\n\n` +
+    `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
+    `This owner reward is granted separately from roll-earned Shards.\n\n` +
+    `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
+  const submitted = await reddit.submitCustomPost({
+    runAs: 'USER',
+    subredditName,
+    title,
+    ...(await getPostFlairOptions(subredditName, 'frenzy')),
+    entry: 'frenzy',
+    userGeneratedContent: { text: body },
+  });
+  const submittedPostId = String(submitted?.id ?? '').trim();
+  if (!submittedPostId) throw new Error('Could not create the local Reddit post preview.');
+  const postId = submittedPostId + '-' + createSecureId().slice(0, 12);
+  const record: FrenzyPostRecord = {
+    ownerId,
+    ownerUsername,
+    rarity,
+    isInfinity,
+    subredditName,
+    adminTest: true,
+    inGame: true,
+    createdAt,
+    expiresAt,
+    consumedAt: null,
+  };
+  await redis.set(
+    FRENZY_POST_PREFIX + postId,
+    JSON.stringify(record),
+    { expiration: new Date(expiresAt + FRENZY_POST_RECEIPT_RETENTION_MS) },
+  );
+  return { postId, title, body, rarity, isInfinity, createdAt, expiresAt };
+}
+
+export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTestOwner?: boolean } = {}): Promise<{
   rarity: number;
   isInfinity: boolean;
   ownerUsername: string;
@@ -8707,7 +8778,11 @@ export async function getOrbFrenzyInfo(): Promise<{
   recentClaimers: Array<{ username: string; claimedAt: number }>;
   inGame?: boolean;
 }> {
-  const contextPostId = String(context.postId ?? '').trim();
+  const requestedPostId = String(options.postId ?? '').trim();
+  if (requestedPostId && options.allowAdminTestOwner !== true) {
+    throw new Error('Explicit Frenzy post previews are admin-only.');
+  }
+  const contextPostId = requestedPostId || String(context.postId ?? '').trim();
   const viewerId = currentUserId();
   const contextPostRaw = contextPostId
     ? await redis.get(FRENZY_POST_PREFIX + contextPostId)
@@ -8716,7 +8791,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   // Keep the post the viewer is actually looking at authoritative. When the
   // expanded game has a different post context, resolve only this viewer's
   // short-lived, explicitly armed handoff instead of failing to find the Frenzy.
-  const handoff = contextPostData ? null : await readFrenzyHandoff(viewerId);
+  const handoff = contextPostData || requestedPostId ? null : await readFrenzyHandoff(viewerId);
   const postId = contextPostData ? contextPostId : handoff?.postId ?? contextPostId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
@@ -8740,7 +8815,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   const selfClaimTest =
     isOwner &&
     data.adminTest === true &&
-    isFrenzyTestAdmin(s.username);
+    (isFrenzyTestAdmin(s.username) || options.allowAdminTestOwner === true);
 
   const baseOrbCount = frenzyOrbCountForRarity(data.rarity);
   const multiRolls = rollsPerActivation(s);

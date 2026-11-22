@@ -1979,9 +1979,11 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
 };
 
 /**
- * Quest objectives get up to 20% harder as the player's best Orb advances.
- * Currency rewards grow separately, up to 50%, so whole-Shard rewards can
- * increase at higher milestones without making objectives jump too sharply.
+ * Quest objectives rise gently with the best Orb. Shards retain the small,
+ * capped rarity bonus. Coin rewards are tied to current earning rate: Daily
+ * quests together pay 30 minutes of Coins; Weekly quests together pay four
+ * hours. The pool is split by the original reward weights, avoiding an
+ * arbitrary 50% Coin-reward ceiling.
  */
 export function questDifficultyMultiplier(highestRarity: unknown): number {
   const raw = Number(highestRarity);
@@ -1990,11 +1992,48 @@ export function questDifficultyMultiplier(highestRarity: unknown): number {
   return Math.min(1.20, 1 + decadesAboveRare * 0.025);
 }
 
-export function questRewardMultiplier(highestRarity: unknown): number {
+export function questShardRewardMultiplier(highestRarity: unknown): number {
   const raw = Number(highestRarity);
   const rarity = Number.isFinite(raw) && raw > 0 ? raw : 2;
   const decadesAboveRare = Math.max(0, Math.log10(rarity / 100));
   return Math.min(1.50, 1 + decadesAboveRare * 0.05);
+}
+
+/** Legacy name retained for callers that display the Shard rarity multiplier. */
+export function questRewardMultiplier(highestRarity: unknown): number {
+  return questShardRewardMultiplier(highestRarity);
+}
+
+/**
+ * Estimate ordinary Coin income using the same best-Orb value, Multiball payout,
+ * cooldown, and persistent Coin multipliers as a normal activation. This is a
+ * reward-budget estimate, not a guarantee of future RNG results.
+ */
+export function estimateQuestCoinsPerMinute(s: PlayerState): number {
+  const rarity = s.highestRarityIsInfinity === true
+    ? MAX_ORB_RARITY
+    : Math.max(2, Number(s.highestRarity) || 2);
+  const multiRolls = rollsPerActivation(s);
+  const activationCoins = coinsForRarity(rarity) * (1 + Math.max(0, multiRolls - 1) * 0.20);
+  const levelBenefits = getLevelBenefits(Math.max(1, Math.floor(Number(s.level) || 1)));
+  const goldenOrbitStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'goldenOrbit');
+  const expectedCriticalShare = Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+      (s.masterySkills?.critMastery ?? 0) * 0.03 +
+      (s.guildPerks?.critRank ?? 0) * 0.015,
+  );
+  const coinMultiplier =
+    Math.pow(1.5, goldenOrbitStacks) *
+    levelBenefits.coinsMultiplier *
+    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    orbFingersMultiplier(s) *
+    criticalDividendMultiplier(s, expectedCriticalShare) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
+    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1);
+  const rate = activationCoins * coinMultiplier * (60_000 / cooldownMs(s, false));
+  return Number.isFinite(rate) && rate > 0 ? rate : Number.MAX_VALUE;
 }
 
 function scaledQuestTarget(base: number, multiplier: number): number {
@@ -2009,34 +2048,53 @@ function scaledQuestReward(base: number, multiplier: number): number {
   return Math.max(base, Math.round(base * multiplier));
 }
 
-export function createInitialDailyQuests(highestRarity = 2): QuestItem[] {
+function splitQuestCoinBudget(coinsPerMinute: number, minutes: number, weights: number[]): number[] {
+  const rate = Number(coinsPerMinute);
+  const rawBudget = (Number.isFinite(rate) && rate > 0 ? rate : 8) * minutes;
+  const budget = Number.isFinite(rawBudget)
+    ? Math.max(weights.length, Math.floor(rawBudget))
+    : Number.MAX_VALUE;
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let allocated = 0;
+  return weights.map((weight, index) => {
+    const amount = index === weights.length - 1
+      ? Math.max(1, budget - allocated)
+      : Math.max(1, Math.floor(budget * (weight / totalWeight)));
+    allocated = Math.min(Number.MAX_VALUE, allocated + amount);
+    return amount;
+  });
+}
+
+export function createInitialDailyQuests(highestRarity = 2, coinsPerMinute = 8): QuestItem[] {
   const difficulty = questDifficultyMultiplier(highestRarity);
-  const reward = questRewardMultiplier(highestRarity);
+  const shardReward = questShardRewardMultiplier(highestRarity);
+  const coinRewards = splitQuestCoinBudget(coinsPerMinute, 30, [100, 500, 300, 200, 150]);
   const rareThreshold = scaledQuestTarget(100, difficulty);
   const rolls25 = scaledQuestTarget(25, difficulty);
   const rolls100 = scaledQuestTarget(100, difficulty);
   const uniqueTarget = scaledQuestTarget(3, difficulty);
   return [
-    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: `Perform ${rolls25} rolls`, target: rolls25, progress: 0, rewardCoins: scaledQuestReward(100, reward), rewardXp: 50, claimed: false },
-    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: `Perform ${rolls100} rolls`, target: rolls100, progress: 0, rewardCoins: scaledQuestReward(500, reward), rewardShards: scaledQuestReward(1, reward), rewardXp: 150, claimed: false },
-    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: `Obtain an orb with 1/${rareThreshold}+ rarity`, target: 1, minRarity: rareThreshold, progress: 0, rewardCoins: scaledQuestReward(300, reward), rewardXp: 100, claimed: false },
-    { id: 'daily-unique-3', title: 'Unique Orbs', desc: `Obtain ${uniqueTarget} unique orbs today`, target: uniqueTarget, progress: 0, rewardCoins: scaledQuestReward(200, reward), rewardXp: 80, claimed: false },
-    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: scaledQuestReward(150, reward), rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: `Perform ${rolls25} rolls`, target: rolls25, progress: 0, rewardCoins: coinRewards[0], rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: `Perform ${rolls100} rolls`, target: rolls100, progress: 0, rewardCoins: coinRewards[1], rewardShards: scaledQuestReward(1, shardReward), rewardXp: 150, claimed: false },
+    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: `Obtain an orb with 1/${rareThreshold}+ rarity`, target: 1, minRarity: rareThreshold, progress: 0, rewardCoins: coinRewards[2], rewardXp: 100, claimed: false },
+    { id: 'daily-unique-3', title: 'Unique Orbs', desc: `Obtain ${uniqueTarget} unique orbs today`, target: uniqueTarget, progress: 0, rewardCoins: coinRewards[3], rewardXp: 80, claimed: false },
+    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: coinRewards[4], rewardXp: 50, claimed: false },
   ];
 }
 
-export function createInitialWeeklyQuests(highestRarity = 2): QuestItem[] {
+export function createInitialWeeklyQuests(highestRarity = 2, coinsPerMinute = 8): QuestItem[] {
   const difficulty = questDifficultyMultiplier(highestRarity);
-  const reward = questRewardMultiplier(highestRarity);
+  const shardReward = questShardRewardMultiplier(highestRarity);
+  const coinRewards = splitQuestCoinBudget(coinsPerMinute, 240, [5_000, 3_000, 4_000, 1_500]);
   const rareThreshold = scaledQuestTarget(100, difficulty);
   const epicThreshold = scaledQuestTarget(1_000, difficulty);
   const weeklyRollTarget = scaledQuestTarget(1_000, difficulty);
   const collectionTarget = scaledQuestTarget(10_000, difficulty);
   return [
-    { id: 'weekly-grind', title: 'Weekly Rolls', desc: `Perform ${weeklyRollTarget.toLocaleString()} rolls this week`, target: weeklyRollTarget, progress: 0, rewardCoins: scaledQuestReward(5_000, reward), rewardShards: scaledQuestReward(5, reward), rewardXp: 600, claimed: false },
-    { id: 'weekly-epic', title: 'Find Epic Orb', desc: `Obtain an Epic orb (1/${epicThreshold.toLocaleString()}+)`, target: 1, minRarity: epicThreshold, progress: 0, rewardCoins: scaledQuestReward(3_000, reward), rewardShards: scaledQuestReward(3, reward), rewardXp: 400, claimed: false },
-    { id: 'weekly-guild', title: 'Collection Value', desc: `Contribute ${collectionTarget.toLocaleString()} collection value`, target: collectionTarget, progress: 0, rewardCoins: scaledQuestReward(4_000, reward), rewardXp: 500, claimed: false },
-    { id: 'weekly-share', title: 'Share Post', desc: `Share an orb to Reddit after discovering a Rare+ orb (1/${rareThreshold}+)`, target: 1, unlockRarity: rareThreshold, progress: 0, rewardCoins: scaledQuestReward(1_500, reward), rewardShards: scaledQuestReward(2, reward), rewardXp: 200, claimed: false, unlocked: false },
+    { id: 'weekly-grind', title: 'Weekly Rolls', desc: `Perform ${weeklyRollTarget.toLocaleString()} rolls this week`, target: weeklyRollTarget, progress: 0, rewardCoins: coinRewards[0], rewardShards: scaledQuestReward(5, shardReward), rewardXp: 600, claimed: false },
+    { id: 'weekly-epic', title: 'Find Epic Orb', desc: `Obtain an Epic orb (1/${epicThreshold.toLocaleString()}+)`, target: 1, minRarity: epicThreshold, progress: 0, rewardCoins: coinRewards[1], rewardShards: scaledQuestReward(3, shardReward), rewardXp: 400, claimed: false },
+    { id: 'weekly-guild', title: 'Collection Value', desc: `Contribute ${collectionTarget.toLocaleString()} collection value`, target: collectionTarget, progress: 0, rewardCoins: coinRewards[2], rewardXp: 500, claimed: false },
+    { id: 'weekly-share', title: 'Share Post', desc: `Share an orb to Reddit after discovering a Rare+ orb (1/${rareThreshold}+)`, target: 1, unlockRarity: rareThreshold, progress: 0, rewardCoins: coinRewards[3], rewardShards: scaledQuestReward(2, shardReward), rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
 
