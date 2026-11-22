@@ -49,6 +49,7 @@ import {
   setGlobalMenuControl,
   getGlobalFeatureControls,
   setGlobalFeatureControl,
+  executeLiveBalanceCommand,
   discardPlayerSaveWritePlan,
   cleanupPreviousPlayerSave,
 } from './game.js';
@@ -637,6 +638,11 @@ debugRouter.get('/execute-as/save', async (req, res) => {
 debugRouter.post('/cli/execute', async (req, res) => {
   try {
     const parsed = parseAdminCliCommand(String(req.body?.command ?? ''));
+    if (parsed.kind === 'balance') {
+      const balance = await executeLiveBalanceCommand(parsed, context.username ?? 'Developer');
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      return res.json({ ok: true, scope: 'everyone', balance });
+    }
     if (parsed.kind === 'menus') {
       const menuControl = await setGlobalMenuControl(
         parsed.enabled,
