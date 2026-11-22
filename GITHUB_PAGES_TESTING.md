@@ -19,7 +19,7 @@ GitHub Pages is static hosting. This build does not provide a shared backend, se
 
 Combat and other server logic are executed in the browser against the local mock store. This keeps the gameplay rules close to the Reddit build, but it is not a security or concurrency test of the Devvit server.
 
-A small test badge appears in the game. Selecting it lets you clear the local test data and restart with a fresh save.
+Test saves are stored in this browser. To start fresh, clear site data for `awesome118.github.io` in your browser's site settings. This removes all local tester profiles for this site.
 
 ## Build locally
 
@@ -38,8 +38,8 @@ npx vite preview --config vite.pages.config.ts
 
 ## Publish the test site
 
-1. Push a commit to the `github-pages-test` branch, or manually run **Deploy Infinity Orbs Pages test build** from the Actions tab.
+1. Open the Actions tab, select **Deploy Infinity Orbs Pages test build**, choose the `github-pages-test` branch, and run the workflow manually.
 2. The workflow asks GitHub to enable Pages automatically, then builds `dist-pages/` and deploys that folder.
 3. If repository policy blocks automatic Pages enablement, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**, then rerun the workflow.
 
-The Pages workflow only runs for the `github-pages-test` branch. It does not run the Devvit upload or publish commands. The normal Reddit build and deployment path remains separate.
+The Pages workflow runs only when manually dispatched. Pushing commits to `github-pages-test` does not start GitHub Actions or redeploy the site. It does not run the Devvit upload or publish commands. The normal Reddit build and deployment path remains separate.

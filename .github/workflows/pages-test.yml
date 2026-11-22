@@ -1,9 +1,6 @@
 name: Deploy Infinity Orbs Pages test build
 
 on:
-  push:
-    branches:
-      - github-pages-test
   workflow_dispatch:
 
 permissions:
