@@ -81,7 +81,7 @@ import {
 } from '../shared/game.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
 import { sound } from './sound.js';
-import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
+import { autoRollCooldownRetryDelayMs, autoRollReadyAt, manualRollReadyAt } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
 import type { CombatPage } from '../shared/combat.js';
@@ -2348,8 +2348,7 @@ function App() {
       setReadyAt(0);
       return;
     }
-    const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, false);
-    setReadyAt(authoritativeReadyAt);
+    setReadyAt(manualRollReadyAt(lastRollAt, cooldownMs(timingState, false)));
   }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto Roll uses a single scheduled wake-up, not a state-captured polling
@@ -2392,10 +2391,11 @@ function App() {
       }
 
       const lastRollAt = Math.max(0, Number(latest.lastRollAt ?? 0) || 0);
-      const authoritativeReadyAt = lastRollAt > 0
-        ? lastRollAt + cooldownMs(latest, true)
-        : 0;
-      const nextReadyAt = Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current);
+      const nextReadyAt = autoRollReadyAt(
+        lastRollAt,
+        cooldownMs(latest, true),
+        autoRollCooldownRetryUntilRef.current,
+      );
       const remaining = nextReadyAt - Date.now();
       if (remaining > 0) {
         schedule(remaining);
