@@ -37,3 +37,5 @@ Deploy prompt: trusted-admin Execute As save editor, protected player command wr
 Retry prompt: fix Execute As command numeric result type-check and rerun regression tests.
 
 Deploy prompt: one-shot Admin CLI execution targets, global menu maintenance control with developer reason, and server-authorized player save commands.
+
+Retry prompt: global menu state moved before polling effects after type-check failure.
