@@ -44,5 +44,6 @@ test('Pages simulator previews the exact Reddit payload and custom Frenzy entry 
   assert.match(frenzyEntry, /\/api\/frenzy\/simulator\/info/);
   assert.match(frenzyEntry, /\/api\/frenzy\/simulator\/claim/);
   assert.match(frenzyEntry, /window\.parent\.postMessage/);
+  assert.match(frenzyEntry, /if \(previewPostId \|\| impressionRecordedRef\.current\) return;/);
   assert.match(pagesBuild, /frenzy: path\.join\(clientRoot, 'frenzy\.html'\)/);
 });
