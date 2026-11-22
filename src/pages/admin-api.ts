@@ -537,6 +537,22 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
             menuControl: await game.setGlobalMenuControl(parsed.enabled, parsed.reason, context.username ?? 'Pages Admin'),
           });
         }
+        if (parsed.kind === 'feature') {
+          return response({
+            ok: true,
+            scope: 'everyone',
+            localOnly: true,
+            featureControl: await game.setGlobalFeatureControl(parsed.feature, parsed.enabled, parsed.reason, context.username ?? 'Pages Admin'),
+          });
+        }
+        if (parsed.kind === 'feature-list') {
+          return response({
+            ok: true,
+            scope: 'everyone',
+            localOnly: true,
+            featureControls: await game.getGlobalFeatureControls(),
+          });
+        }
         if (parsed.kind === 'announcement') {
           return response({
             ok: true,

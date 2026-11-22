@@ -10,6 +10,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
+import { GLOBAL_FEATURES, type GlobalFeatureId } from '../shared/admin-cli.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
 import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
@@ -555,6 +556,7 @@ const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_MENU_CONTROL_KEY = 'io:global-menu-control:v1';
+const GLOBAL_FEATURE_CONTROL_KEY_PREFIX = 'io:global-feature-control:v1:';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
@@ -1140,6 +1142,58 @@ export async function setGlobalMenuControl(
     updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
   };
   await redis.set(GLOBAL_MENU_CONTROL_KEY, JSON.stringify(next));
+  return next;
+}
+
+
+export interface GlobalFeatureControl {
+  feature: GlobalFeatureId;
+  enabled: boolean;
+  reason: string;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+export async function getGlobalFeatureControl(feature: GlobalFeatureId): Promise<GlobalFeatureControl> {
+  const definition = GLOBAL_FEATURES.find(item => item.id === feature);
+  if (!definition) throw new Error('Unknown global feature control.');
+  const fallback: GlobalFeatureControl = { feature, enabled: true, reason: '', updatedAt: 0, updatedBy: '' };
+  const raw = await redis.get(GLOBAL_FEATURE_CONTROL_KEY_PREFIX + feature);
+  if (!raw) return fallback;
+  const parsed = parseStoredJson<Partial<GlobalFeatureControl>>(raw);
+  if (!parsed || typeof parsed !== 'object') return fallback;
+  return {
+    feature,
+    enabled: parsed.enabled !== false,
+    reason: String(parsed.reason ?? '').slice(0, 300),
+    updatedAt: Number.isFinite(Number(parsed.updatedAt)) ? Math.max(0, Number(parsed.updatedAt)) : 0,
+    updatedBy: String(parsed.updatedBy ?? '').slice(0, 100),
+  };
+}
+
+export async function getGlobalFeatureControls(): Promise<Record<GlobalFeatureId, GlobalFeatureControl>> {
+  const controls = await Promise.all(GLOBAL_FEATURES.map(item => getGlobalFeatureControl(item.id)));
+  return Object.fromEntries(controls.map(control => [control.feature, control])) as Record<GlobalFeatureId, GlobalFeatureControl>;
+}
+
+export async function setGlobalFeatureControl(
+  feature: GlobalFeatureId,
+  enabled: boolean,
+  reason: string,
+  updatedBy: string,
+): Promise<GlobalFeatureControl> {
+  const definition = GLOBAL_FEATURES.find(item => item.id === feature);
+  if (!definition) throw new Error('Unknown global feature control.');
+  const next: GlobalFeatureControl = {
+    feature,
+    enabled: enabled === true,
+    reason: enabled === true
+      ? ''
+      : String(reason ?? '').trim().slice(0, 300) || 'The developer has disabled ' + definition.label.toLowerCase() + '.',
+    updatedAt: Date.now(),
+    updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
+  };
+  await redis.set(GLOBAL_FEATURE_CONTROL_KEY_PREFIX + feature, JSON.stringify(next));
   return next;
 }
 

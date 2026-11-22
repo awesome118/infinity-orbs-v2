@@ -4,14 +4,55 @@
  * is reached.
  */
 
+export const GLOBAL_FEATURES = [
+  { id: 'rolling', label: 'Rolling', description: 'Orb rolls and automatic rolling' },
+  { id: 'combat', label: 'Combat', description: 'Combat actions, gear, skills, Runes, and arenas' },
+  { id: 'guilds', label: 'Guilds', description: 'Guild creation, membership, perks, and moderation actions' },
+  { id: 'prestige', label: 'Prestige', description: 'Prestige resets, upgrades, and dust synthesis' },
+  { id: 'upgrades', label: 'Upgrades', description: 'Upgrades, Mastery, Altar, boosters, automation, and cosmetics' },
+  { id: 'rewards', label: 'Rewards', description: 'Daily streak, quest, community, and follow rewards' },
+  { id: 'offline', label: 'Offline rewards', description: 'Offline roll claims' },
+  { id: 'events', label: 'Frenzy events', description: 'Frenzy starts, claims, and event interactions' },
+  { id: 'chat', label: 'Global Chat', description: 'Posting messages to Global Chat' },
+] as const;
+
+export type GlobalFeatureId = typeof GLOBAL_FEATURES[number]['id'];
+
 export type ParsedAdminCliCommand =
   | { kind: 'menus'; enabled: boolean; reason: string }
   | { kind: 'announcement'; message: string }
+  | { kind: 'feature'; feature: GlobalFeatureId; enabled: boolean; reason: string }
+  | { kind: 'feature-list' }
   | { kind: 'player-save'; commands: string; invalidateRollTicket: boolean };
 
 const DEFAULT_MENU_DISABLED_REASON = 'The developer has disabled the menus.';
 const MAX_CLI_SCRIPT_LENGTH = 12_000;
 const MAX_CLI_COMMANDS = 50;
+
+
+export function globalFeatureForRequest(method: string, path: string): GlobalFeatureId | null {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method ?? '').toUpperCase())) return null;
+  const normalizedPath = String(path ?? '').split('?')[0]!.replace(/^\/api(?=\/)/, '');
+  if (normalizedPath === '/roll' || normalizedPath === '/auto-roll') return 'rolling';
+  if (normalizedPath.startsWith('/combat/')) return 'combat';
+  if (normalizedPath.startsWith('/guilds/')) return 'guilds';
+  if (normalizedPath === '/chat') return 'chat';
+  if (normalizedPath === '/prestige' || normalizedPath.startsWith('/prestige/')) return 'prestige';
+  if ([
+    '/upgrade', '/upgrade/batch', '/upgrade/all', '/chain-patcher/buy',
+    '/mastery/upgrade', '/boosters/activate', '/global-boosters/activate',
+    '/automation/buy', '/turbo/activate', '/altar/sacrifice', '/cosmetics/buy',
+  ].includes(normalizedPath)) return 'upgrades';
+  if ([
+    '/streak/claim', '/quests/claim', '/community/reward/claim', '/follow-reward',
+  ].includes(normalizedPath)) return 'rewards';
+  if (normalizedPath === '/offline/claim') return 'offline';
+  if ([
+    '/frenzy/start', '/frenzy/arm', '/frenzy/claim',
+    '/frenzy/thank-you', '/frenzy/offline-reward/ack',
+  ].includes(normalizedPath)) return 'events';
+  return null;
+}
 
 function unquote(value: string): string {
   const trimmed = value.trim();
@@ -53,6 +94,20 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
 
   if (lines.length === 1) {
     const line = lines[0]!;
+    if (/^(?:features|feature\s+list)$/i.test(line)) return { kind: 'feature-list' };
+
+    const featureMatch = /^feature\s+([a-z-]+)\s+(disable|off|enable|on)(?:\s+([\s\S]+))?$/i.exec(line);
+    if (featureMatch) {
+      const featureName = featureMatch[1]!.toLowerCase();
+      const definition = GLOBAL_FEATURES.find(item => item.id === featureName);
+      if (!definition) throw new Error('Unknown global feature "' + featureName + '". Use "features" to list valid switches.');
+      const enabled = /^(enable|on)$/i.test(featureMatch[2]!);
+      const suppliedReason = unquote(featureMatch[3] ?? '');
+      if (enabled && suppliedReason) throw new Error('Do not provide a reason when enabling a feature.');
+      const reason = enabled ? '' : (suppliedReason || 'The developer has disabled ' + definition.label.toLowerCase() + '.').slice(0, 300);
+      return { kind: 'feature', feature: definition.id, enabled, reason };
+    }
+
     const menuMatch = /^menus?\s+(disable|off|enable|on)(?:\s+([\s\S]+))?$/i.exec(line);
     if (menuMatch) {
       const enabled = /^(enable|on)$/i.test(menuMatch[1]!);

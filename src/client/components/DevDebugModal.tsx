@@ -1387,10 +1387,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'boost <fortune|hyperdrive|barrage|prosperity|ascension> <minutes>',
         'offline add|set <amount>      cooldown ready',
         'menus disable [reason]        menus enable',
+        'features                       List global feature switches',
+        'feature <name> disable [reason]',
+        'feature <name> enable',
         'announce <message>            announce clear',
         '',
         'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
-        'Global menu and announcement commands never run as a player.',
+        'Global menu, feature, and announcement commands never run as a player.',
         'Only registered commands are accepted. JavaScript and shell commands are not executed.',
       ].join('\n'), true);
       setExecuteAsCommands('');
@@ -1404,7 +1407,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
-    const isGlobal = /^(?:menus?|announce(?:ment)?)\b/i.test(command);
+    const isGlobal = /^(?:menus?|announce(?:ment)?|features?)\b/i.test(command);
     const target = executeAsUsername.trim().replace(/^u\//i, '');
     if (isGlobal && target) {
       appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
@@ -1442,9 +1445,15 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
           ? data.menuControl.enabled
             ? 'Menus enabled for everyone.'
             : 'Menus disabled for everyone.\nDeveloper reason: ' + data.menuControl.reason
-          : data.announcement?.message
-            ? 'Developer announcement updated.'
-            : 'Developer announcement cleared.';
+          : data.featureControl
+            ? data.featureControl.feature + (data.featureControl.enabled ? ' enabled for everyone.' : ' disabled for everyone.\nDeveloper reason: ' + data.featureControl.reason)
+            : data.featureControls
+              ? 'Global feature switches:\n' + Object.values(data.featureControls).map((control: any) =>
+                  (control.enabled ? 'ON  ' : 'OFF ') + control.feature + (control.enabled ? '' : ' | ' + control.reason),
+                ).join('\n')
+              : data.announcement?.message
+                ? 'Developer announcement updated.'
+                : 'Developer announcement cleared.';
       } else {
         output += 'Executed ' + (data.results?.length ?? 0) + ' save operation(s) as u/' + (data.username ?? target) + '.';
         output += '\nSave revision: ' + String(data.stateRevision ?? '?');

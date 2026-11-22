@@ -87,3 +87,35 @@ test('CLI enforces positive and bounded grant arguments', () => {
   assert.equal(longReason.kind, 'menus');
   if (longReason.kind === 'menus') assert.equal(longReason.reason.length, 300);
 });
+
+test('CLI supports global feature switches with defaults, reasons, and status listing', () => {
+  assert.deepEqual(parseAdminCliCommand('feature combat disable'), {
+    kind: 'feature', feature: 'combat', enabled: false, reason: 'The developer has disabled combat.',
+  });
+  assert.deepEqual(parseAdminCliCommand('feature guilds off "Guild maintenance"'), {
+    kind: 'feature', feature: 'guilds', enabled: false, reason: 'Guild maintenance',
+  });
+  assert.deepEqual(parseAdminCliCommand('feature combat enable'), {
+    kind: 'feature', feature: 'combat', enabled: true, reason: '',
+  });
+  assert.deepEqual(parseAdminCliCommand('features'), { kind: 'feature-list' });
+  assert.throws(() => parseAdminCliCommand('feature trading disable'), /Unknown global feature/);
+  assert.throws(() => parseAdminCliCommand('feature combat enable reason'), /Do not provide a reason/);
+});
+
+test('global feature request mapping blocks only the intended write routes', async () => {
+  const { globalFeatureForRequest } = await import('../src/shared/admin-cli.js');
+  assert.equal(globalFeatureForRequest('POST', '/api/roll'), 'rolling');
+  assert.equal(globalFeatureForRequest('POST', '/auto-roll'), 'rolling');
+  assert.equal(globalFeatureForRequest('POST', '/combat/beat'), 'combat');
+  assert.equal(globalFeatureForRequest('POST', '/guilds/create'), 'guilds');
+  assert.equal(globalFeatureForRequest('POST', '/prestige'), 'prestige');
+  assert.equal(globalFeatureForRequest('POST', '/upgrade/batch'), 'upgrades');
+  assert.equal(globalFeatureForRequest('POST', '/quests/claim'), 'rewards');
+  assert.equal(globalFeatureForRequest('POST', '/offline/claim'), 'offline');
+  assert.equal(globalFeatureForRequest('POST', '/frenzy/start'), 'events');
+  assert.equal(globalFeatureForRequest('POST', '/chat'), 'chat');
+  assert.equal(globalFeatureForRequest('GET', '/roll'), null);
+  assert.equal(globalFeatureForRequest('POST', '/frenzy/simulator/create'), null);
+  assert.equal(globalFeatureForRequest('POST', '/chat/report'), null);
+});

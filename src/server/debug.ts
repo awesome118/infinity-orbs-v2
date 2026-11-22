@@ -47,6 +47,8 @@ import {
   readPlayerSaveForUser,
   createPlayerSaveWritePlanForUser,
   setGlobalMenuControl,
+  getGlobalFeatureControls,
+  setGlobalFeatureControl,
   discardPlayerSaveWritePlan,
   cleanupPreviousPlayerSave,
 } from './game.js';
@@ -643,6 +645,18 @@ debugRouter.post('/cli/execute', async (req, res) => {
       );
       res.setHeader('Cache-Control', 'no-store, max-age=0');
       return res.json({ ok: true, scope: 'everyone', menuControl });
+    }
+    if (parsed.kind === 'feature') {
+      const featureControl = await setGlobalFeatureControl(
+        parsed.feature, parsed.enabled, parsed.reason, context.username ?? 'Developer',
+      );
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      return res.json({ ok: true, scope: 'everyone', featureControl });
+    }
+    if (parsed.kind === 'feature-list') {
+      const featureControls = await getGlobalFeatureControls();
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      return res.json({ ok: true, scope: 'everyone', featureControls });
     }
     if (parsed.kind === 'announcement') {
       const announcement = await setDeveloperAnnouncement(

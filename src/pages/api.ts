@@ -5,6 +5,7 @@ import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
 import { context } from './devvit-client.js';
 import { handlePagesAdminRequest } from './admin-api.js';
+import { globalFeatureForRequest } from '../shared/admin-cli.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -65,6 +66,19 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
   }
 
   try {
+    const disabledFeatureId = globalFeatureForRequest(method, path);
+    if (disabledFeatureId) {
+      const control = await game.getGlobalFeatureControl(disabledFeatureId);
+      if (!control.enabled) {
+        return jsonResponse({
+          error: control.reason || 'This feature has been disabled by the developer.',
+          feature: disabledFeatureId,
+          featureDisabled: true,
+          reason: control.reason,
+        }, 403);
+      }
+    }
+
     if (method === 'GET') {
       switch (path) {
         case '/api/me':
