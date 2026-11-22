@@ -122,7 +122,7 @@ import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
-import { globalFeatureForRequest } from '../shared/admin-cli.js';
+import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 
 const payments = (devvitServer as typeof devvitServer & {
@@ -531,24 +531,26 @@ export function createApp() {
   });
 
 
-  // Global feature switches are enforced on the server, including direct API
-  // requests that bypass the client UI. Read only the switch relevant to this
-  // write request; ordinary reads remain available for status and inspection.
+  // Global feature switches are enforced server-side, including direct API
+  // requests that bypass the client UI. Each mapped request checks the gameplay
+  // master switch first, then its parent and subsystem switches. Admin routes,
+  // chat reports, and telemetry deliberately remain outside this gate.
   app.use('/api', async (req, res, next) => {
-    const feature = globalFeatureForRequest(req.method, req.path);
-    if (!feature) return next();
+    const features = globalFeaturesForRequest(req.method, req.path);
+    if (!features.length) return next();
     try {
-      const control = await getGlobalFeatureControl(feature);
-      if (!control.enabled) {
+      const controls = await Promise.all(features.map(feature => getGlobalFeatureControl(feature)));
+      const disabled = controls.find(control => !control.enabled);
+      if (disabled) {
         return res.status(403).json({
-          error: control.reason || 'This feature has been disabled by the developer.',
-          feature,
+          error: disabled.reason || 'This feature has been disabled by the developer.',
+          feature: disabled.feature,
           featureDisabled: true,
-          reason: control.reason,
+          reason: disabled.reason,
         });
       }
     } catch (error) {
-      console.error('[Global Feature Control] Could not verify ' + feature + ' status.', error);
+      console.error('[Global Feature Control] Could not verify ' + features.join(', ') + ' status.', error);
       return res.status(503).json({ error: 'Could not verify feature availability. Please retry.' });
     }
     next();
