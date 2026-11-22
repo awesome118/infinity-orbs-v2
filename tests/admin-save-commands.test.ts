@@ -62,6 +62,11 @@ test('Execute As rejects unsafe numeric balances and invalid arithmetic', () => 
   assert.throws(() => applyAdminSaveCommands(state(), 'set coins Infinity'));
 });
 
+test('Execute As can initialize optional nested save objects without replacing other fields', () => {
+  const result = applyAdminSaveCommands(state(), 'set activeBoosters.fortune 123456789');
+  assert.deepEqual(result.state.activeBoosters, { fortune: 123456789 });
+});
+
 test('Execute As supports deleting optional nested fields but never required save roots', () => {
   const result = applyAdminSaveCommands(state(), 'delete upgrades.luck');
   assert.equal('luck' in result.state.upgrades, false);
