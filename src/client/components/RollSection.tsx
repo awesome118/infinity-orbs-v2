@@ -673,6 +673,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
             background: orbInfo
               ? orbInfo.bgGradient
               : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
+            borderColor: orbInfo?.color ?? '#6366f1',
+            borderWidth: 2,
             ...(isShaking ? {
               '--shake-x-a': (-3 * shakeIntensity) + 'px',
               '--shake-y-a': (1 * shakeIntensity) + 'px',
