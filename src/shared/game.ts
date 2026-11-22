@@ -1327,7 +1327,16 @@ export type RarityTierName =
   | 'Unfathomable'
   | 'Axiom'
   | 'Omniscient'
-  | 'Omega';
+  | 'Omega'
+  | 'Hyperion'
+  | 'Ethereal'
+  | 'Aetherion'
+  | 'Nexus'
+  | 'Archetype'
+  | 'Apotheosis'
+  | 'Eschaton'
+  | 'Omniform'
+  | 'Eternity';
 
 export interface RarityTierInfo {
   rarity: number;
@@ -1336,9 +1345,19 @@ export interface RarityTierInfo {
   approxChance: string;
   color: string;
   bgGradient: string;
+  animated: boolean;
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
+  if (rarity >= 1e62) return 'Eternity';
+  if (rarity >= 1e59) return 'Omniform';
+  if (rarity >= 1e56) return 'Eschaton';
+  if (rarity >= 1e53) return 'Apotheosis';
+  if (rarity >= 1e50) return 'Archetype';
+  if (rarity >= 1e47) return 'Nexus';
+  if (rarity >= 1e44) return 'Aetherion';
+  if (rarity >= 1e41) return 'Ethereal';
+  if (rarity >= 1e38) return 'Hyperion';
   if (rarity >= 1e35) return 'Omega';
   if (rarity >= 1e33) return 'Omniscient';
   if (rarity >= 1e31) return 'Axiom';
@@ -1396,116 +1415,161 @@ export const ORB_TIER_NAMES: Record<RarityTierName, string[]> = {
   Axiom: ['Axiom Orb', 'First Truth', 'Prime Axiom', 'Proof Eternal', 'The Necessary', 'Root Principle', 'Unbroken Theorem', 'Law of All', 'Axiom of Light', 'First Proof', 'The Prime Rule', 'Truth Unbroken', 'Essential Constant', 'Absolute Theorem'],
   Omniscient: ['Omniscient Orb', 'All-Knowing Star', 'Total Awareness', 'The Witness', 'All-Seen Core', 'Evermind', 'Infinite Archive', 'Knowledge Without End', 'Eye Beyond All', 'All-Knowing Crown', 'The Great Witness', 'Infinite Testament', 'Archive of Everything', 'Mind of Eternity'],
   Omega: ['Omega Orb', 'Last Beginning', 'Final Axiom', 'End of All Ends', 'Closure Engine', 'Last Truth', 'The Final Constant', 'Omega Horizon', 'Omega Singularity', 'The Last Horizon', 'Final Beginning', 'Closure of Creation', 'The Last Principle', 'Ultimate Continuum'],
+  Hyperion: ["Hyperion Orb","Crimson Singularity","Solar Apex Prime","Heart of the Flare","Redshift Crown","The Burning Constant","First Supergiant","Dawnfire Engine"],
+  Ethereal: ["Ethereal Orb","Veil of Creation","Spectral Horizon","Unseen Aether","Wisp of Forever","The Quiet Expanse","Pale Genesis","Shimmering Elsewhere"],
+  Aetherion: ["Aetherion Orb","Aether Crown","Astral Dominion","First Ether","The Violet Engine","Starless Throne","Aetherwake","Crown of the Unseen"],
+  Nexus: ["Nexus Orb","Convergence Core","Junction of Worlds","The Great Link","Crossroads Eternal","Nexus Bloom","Allpaths Engine","Confluence Star"],
+  Archetype: ["Archetype Orb","Prime Pattern","Form Eternal","Blueprint of All","The First Shape","Origin Template","Perfect Pattern","Universal Mold"],
+  Apotheosis: ["Apotheosis Orb","Ascension Absolute","Godform Engine","The Unbound Crown","Last Transfiguration","Radiant Apotheon","Beyond Divinity","Sovereign of Light"],
+  Eschaton: ["Eschaton Orb","Final Dawn","Terminus Star","Last Eventide","The Closing Sky","Endtime Core","Last Horizon Prime","The Final Bloom"],
+  Omniform: ["Omniform Orb","Shape of Everything","Allform Engine","Infinite Morph","The Total Pattern","Formless Crown","Omni-Genesis","Allshape Singularity"],
+  Eternity: ["Eternity Orb","Everlasting Core","The Timeless One","Eternal Horizon Prime","Endless Beginning","Forever Engine","Unending Constant","Age Without End"],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
   Common: {
-    color: '#94a3b8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #cbd5e1, #64748b 60%, #1e293b)',
+    color: '#8D99AE',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E2E8F0, #8D99AE 52%, #293241 100%)',
   },
   Uncommon: {
-    color: '#38bdf8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #7dd3fc, #0284c7 60%, #0c4a6e)',
+    color: '#43AA8B',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B7F7DD, #43AA8B 52%, #064E3B 100%)',
   },
   Rare: {
-    color: '#c084fc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #d8b4fe, #9333ea 60%, #581c87)',
+    color: '#4895EF',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #4895EF 52%, #1E3A8A 100%)',
   },
   Epic: {
-    color: '#fb923c',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fed7aa, #ea580c 60%, #7c2d12)',
+    color: '#F3722C',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FED7AA, #F3722C 52%, #7C2D12 100%)',
   },
   Legendary: {
-    color: '#4ade80',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #86efac, #16a34a 60%, #14532d)',
+    color: '#90BE6D',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #D9F99D, #90BE6D 52%, #365314 100%)',
   },
   Mythic: {
-    color: '#a855f7',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #d8b4fe, #7e22ce 60%, #3b0764)',
+    color: '#8338EC',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #DDD6FE, #8338EC 52%, #3B0764 100%)',
   },
   Relic: {
-    color: '#f59e0b',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fde68a, #d97706 60%, #451a03)',
+    color: '#FFD166',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFF1B8, #FFD166 52%, #854D0E 100%)',
   },
   Divine: {
-    color: '#38bdf8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #e0f2fe, #0284c7 40%, #4f46e5 80%)',
+    color: '#118AB2',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #A5F3FC, #118AB2 52%, #164E63 100%)',
   },
   Transcendent: {
-    color: '#ffffff',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #a855f7 35%, #06b6d4 70%, #030712 100%)',
+    color: '#FF006E',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFC2DE, #FF006E 52%, #831843 100%)',
   },
   Ascendant: {
-    color: '#fb7185',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fecdd3, #e11d48 45%, #4c0519 100%)',
+    color: '#F94144',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FECACA, #F94144 52%, #7F1D1D 100%)',
   },
   Eternal: {
-    color: '#14b8a6',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #99f6e4, #0f766e 50%, #042f2e 100%)',
+    color: '#2A9D8F',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #99F6E4, #2A9D8F 52%, #134E4A 100%)',
   },
   Celestial: {
-    color: '#f97316',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fed7aa, #ea580c 45%, #431407 100%)',
+    color: '#E76F51',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD2C5, #E76F51 52%, #7C2D12 100%)',
   },
   Infinite: {
-    color: '#22d3ee',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #cffafe, #0891b2 45%, #082f49 100%)',
+    color: '#3A86FF',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #3A86FF 52%, #1E40AF 100%)',
   },
   Absolute: {
-    color: '#e879f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fae8ff, #c026d3 45%, #4a044e 100%)',
+    color: '#B56576',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FBCFE8, #B56576 52%, #831843 100%)',
   },
   Omniversal: {
-    color: '#f8fafc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 30%, #22d3ee 58%, #030712 100%)',
+    color: '#A3E635',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ECFCCB, #A3E635 52%, #365314 100%)',
   },
   Paradox: {
-    color: '#ef4444',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fecaca, #dc2626 45%, #450a0a 100%)',
+    color: '#264653',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #A8DADC, #264653 52%, #0B2530 100%)',
   },
   Beyond: {
-    color: '#8b5cf6',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ddd6fe, #7c3aed 45%, #2e1065 100%)',
+    color: '#6D597A',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E9D5FF, #6D597A 52%, #2E1A47 100%)',
   },
   Endless: {
-    color: '#f1f5f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #64748b 35%, #0f172a 80%, #020617 100%)',
+    color: '#F8FAFC',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFFFFF, #F8FAFC 52%, #64748B 100%)',
   },
   Empyrean: {
-    color: '#f0abfc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fdf4ff, #c026d3 38%, #701a75 72%, #16051d 100%)',
+    color: '#C77DFF',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #F3D7FF, #C77DFF 52%, #581C87 100%)',
   },
   Hyperversal: {
-    color: '#a78bfa',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ede9fe, #7c3aed 38%, #4c1d95 72%, #10051e 100%)',
+    color: '#355070',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #BFD7EA, #355070 52%, #14213D 100%)',
   },
   Transfinite: {
-    color: '#67e8f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ecfeff, #0891b2 38%, #164e63 72%, #020b14 100%)',
+    color: '#00F5D4',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00F5D4 52%, #064E3B 100%)',
   },
   Metacosmic: {
-    color: '#fbbf24',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fef3c7, #d97706 38%, #78350f 72%, #1c0c03 100%)',
+    color: '#B08968',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E8D1B8, #B08968 52%, #422006 100%)',
   },
   Primordial: {
-    color: '#4ade80',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #dcfce7, #16a34a 38%, #14532d 72%, #02150a 100%)',
+    color: '#06D6A0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFE8, #06D6A0 52%, #065F46 100%)',
   },
   Unfathomable: {
-    color: '#fb7185',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffe4e6, #e11d48 38%, #881337 72%, #1f050e 100%)',
+    color: '#BE123C',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FDA4AF, #BE123C 52%, #4C0519 100%)',
   },
   Axiom: {
-    color: '#c4b5fd',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #f5f3ff, #8b5cf6 38%, #5b21b6 72%, #10051e 100%)',
+    color: '#F72585',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FBCFE8, #F72585 52%, #701A75 100%)',
   },
   Omniscient: {
-    color: '#e2e8f0',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #94a3b8 30%, #334155 68%, #020617 100%)',
+    color: '#577590',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #D4E6F1, #577590 52%, #1F3A52 100%)',
   },
   Omega: {
-    color: '#ffffff',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 23%, #22d3ee 48%, #4c1d95 72%, #020617 100%)',
+    color: '#FFFFFF',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFFFFF, #FFFFFF 52%, #4C1D95 100%)',
+  },
+  Hyperion: {
+    color: '#FF6B6B',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD1D1, #FF6B6B 52%, #7F1D1D 100%)',
+  },
+  Ethereal: {
+    color: '#00C2A8',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00C2A8 52%, #064E3B 100%)',
+  },
+  Aetherion: {
+    color: '#9B5DE5',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E9D5FF, #9B5DE5 52%, #3B0764 100%)',
+  },
+  Nexus: {
+    color: '#F15BB5',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD6EF, #F15BB5 52%, #831843 100%)',
+  },
+  Archetype: {
+    color: '#FEE440',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFF9B0, #FEE440 52%, #713F12 100%)',
+  },
+  Apotheosis: {
+    color: '#00BBF9',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C4F1FF, #00BBF9 52%, #0C4A6E 100%)',
+  },
+  Eschaton: {
+    color: '#00F5A0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C8FFE8, #00F5A0 52%, #064E3B 100%)',
+  },
+  Omniform: {
+    color: '#FF7F11',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFE0BD, #FF7F11 52%, #7C2D12 100%)',
+  },
+  Eternity: {
+    color: '#B8F2E6',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #F0FFFB, #B8F2E6 52%, #134E4A 100%)',
   },
 };
 
@@ -1582,7 +1646,7 @@ function orbNameIndex(rarityValue: number, nameCount: number): number {
 export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
   if (isInfinity) {
     const { color, bgGradient } = { color: '#ffffff', bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #c084fc 25%, #22d3ee 55%, #020617 100%)' };
-    return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient };
+    return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient, animated: false };
   }
   const tier = getOrbTier(rarity);
   const names = ORB_TIER_NAMES[tier];
@@ -1596,6 +1660,7 @@ export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
     approxChance: `1 / ${formatRarity(rarity)}`,
     color,
     bgGradient,
+    animated: rarity >= 1e38,
   };
 }
 
@@ -1668,33 +1733,42 @@ export interface ContinuumTierMilestone {
 }
 
 export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
-  { tier: 'Common', minRarity: 2, label: rarityRangeLabel(2, 9), approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
-  { tier: 'Uncommon', minRarity: 10, label: rarityRangeLabel(10, 99), approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
-  { tier: 'Rare', minRarity: 100, label: rarityRangeLabel(100, 999), approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
-  { tier: 'Epic', minRarity: 1000, label: rarityRangeLabel(1000, 9999), approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
-  { tier: 'Legendary', minRarity: 10000, label: rarityRangeLabel(10000, 99999), approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
-  { tier: 'Mythic', minRarity: 100000, label: rarityRangeLabel(100000, 999999), approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
-  { tier: 'Relic', minRarity: 1000000, label: rarityRangeLabel(1000000, 9999999), approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
-  { tier: 'Divine', minRarity: 10000000, label: rarityRangeLabel(10000000, 99999999), approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: rarityRangeLabel(100000000, 999999999), approxChance: '~0.0000009%', coinsPerOrb: `${formatNumber(100000000)} - ${formatNumber(999999999)} Coins`, color: '#ffffff' },
-  { tier: 'Ascendant', minRarity: 1000000000, label: rarityRangeLabel(1000000000, 9999999999), approxChance: '~0.00000009%', coinsPerOrb: `${formatNumber(1000000000)} - ${formatNumber(9999999999)} Coins`, color: '#fb7185' },
-  { tier: 'Eternal', minRarity: 10000000000, label: rarityRangeLabel(10000000000, 99999999999), approxChance: '~0.000000009%', coinsPerOrb: `${formatNumber(10000000000)} - ${formatNumber(99999999999)} Coins`, color: '#14b8a6' },
-  { tier: 'Celestial', minRarity: 100000000000, label: rarityRangeLabel(100000000000, 999999999999), approxChance: '~0.0000000009%', coinsPerOrb: `${formatNumber(100000000000)} - ${formatNumber(999999999999)} Coins`, color: '#f97316' },
-  { tier: 'Infinite', minRarity: 1000000000000, label: rarityRangeLabel(1000000000000, 9999999999999), approxChance: '~0.00000000009%', coinsPerOrb: `${formatNumber(1000000000000)} - ${formatNumber(9999999999999)} Coins`, color: '#22d3ee' },
-  { tier: 'Absolute', minRarity: 10000000000000, label: rarityRangeLabel(10000000000000, 99999999999999), approxChance: '~0.000000000009%', coinsPerOrb: `${formatNumber(10000000000000)} - ${formatNumber(99999999999999)} Coins`, color: '#e879f9' },
-  { tier: 'Omniversal', minRarity: 100000000000000, label: `1 / ${formatRarity(100000000000000)}+`, approxChance: '~0.0000000000009%', coinsPerOrb: `${formatNumber(100000000000000)}+ Coins`, color: '#f8fafc' },
-  { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: '#ef4444' },
-  { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: '#8b5cf6' },
-  { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: '#f1f5f9' },
-  { tier: 'Empyrean', minRarity: 1e19, label: `1 / ${formatRarity(1e19)}+`, approxChance: '~9.9e-18%', coinsPerOrb: `${formatNumber(1e19)}+ Coins`, color: '#f0abfc' },
-  { tier: 'Hyperversal', minRarity: 1e21, label: `1 / ${formatRarity(1e21)}+`, approxChance: '~9.9e-20%', coinsPerOrb: `${formatNumber(1e21)}+ Coins`, color: '#a78bfa' },
-  { tier: 'Transfinite', minRarity: 1e23, label: `1 / ${formatRarity(1e23)}+`, approxChance: '~9.9e-22%', coinsPerOrb: `${formatNumber(1e23)}+ Coins`, color: '#67e8f9' },
-  { tier: 'Metacosmic', minRarity: 1e25, label: `1 / ${formatRarity(1e25)}+`, approxChance: '~9.9e-24%', coinsPerOrb: `${formatNumber(1e25)}+ Coins`, color: '#fbbf24' },
-  { tier: 'Primordial', minRarity: 1e27, label: `1 / ${formatRarity(1e27)}+`, approxChance: '~9.9e-26%', coinsPerOrb: `${formatNumber(1e27)}+ Coins`, color: '#4ade80' },
-  { tier: 'Unfathomable', minRarity: 1e29, label: `1 / ${formatRarity(1e29)}+`, approxChance: '~9.9e-28%', coinsPerOrb: `${formatNumber(1e29)}+ Coins`, color: '#fb7185' },
-  { tier: 'Axiom', minRarity: 1e31, label: `1 / ${formatRarity(1e31)}+`, approxChance: '~9.9e-30%', coinsPerOrb: `${formatNumber(1e31)}+ Coins`, color: '#c4b5fd' },
-  { tier: 'Omniscient', minRarity: 1e33, label: `1 / ${formatRarity(1e33)}+`, approxChance: '~9.9e-32%', coinsPerOrb: `${formatNumber(1e33)}+ Coins`, color: '#e2e8f0' },
-  { tier: 'Omega', minRarity: 1e35, label: `1 / ${formatRarity(1e35)}+`, approxChance: '~9.9e-34%', coinsPerOrb: `${formatNumber(1e35)}+ Coins`, color: '#ffffff' },
+  { tier: 'Common', minRarity: 2, label: rarityRangeLabel(2, 9), approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: TIER_COLORS.Common.color },
+  { tier: 'Uncommon', minRarity: 10, label: rarityRangeLabel(10, 99), approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: TIER_COLORS.Uncommon.color },
+  { tier: 'Rare', minRarity: 100, label: rarityRangeLabel(100, 999), approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: TIER_COLORS.Rare.color },
+  { tier: 'Epic', minRarity: 1000, label: rarityRangeLabel(1000, 9999), approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: TIER_COLORS.Epic.color },
+  { tier: 'Legendary', minRarity: 10000, label: rarityRangeLabel(10000, 99999), approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: TIER_COLORS.Legendary.color },
+  { tier: 'Mythic', minRarity: 100000, label: rarityRangeLabel(100000, 999999), approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: TIER_COLORS.Mythic.color },
+  { tier: 'Relic', minRarity: 1000000, label: rarityRangeLabel(1000000, 9999999), approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: TIER_COLORS.Relic.color },
+  { tier: 'Divine', minRarity: 10000000, label: rarityRangeLabel(10000000, 99999999), approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: TIER_COLORS.Divine.color },
+  { tier: 'Transcendent', minRarity: 100000000, label: rarityRangeLabel(100000000, 999999999), approxChance: '~0.0000009%', coinsPerOrb: `${formatNumber(100000000)} - ${formatNumber(999999999)} Coins`, color: TIER_COLORS.Transcendent.color },
+  { tier: 'Ascendant', minRarity: 1000000000, label: rarityRangeLabel(1000000000, 9999999999), approxChance: '~0.00000009%', coinsPerOrb: `${formatNumber(1000000000)} - ${formatNumber(9999999999)} Coins`, color: TIER_COLORS.Ascendant.color },
+  { tier: 'Eternal', minRarity: 10000000000, label: rarityRangeLabel(10000000000, 99999999999), approxChance: '~0.000000009%', coinsPerOrb: `${formatNumber(10000000000)} - ${formatNumber(99999999999)} Coins`, color: TIER_COLORS.Eternal.color },
+  { tier: 'Celestial', minRarity: 100000000000, label: rarityRangeLabel(100000000000, 999999999999), approxChance: '~0.0000000009%', coinsPerOrb: `${formatNumber(100000000000)} - ${formatNumber(999999999999)} Coins`, color: TIER_COLORS.Celestial.color },
+  { tier: 'Infinite', minRarity: 1000000000000, label: rarityRangeLabel(1000000000000, 9999999999999), approxChance: '~0.00000000009%', coinsPerOrb: `${formatNumber(1000000000000)} - ${formatNumber(9999999999999)} Coins`, color: TIER_COLORS.Infinite.color },
+  { tier: 'Absolute', minRarity: 10000000000000, label: rarityRangeLabel(10000000000000, 99999999999999), approxChance: '~0.000000000009%', coinsPerOrb: `${formatNumber(10000000000000)} - ${formatNumber(99999999999999)} Coins`, color: TIER_COLORS.Absolute.color },
+  { tier: 'Omniversal', minRarity: 100000000000000, label: `1 / ${formatRarity(100000000000000)}+`, approxChance: '~0.0000000000009%', coinsPerOrb: `${formatNumber(100000000000000)}+ Coins`, color: TIER_COLORS.Omniversal.color },
+  { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: TIER_COLORS.Paradox.color },
+  { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: TIER_COLORS.Beyond.color },
+  { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: TIER_COLORS.Endless.color },
+  { tier: 'Empyrean', minRarity: 1e19, label: `1 / ${formatRarity(1e19)}+`, approxChance: '~9.9e-18%', coinsPerOrb: `${formatNumber(1e19)}+ Coins`, color: TIER_COLORS.Empyrean.color },
+  { tier: 'Hyperversal', minRarity: 1e21, label: `1 / ${formatRarity(1e21)}+`, approxChance: '~9.9e-20%', coinsPerOrb: `${formatNumber(1e21)}+ Coins`, color: TIER_COLORS.Hyperversal.color },
+  { tier: 'Transfinite', minRarity: 1e23, label: `1 / ${formatRarity(1e23)}+`, approxChance: '~9.9e-22%', coinsPerOrb: `${formatNumber(1e23)}+ Coins`, color: TIER_COLORS.Transfinite.color },
+  { tier: 'Metacosmic', minRarity: 1e25, label: `1 / ${formatRarity(1e25)}+`, approxChance: '~9.9e-24%', coinsPerOrb: `${formatNumber(1e25)}+ Coins`, color: TIER_COLORS.Metacosmic.color },
+  { tier: 'Primordial', minRarity: 1e27, label: `1 / ${formatRarity(1e27)}+`, approxChance: '~9.9e-26%', coinsPerOrb: `${formatNumber(1e27)}+ Coins`, color: TIER_COLORS.Primordial.color },
+  { tier: 'Unfathomable', minRarity: 1e29, label: `1 / ${formatRarity(1e29)}+`, approxChance: '~9.9e-28%', coinsPerOrb: `${formatNumber(1e29)}+ Coins`, color: TIER_COLORS.Unfathomable.color },
+  { tier: 'Axiom', minRarity: 1e31, label: `1 / ${formatRarity(1e31)}+`, approxChance: '~9.9e-30%', coinsPerOrb: `${formatNumber(1e31)}+ Coins`, color: TIER_COLORS.Axiom.color },
+  { tier: 'Omniscient', minRarity: 1e33, label: `1 / ${formatRarity(1e33)}+`, approxChance: '~9.9e-32%', coinsPerOrb: `${formatNumber(1e33)}+ Coins`, color: TIER_COLORS.Omniscient.color },
+  { tier: 'Omega', minRarity: 1e35, label: `1 / ${formatRarity(1e35)}+`, approxChance: '~9.9e-34%', coinsPerOrb: `${formatNumber(1e35)}+ Coins`, color: TIER_COLORS.Omega.color },
+  { tier: 'Hyperion', minRarity: 1e38, label: `1 / ${formatRarity(1e38)}+`, approxChance: '~9.9e-37%', coinsPerOrb: `${formatNumber(1e38)}+ Coins`, color: TIER_COLORS.Hyperion.color },
+  { tier: 'Ethereal', minRarity: 1e41, label: `1 / ${formatRarity(1e41)}+`, approxChance: '~9.9e-40%', coinsPerOrb: `${formatNumber(1e41)}+ Coins`, color: TIER_COLORS.Ethereal.color },
+  { tier: 'Aetherion', minRarity: 1e44, label: `1 / ${formatRarity(1e44)}+`, approxChance: '~9.9e-43%', coinsPerOrb: `${formatNumber(1e44)}+ Coins`, color: TIER_COLORS.Aetherion.color },
+  { tier: 'Nexus', minRarity: 1e47, label: `1 / ${formatRarity(1e47)}+`, approxChance: '~9.9e-46%', coinsPerOrb: `${formatNumber(1e47)}+ Coins`, color: TIER_COLORS.Nexus.color },
+  { tier: 'Archetype', minRarity: 1e50, label: `1 / ${formatRarity(1e50)}+`, approxChance: '~9.9e-49%', coinsPerOrb: `${formatNumber(1e50)}+ Coins`, color: TIER_COLORS.Archetype.color },
+  { tier: 'Apotheosis', minRarity: 1e53, label: `1 / ${formatRarity(1e53)}+`, approxChance: '~9.9e-52%', coinsPerOrb: `${formatNumber(1e53)}+ Coins`, color: TIER_COLORS.Apotheosis.color },
+  { tier: 'Eschaton', minRarity: 1e56, label: `1 / ${formatRarity(1e56)}+`, approxChance: '~9.9e-55%', coinsPerOrb: `${formatNumber(1e56)}+ Coins`, color: TIER_COLORS.Eschaton.color },
+  { tier: 'Omniform', minRarity: 1e59, label: `1 / ${formatRarity(1e59)}+`, approxChance: '~9.9e-58%', coinsPerOrb: `${formatNumber(1e59)}+ Coins`, color: TIER_COLORS.Omniform.color },
+  { tier: 'Eternity', minRarity: 1e62, label: `1 / ${formatRarity(1e62)}+`, approxChance: '~9.9e-61%', coinsPerOrb: `${formatNumber(1e62)}+ Coins`, color: TIER_COLORS.Eternity.color },
 ];
 
 export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 1_000_000;
