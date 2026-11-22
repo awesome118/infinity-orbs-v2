@@ -5,15 +5,41 @@
  */
 
 export const GLOBAL_FEATURES = [
-  { id: 'rolling', label: 'Rolling', description: 'Orb rolls and automatic rolling' },
-  { id: 'combat', label: 'Combat', description: 'Combat actions, gear, skills, Runes, and arenas' },
-  { id: 'guilds', label: 'Guilds', description: 'Guild creation, membership, perks, and moderation actions' },
-  { id: 'prestige', label: 'Prestige', description: 'Prestige resets, upgrades, and dust synthesis' },
-  { id: 'upgrades', label: 'Upgrades', description: 'Upgrades, Mastery, Altar, boosters, automation, and cosmetics' },
-  { id: 'rewards', label: 'Rewards', description: 'Daily streak, quest, community, and follow rewards' },
+  { id: 'gameplay', label: 'Gameplay', description: 'Master switch for all classified player-facing game actions and sections' },
+  { id: 'rolling', label: 'Rolling', description: 'Manual orb rolls and roll-ticket requests' },
+  { id: 'auto-roll', label: 'Auto rolling', description: 'Automated rolling' },
   { id: 'offline', label: 'Offline rewards', description: 'Offline roll claims' },
-  { id: 'events', label: 'Frenzy events', description: 'Frenzy starts, claims, and event interactions' },
-  { id: 'chat', label: 'Global Chat', description: 'Posting messages to Global Chat' },
+  { id: 'upgrades', label: 'Upgrades', description: 'Regular upgrades and purchase-based progression' },
+  { id: 'mastery', label: 'Mastery', description: 'Mastery skill upgrades' },
+  { id: 'boosters', label: 'Boosters and automation', description: 'Personal boosters, automation, and Turbo' },
+  { id: 'cosmetics', label: 'Cosmetics', description: 'Cosmetic purchases and unlocks' },
+  { id: 'prestige', label: 'Prestige', description: 'Prestige resets, permanent upgrades, and synthesis' },
+  { id: 'combat', label: 'Combat', description: 'All combat actions and combat data' },
+  { id: 'dungeons', label: 'Dungeons', description: 'Dungeon encounters and progression' },
+  { id: 'gear', label: 'Combat gear', description: 'Gear equip, forge, scrap, and auto-scrap' },
+  { id: 'skills', label: 'Combat skills', description: 'Combat skill rolls, equipment, and rank-ups' },
+  { id: 'runes', label: 'Combat runes', description: 'Rune equipment, sacrifice, and auto-sacrifice' },
+  { id: 'arena', label: 'Combat arena', description: 'Arena opponents and challenges' },
+  { id: 'social', label: 'Social systems', description: 'Master switch for guilds, chat, sharing, and community interactions' },
+  { id: 'guilds', label: 'Guilds', description: 'Guild creation, membership, perks, trust, and moderation actions' },
+  { id: 'chat', label: 'Global Chat', description: 'Viewing and posting Global Chat messages; reports remain available' },
+  { id: 'sharing', label: 'Sharing', description: 'Reddit sharing actions' },
+  { id: 'rewards', label: 'Rewards', description: 'Master switch for claimable player rewards' },
+  { id: 'daily-rewards', label: 'Daily rewards', description: 'Daily streak claims' },
+  { id: 'quests', label: 'Quests', description: 'Daily and weekly quest claims' },
+  { id: 'community-rewards', label: 'Community rewards', description: 'Follow and community reward claims' },
+  { id: 'events', label: 'Events', description: 'Master switch for Frenzy and world events' },
+  { id: 'frenzy', label: 'Frenzy', description: 'Frenzy creation, claiming, and event interactions' },
+  { id: 'world-events', label: 'World events', description: 'World-event status and interactions' },
+  { id: 'alignment', label: 'Celestial Alignment', description: 'Alignment status and choices' },
+  { id: 'global-boosters', label: 'Global boosters', description: 'Global booster status and activation' },
+  { id: 'notifications', label: 'Notifications', description: 'Player notification preferences' },
+  { id: 'popups', label: 'Popups', description: 'Player popup configuration and tracking' },
+  { id: 'tutorials', label: 'Tutorials', description: 'First-roll and combat tutorial state' },
+  { id: 'leaderboards', label: 'Leaderboards', description: 'Leaderboard and ranking views' },
+  { id: 'collection', label: 'Collection', description: 'Codex and collection views' },
+  { id: 'feedback', label: 'Feedback', description: 'Player feedback submissions' },
+  { id: 'purchases', label: 'Purchases', description: 'Product catalog and purchase reconciliation' },
 ] as const;
 
 export type GlobalFeatureId = typeof GLOBAL_FEATURES[number]['id'];
@@ -30,28 +56,98 @@ const MAX_CLI_SCRIPT_LENGTH = 12_000;
 const MAX_CLI_COMMANDS = 50;
 
 
-export function globalFeatureForRequest(method: string, path: string): GlobalFeatureId | null {
-  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method ?? '').toUpperCase())) return null;
+export function globalFeaturesForRequest(method: string, path: string): GlobalFeatureId[] {
+  const verb = String(method ?? '').toUpperCase();
+  const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(verb);
+  const isRead = verb === 'GET' || verb === 'HEAD';
+  if (!isWrite && !isRead) return [];
+
   const normalizedPath = String(path ?? '').split('?')[0]!.replace(/^\/api(?=\/)/, '');
-  if (normalizedPath === '/roll' || normalizedPath === '/auto-roll') return 'rolling';
-  if (normalizedPath.startsWith('/combat/')) return 'combat';
-  if (normalizedPath.startsWith('/guilds/')) return 'guilds';
-  if (normalizedPath === '/chat') return 'chat';
-  if (normalizedPath === '/prestige' || normalizedPath.startsWith('/prestige/')) return 'prestige';
+  if (normalizedPath === '/chat/report' || normalizedPath.startsWith('/dev/')) return [];
+
+  const game = (...features: GlobalFeatureId[]): GlobalFeatureId[] => ['gameplay', ...features];
+
+  // Rolling and its read-side ticket/progress endpoints.
+  if (normalizedPath === '/roll' && isWrite) return game('rolling');
+  if (normalizedPath === '/roll-ticket' && isRead) return game('rolling');
+  if (normalizedPath === '/auto-roll' && isWrite) return game('rolling', 'auto-roll');
+  if (normalizedPath === '/time-energy/progress' && isRead) return game('rolling');
+
+  // Combat is a parent switch. Individual systems can also be disabled without
+  // taking down the rest of combat.
+  if (normalizedPath === '/combat/tutorial/status' && isRead) return game('combat', 'tutorials');
+  if (normalizedPath === '/combat/tutorial/complete' && isWrite) return game('combat', 'tutorials');
+  if (normalizedPath.startsWith('/combat/runes/')) return game('combat', 'runes');
+  if (normalizedPath.startsWith('/combat/skills/')) return game('combat', 'skills');
+  if (normalizedPath.startsWith('/combat/arena/')) return game('combat', 'arena');
+  if (normalizedPath === '/combat/dungeon') return game('combat', 'dungeons');
   if ([
-    '/upgrade', '/upgrade/batch', '/upgrade/all', '/chain-patcher/buy',
-    '/mastery/upgrade', '/boosters/activate', '/global-boosters/activate',
-    '/automation/buy', '/turbo/activate', '/altar/sacrifice', '/cosmetics/buy',
-  ].includes(normalizedPath)) return 'upgrades';
+    '/combat/equip', '/combat/gear/scrap', '/combat/forge', '/combat/auto-scrap',
+  ].includes(normalizedPath)) return game('combat', 'gear');
+  if (normalizedPath.startsWith('/combat/')) return game('combat');
+
+  // Social parent lets the developer stop player-to-player/community
+  // interactions while retaining the moderation report endpoint above.
+  if (normalizedPath === '/guilds' || normalizedPath.startsWith('/guilds/')) return game('social', 'guilds');
+  if (normalizedPath === '/chat' || normalizedPath === '/chat/status') return game('social', 'chat');
+  if (normalizedPath === '/share' && isWrite) return game('social', 'sharing');
+  if (normalizedPath === '/social/visit' && isWrite) return game('social');
+  if ((normalizedPath === '/follow-reward/status' && isRead) || (normalizedPath === '/follow-reward' && isWrite)) {
+    return game('social', 'rewards', 'community-rewards');
+  }
+
+  // Claimable reward types have both a parent switch and a narrower switch.
+  if (normalizedPath === '/streak/claim' && isWrite) return game('rewards', 'daily-rewards');
+  if (normalizedPath === '/quests/claim' && isWrite) return game('rewards', 'quests');
+  if (normalizedPath === '/community/reward/claim' && isWrite) return game('social', 'rewards', 'community-rewards');
+
+  // Progression systems.
+  if ((normalizedPath === '/prestige' || normalizedPath.startsWith('/prestige/')) && isWrite) return game('prestige');
+  if (normalizedPath === '/mastery/upgrade' && isWrite) return game('upgrades', 'mastery');
+  if (['/boosters/activate', '/automation/buy', '/turbo/activate'].includes(normalizedPath) && isWrite) {
+    return game('upgrades', 'boosters');
+  }
+  if (normalizedPath === '/cosmetics/buy' && isWrite) return game('upgrades', 'cosmetics');
   if ([
-    '/streak/claim', '/quests/claim', '/community/reward/claim', '/follow-reward',
-  ].includes(normalizedPath)) return 'rewards';
-  if (normalizedPath === '/offline/claim') return 'offline';
-  if ([
-    '/frenzy/start', '/frenzy/arm', '/frenzy/claim',
-    '/frenzy/thank-you', '/frenzy/offline-reward/ack',
-  ].includes(normalizedPath)) return 'events';
-  return null;
+    '/upgrade', '/upgrade/batch', '/upgrade/all', '/chain-patcher/buy', '/altar/sacrifice',
+  ].includes(normalizedPath) && isWrite) return game('upgrades');
+
+  // Events, global buffs, and player-choice systems.
+  if (normalizedPath === '/world-event' && isRead) return game('events', 'world-events');
+  if (normalizedPath.startsWith('/frenzy/') && !normalizedPath.startsWith('/frenzy/simulator/')) {
+    return game('events', 'frenzy');
+  }
+  if (['/global-boosters', '/global-booster-announcement'].includes(normalizedPath) && isRead) {
+    return game('global-boosters');
+  }
+  if (normalizedPath === '/global-boosters/activate' && isWrite) return game('global-boosters');
+  if (normalizedPath === '/alignment/status' && isRead) return game('alignment');
+  if (normalizedPath === '/alignment/choose' && isWrite) return game('alignment');
+
+  // Player-facing utility and community surfaces.
+  if (normalizedPath === '/offline/claim' && isWrite) return game('offline');
+  if (normalizedPath === '/notifications' && (isRead || isWrite)) return game('notifications');
+  if ((normalizedPath === '/popups/config' && isRead) || (normalizedPath === '/popups/track' && isWrite)) {
+    return game('popups');
+  }
+  if (normalizedPath === '/tutorial/first-roll/status' && isRead) return game('tutorials');
+  if (normalizedPath === '/tutorial/first-roll/complete' && isWrite) return game('tutorials');
+  if (normalizedPath === '/feedback' && isWrite) return game('feedback');
+
+  // Read-only pages and paid-product entry points.
+  if (['/leaderboard', '/leaderboards'].includes(normalizedPath) && isRead) return game('leaderboards');
+  if (normalizedPath === '/collection' && isRead) return game('collection');
+  if ((normalizedPath === '/products' && isRead) || (normalizedPath === '/payments/reconcile' && isWrite)) {
+    return game('purchases');
+  }
+
+  return [];
+}
+
+/** Backwards-compatible single-feature helper for callers and focused tests. */
+export function globalFeatureForRequest(method: string, path: string): GlobalFeatureId | null {
+  const features = globalFeaturesForRequest(method, path);
+  return features.length ? features[features.length - 1]! : null;
 }
 
 function unquote(value: string): string {
@@ -95,6 +191,15 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
   if (lines.length === 1) {
     const line = lines[0]!;
     if (/^(?:features|feature\s+list)$/i.test(line)) return { kind: 'feature-list' };
+
+    const maintenanceMatch = /^maintenance\\s+(on|off|enable|disable)(?:\\s+([\\s\\S]+))?$/i.exec(line);
+    if (maintenanceMatch) {
+      const maintenanceEnabled = /^(on|enable)$/i.test(maintenanceMatch[1]!);
+      const reason = maintenanceEnabled
+        ? (unquote(maintenanceMatch[2] ?? '') || 'The game is temporarily under maintenance.').slice(0, 300)
+        : '';
+      return { kind: 'feature', feature: 'gameplay', enabled: !maintenanceEnabled, reason };
+    }
 
     const featureMatch = /^feature\s+([a-z-]+)\s+(disable|off|enable|on)(?:\s+([\s\S]+))?$/i.exec(line);
     if (featureMatch) {
