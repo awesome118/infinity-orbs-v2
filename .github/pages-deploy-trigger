@@ -47,3 +47,4 @@ Retry prompt: CLI shortcut parser captures the numeric token then validates it, 
 Retry prompt: corrected the expected newline in the exponential coin grant test.
 
 Deploy prompt: add nine global feature switches and enforce them on server routes.
+Admin feature switches: master maintenance, granular feature controls, and route-map enforcement.
