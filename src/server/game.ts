@@ -8740,7 +8740,7 @@ export async function createFrenzySimulatorPost(requestedRarity: unknown): Promi
     const state = await loadRaw({ registerActivity: false });
     const ownerUsername = String(context.username ?? state.username ?? 'Redditor')
       .trim()
-      .replace(/^u\\//i, '') || 'Redditor';
+      .replace(/^u\//i, '') || 'Redditor';
     const subredditName = String(context.subredditName ?? 'infinityorbs').trim() || 'infinityorbs';
     const createdAt = Date.now();
     const expiresAt = frenzyPostExpiresAt(createdAt);
