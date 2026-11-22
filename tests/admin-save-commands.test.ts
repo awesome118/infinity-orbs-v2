@@ -68,6 +68,11 @@ test('Execute As supports numeric paths into existing save arrays', () => {
   assert.equal(result.state.dailyQuests[0].progress, 3);
 });
 
+test('Execute As can assign values to nullable top-level save fields', () => {
+  const result = applyAdminSaveCommands(state(), 'set lastRollAt 0');
+  assert.equal(result.state.lastRollAt, 0);
+});
+
 test('Execute As can initialize optional nested save objects without replacing other fields', () => {
   const result = applyAdminSaveCommands(state(), 'set activeBoosters.fortune 123456789');
   assert.deepEqual(result.state.activeBoosters, { fortune: 123456789 });
