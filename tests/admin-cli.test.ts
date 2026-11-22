@@ -42,6 +42,11 @@ test('CLI maps player grants and cooldown actions to guarded save commands', () 
     commands: 'add shards 10\nadd lifetimeShards 10',
     invalidateRollTicket: false,
   });
+  assert.deepEqual(parseAdminCliCommand('give coins 1e50'), {
+    kind: 'player-save',
+    commands: 'add coins 1e+50\\nadd lifetimeCoins 1e+50',
+    invalidateRollTicket: false,
+  });
   assert.deepEqual(parseAdminCliCommand('cooldown ready'), {
     kind: 'player-save',
     commands: 'set lastRollAt 0',
