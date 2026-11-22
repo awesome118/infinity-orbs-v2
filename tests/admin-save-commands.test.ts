@@ -19,6 +19,7 @@ function state() {
     masterySkills: { continuumLuck: 0 },
     automations: { autoUpgrade: false },
     streak: { count: 3 },
+    dailyQuests: [{ progress: 1, claimed: false }],
   };
 }
 
@@ -60,6 +61,11 @@ test('Execute As rejects unsafe numeric balances and invalid arithmetic', () => 
   assert.throws(() => applyAdminSaveCommands(state(), 'subtract coins 101'), /finite and non-negative/);
   assert.throws(() => applyAdminSaveCommands(state(), 'add username 1'), /numeric/);
   assert.throws(() => applyAdminSaveCommands(state(), 'set coins Infinity'));
+});
+
+test('Execute As supports numeric paths into existing save arrays', () => {
+  const result = applyAdminSaveCommands(state(), 'add dailyQuests.0.progress 2');
+  assert.equal(result.state.dailyQuests[0].progress, 3);
 });
 
 test('Execute As can initialize optional nested save objects without replacing other fields', () => {
