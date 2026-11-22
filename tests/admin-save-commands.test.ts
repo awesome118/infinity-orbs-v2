@@ -13,6 +13,8 @@ function state() {
     level: 3,
     xp: 120,
     highestRarity: 10,
+    lastRollAt: null,
+    activeCosmetic: 'default',
     collection: { '10': 4 },
     upgrades: { speed: 2, luck: 1 },
     prestigeUpgrades: { instantReveal: 0 },
@@ -59,7 +61,7 @@ test('Execute As rejects internal metadata, external Codex storage, and prototyp
 test('Execute As rejects unsafe numeric balances and invalid arithmetic', () => {
   assert.throws(() => applyAdminSaveCommands(state(), 'set shards -1'), /non-negative/);
   assert.throws(() => applyAdminSaveCommands(state(), 'subtract coins 101'), /finite and non-negative/);
-  assert.throws(() => applyAdminSaveCommands(state(), 'add username 1'), /numeric/);
+  assert.throws(() => applyAdminSaveCommands(state(), 'add activeCosmetic 1'), /numeric/);
   assert.throws(() => applyAdminSaveCommands(state(), 'set coins Infinity'));
 });
 
