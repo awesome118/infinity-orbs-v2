@@ -2336,7 +2336,6 @@ function App() {
   useEffect(() => {
     if (!state) return;
     const lastRollAt = Number(state.lastRollAt ?? 0);
-    if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) return;
     const activeInstances = alignmentStatus?.activeInstances ??
       state.alignmentActiveInstances ?? [];
     const timingState: PlayerState = {
