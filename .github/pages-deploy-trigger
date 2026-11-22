@@ -35,3 +35,5 @@ Deploy prompt: faster rarity animations and multicolor gradients for rarity tier
 Deploy prompt: trusted-admin Execute As save editor, protected player command writes, and hue-synchronized animated orb borders.
 
 Retry prompt: fix Execute As command numeric result type-check and rerun regression tests.
+
+Deploy prompt: one-shot Admin CLI execution targets, global menu maintenance control with developer reason, and server-authorized player save commands.
