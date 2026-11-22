@@ -100,7 +100,7 @@ export function globalFeaturesForRequest(method: string, path: string): GlobalFe
   const isRead = verb === 'GET' || verb === 'HEAD';
   if (!isWrite && !isRead) return [];
 
-  const normalizedPath = String(path ?? '').split('?')[0]!.replace(/^\\/api(?=\\/)/, '');
+  const normalizedPath = String(path ?? '').split('?')[0]!.replace(/^\/api(?=\/)/, '');
   if (normalizedPath === '/chat/report' || normalizedPath.startsWith('/dev/')) return [];
 
   const game = (...features: GlobalFeatureId[]): GlobalFeatureId[] => ['gameplay', ...features];
@@ -127,14 +127,14 @@ export function globalFeaturesForRequest(method: string, path: string): GlobalFe
   if (normalizedPath.startsWith('/combat/arena/')) {
     return isWrite ? gameWrite('combat', 'arena') : game('combat', 'arena');
   }
-  if (normalizedPath === '/combat/dungeon') return gameWrite('combat', 'dungeons');
-  if (normalizedPath === '/combat/tactics') return gameWrite('combat', 'combat-tactics');
-  if (normalizedPath === '/combat/upgrades/buy') return gameWrite('combat', 'combat-upgrades');
-  if (normalizedPath === '/combat/strategy-guide/buy') return gameWrite('combat', 'strategy-guide');
-  if (normalizedPath === '/combat/equip') return gameWrite('combat', 'gear', 'gear-equipping');
-  if (normalizedPath === '/combat/gear/scrap') return gameWrite('combat', 'gear', 'gear-scrapping');
-  if (normalizedPath === '/combat/forge') return gameWrite('combat', 'gear', 'gear-forge');
-  if (normalizedPath === '/combat/auto-scrap') return gameWrite('combat', 'gear', 'gear-auto-scrap');
+  if (normalizedPath === '/combat/dungeon' && isWrite) return gameWrite('combat', 'dungeons');
+  if (normalizedPath === '/combat/tactics' && isWrite) return gameWrite('combat', 'combat-tactics');
+  if (normalizedPath === '/combat/upgrades/buy' && isWrite) return gameWrite('combat', 'combat-upgrades');
+  if (normalizedPath === '/combat/strategy-guide/buy' && isWrite) return gameWrite('combat', 'strategy-guide');
+  if (normalizedPath === '/combat/equip' && isWrite) return gameWrite('combat', 'gear', 'gear-equipping');
+  if (normalizedPath === '/combat/gear/scrap' && isWrite) return gameWrite('combat', 'gear', 'gear-scrapping');
+  if (normalizedPath === '/combat/forge' && isWrite) return gameWrite('combat', 'gear', 'gear-forge');
+  if (normalizedPath === '/combat/auto-scrap' && isWrite) return gameWrite('combat', 'gear', 'gear-auto-scrap');
   if (normalizedPath.startsWith('/combat/')) return isWrite ? gameWrite('combat') : game('combat');
 
   // Social parent covers community interaction; narrow switches isolate each action.
@@ -314,7 +314,7 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
       return { kind: 'feature', feature: 'gameplay', enabled: !maintenanceEnabled, reason };
     }
 
-    const readOnlyMatch = /^read-only\\s+(on|off|enable|disable)(?:\\s+([\\s\\S]+))?$/i.exec(line);
+    const readOnlyMatch = /^read-only\s+(on|off|enable|disable)(?:\s+([\s\S]+))?$/i.exec(line);
     if (readOnlyMatch) {
       const readOnlyEnabled = /^(on|enable)$/i.test(readOnlyMatch[1]!);
       const reason = readOnlyEnabled
