@@ -2453,3 +2453,15 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
     animation: none !important;
   }
 }
+
+/* Preserve existing orbit counter-rotation and Codex unlock pulse while the
+   newly extended rarity palette slowly shifts hue. */
+.io-ui .io-orbit-satellite-core.io-rarity-color-cycle {
+  animation: orbit-ccw 36s linear infinite, io-rarity-color-cycle 48s linear infinite;
+}
+.io-rarity-orb-icon.io-rarity-color-cycle.is-unlocked {
+  animation: io-rarity-orb-pulse 3.2s ease-in-out infinite, io-rarity-color-cycle 48s linear infinite;
+}
+.io-rarity-orb-icon.io-rarity-color-cycle.is-locked {
+  animation: io-rarity-color-cycle 48s linear infinite;
+}
