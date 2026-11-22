@@ -10,6 +10,7 @@ import { getServerMonitorSnapshot, estimateKnownRedisStorage } from '../server/s
 import { auditKnownRedisStorage } from '../server/redis-storage-audit.js';
 import { getImpressionDashboard } from '../server/impressions.js';
 import { APP_VERSION } from '../shared/version.js';
+import { applyAdminSaveCommands } from '../shared/admin-save-commands.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -362,6 +363,12 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
         }
         case '/context':
           return response({ username: context.username ?? null, userId: context.userId ?? null, subredditName: context.subredditName ?? null, postId: context.postId ?? null });
+        case '/execute-as/save': {
+          const username = String(query.get('username') ?? '');
+          const userId = requireCurrentProfile(username);
+          const state = await game.loadRaw({ registerActivity: false });
+          return response({ ok: true, username: context.username, userId, save: state, codexStoredSeparately: false });
+        }
         case '/server-monitor':
           return response(getServerMonitorSnapshot());
         case '/server-monitor/storage':
@@ -519,6 +526,27 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
     if (method !== 'POST') return fail('Method not supported by the Pages Admin Console.', 405);
 
     switch (path) {
+      case '/execute-as/execute': {
+        const username = String(body.username ?? '');
+        requireCurrentProfile(username);
+        const result = await withPlayerMutationLock(async () => {
+          const current = await game.loadRaw({ registerActivity: false });
+          const applied = applyAdminSaveCommands(current as unknown as Record<string, unknown>, String(body.commands ?? ''));
+          const nextState = applied.state as unknown as Awaited<ReturnType<typeof game.loadRaw>>;
+          nextState.username = context.username;
+          await saveCurrentState(nextState);
+          return {
+            ok: true,
+            username: context.username,
+            userId: context.userId,
+            stateRevision: nextState.stateRevision,
+            results: applied.results,
+            codexStoredSeparately: false,
+            localOnly: true,
+          };
+        });
+        return response(result);
+      }
       case '/combat-lab/action':
         return response(await combat.adminCombatLabAction(body));
       case '/diagnostic-logs/clear-all':
