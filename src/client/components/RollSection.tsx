@@ -629,7 +629,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       <div ref={rollStageRef} className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
-          className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
+          className={`absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700 ${orbInfo?.animated ? 'io-rarity-color-cycle' : ''}`}
           style={{
             backgroundColor: orbInfo ? orbInfo.color : '#6366f1',
           }}
@@ -1194,7 +1194,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
                       {isBest && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
                       <span>1/{formatRarity(orb.rarity, orb.isInfinity)}</span>
                     </div>
-                    <span className="font-bold text-[10px]" style={{ color: info.color }}>
+                    <span className={`font-bold text-[10px] ${info.animated ? 'io-rarity-color-cycle' : ''}`} style={{ color: info.color }}>
                       {info.tier}
                     </span>
                   </div>
@@ -1314,7 +1314,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
           ) : (
             <p className="field-empty">Your first Orb will appear here after you roll.</p>
           )}
-          {displayOrb && orbInfo && <div className="field-stat-row mt-3 !border-t-0 !pt-0"><span>Continuum class</span><strong style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>}
+          {displayOrb && orbInfo && <div className="field-stat-row mt-3 !border-t-0 !pt-0"><span>Continuum class</span><strong className={orbInfo.animated ? 'io-rarity-color-cycle' : ''} style={{ color: orbInfo.color }}>{orbInfo.tier}</strong></div>}
         </section>
 
         <section className="field-card">
