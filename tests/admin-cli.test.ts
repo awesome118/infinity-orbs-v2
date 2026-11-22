@@ -77,5 +77,7 @@ test('CLI enforces positive and bounded grant arguments', () => {
   assert.throws(() => parseAdminCliCommand('give shards 1.5'), /whole numbers/);
   assert.throws(() => parseAdminCliCommand('offline add -10'), /finite, non-negative/);
   assert.throws(() => parseAdminCliCommand('boost fortune 20000'), /between 1 and 10,080/);
-  assert.throws(() => parseAdminCliCommand('menus disable ' + 'x'.repeat(400)), /reason/);
+  const longReason = parseAdminCliCommand('menus disable ' + 'x'.repeat(400));
+  assert.equal(longReason.kind, 'menus');
+  if (longReason.kind === 'menus') assert.equal(longReason.reason.length, 300);
 });
