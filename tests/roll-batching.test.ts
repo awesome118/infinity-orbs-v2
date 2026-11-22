@@ -226,6 +226,6 @@ test('invalid and future saved roll timestamps cannot strand a player on cooldow
   assert.equal(normalizeLastRollTimestamp(null, now), 0);
   assert.equal(normalizeLastRollTimestamp(-1, now), 0);
   assert.equal(normalizeLastRollTimestamp('1000', now), 0);
-  assert.equal(normalizeLastRollTimestamp(now + 60_000, now), now);
+  assert.equal(normalizeLastRollTimestamp(now + 60_000, now), 0);
   assert.equal(normalizeLastRollTimestamp(now - 5_000, now), now - 5_000);
 });
