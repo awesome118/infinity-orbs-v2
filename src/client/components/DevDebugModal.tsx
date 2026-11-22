@@ -264,7 +264,7 @@ const ADMIN_CONSOLE_SECTIONS: AdminConsoleSection[] = [
     { id: 'player-list', label: 'Player List', target: 'io-tool-player-list' },
     { id: 'stat-spy', label: 'Stat Spy', target: 'io-tool-stat-spy' },
     { id: 'player-spy', label: 'Player Spy', target: 'io-tool-player-spy' },
-    { id: 'execute-as', label: 'Execute As', target: 'io-tool-execute-as' },
+    { id: 'admin-cli', label: 'Command Line', target: 'io-tool-admin-cli' },
     { id: 'guild-chat', label: 'Guild Administration & Chat', target: 'io-tool-guild-chat' },
   ] },
   { id: 'combat', label: 'Combat', target: 'io-combat-tools', tools: [
@@ -556,7 +556,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [targetUser, setTargetUser] = useState('');
   const [executeAsUsername, setExecuteAsUsername] = useState('');
   const [executeAsCommands, setExecuteAsCommands] = useState('');
-  const [executeAsSavePreview, setExecuteAsSavePreview] = useState('');
+  const [cliHistory, setCliHistory] = useState<Array<{ command: string; output: string; ok: boolean; at: number }>>([]);
   const [executeAsResult, setExecuteAsResult] = useState('');
   const [executeAsLoading, setExecuteAsLoading] = useState(false);
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
@@ -1340,69 +1340,119 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     }
   };
 
-  const loadExecuteAsSave = async (quiet = false) => {
-    const username = executeAsUsername.trim().replace(/^u\//i, '');
-    if (!username) {
-      setExecuteAsResult('Enter a Reddit username first.');
-      return false;
-    }
-    setExecuteAsLoading(true);
-    try {
-      const response = await fetch('/api/dev/execute-as/save?username=' + encodeURIComponent(username), { cache: 'no-store' });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Could not load the target player save.');
-      setExecuteAsUsername(data.username ?? username);
-      setExecuteAsSavePreview(JSON.stringify(data.save ?? {}, null, 2));
-      if (!quiet) setExecuteAsResult(
-        'Loaded u/' + (data.username ?? username) + ' · ID ' + String(data.userId ?? '').slice(-10) +
-        (data.codexStoredSeparately ? '\nThe Codex is stored separately and is not included in this save preview.' : ''),
-      );
-      return true;
-    } catch (error: any) {
-      setExecuteAsResult('Load failed: ' + (error?.message || 'Could not load the target player save.'));
-      return false;
-    } finally {
-      setExecuteAsLoading(false);
-    }
+  const appendCliHistory = (command: string, output: string, ok: boolean) => {
+    setExecuteAsResult(output);
+    setCliHistory(previous => [...previous.slice(-29), { command, output, ok, at: Date.now() }]);
   };
 
-  const executeAs = async () => {
-    const username = executeAsUsername.trim().replace(/^u\//i, '');
-    const commandCount = executeAsCommands.split(/\r?\n/).filter(line => line.trim() && !line.trim().startsWith('#')).length;
-    if (!username) {
-      setExecuteAsResult('Enter a Reddit username first.');
+  const runAdminCli = async () => {
+    const command = executeAsCommands.trim();
+    if (!command) {
+      appendCliHistory('', 'Enter a command.', false);
       return;
     }
-    if (commandCount < 1) {
-      setExecuteAsResult('Enter at least one command.');
+
+    const arm = /^(?:as|target)\s+(.+)$/i.exec(command);
+    if (arm) {
+      const username = arm[1]!.trim().replace(/^u\//i, '');
+      if (!/^[A-Za-z0-9_-]{1,20}$/.test(username)) {
+        appendCliHistory(command, 'Invalid Reddit username. Use letters, numbers, underscores, or hyphens.', false);
+        setExecuteAsCommands('');
+        return;
+      }
+      setExecuteAsUsername(username);
+      appendCliHistory(command, 'Armed u/' + username + '. The next player command will run against that account, then the target will clear.', true);
+      setExecuteAsCommands('');
       return;
     }
+
+    if (/^(?:target\s+clear|clear\s+target|as\s+off)$/i.test(command)) {
+      setExecuteAsUsername('');
+      appendCliHistory(command, 'One-shot player target cleared.', true);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    if (/^(?:help|\?)$/i.test(command)) {
+      appendCliHistory(command, [
+        'as <username>                 Arm the next player command for one account',
+        'target clear                  Disarm the player target',
+        'give coins|shards|dust|offline|rolls <amount>',
+        'set <path> <JSON value>       Example: set coins 1e50',
+        'add|subtract <path> <amount>  Example: add shards 100',
+        'delete <path>                 Example: delete activeBoosters.fortune',
+        'upgrade <id> <level>          Example: upgrade speed 20',
+        'mastery <id> <level>          Example: mastery continuumLuck 50',
+        'prestige-upgrade <id> <level>',
+        'boost <fortune|hyperdrive|barrage|prosperity|ascension> <minutes>',
+        'offline add|set <amount>      cooldown ready',
+        'menus disable [reason]        menus enable',
+        'announce <message>            announce clear',
+        '',
+        'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
+        'Global menu and announcement commands never run as a player.',
+        'Only registered commands are accepted. JavaScript and shell commands are not executed.',
+      ].join('\n'), true);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    if (/^clear$/i.test(command)) {
+      setCliHistory([]);
+      setExecuteAsResult('');
+      setExecuteAsCommands('');
+      return;
+    }
+
+    const isGlobal = /^(?:menus?|announce(?:ment)?)\b/i.test(command);
+    const target = executeAsUsername.trim().replace(/^u\//i, '');
+    if (isGlobal && target) {
+      appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
+      setExecuteAsCommands('');
+      return;
+    }
+    if (!isGlobal && !target) {
+      appendCliHistory(command, 'No player target is armed. Enter "as <username>" before a player command.', false);
+      setExecuteAsCommands('');
+      return;
+    }
+
     if (!window.confirm(
-      'Execute ' + commandCount + ' save command(s) against u/' + username +
-      '? This writes directly to that player’s saved progression.',
+      isGlobal
+        ? 'Run this global Admin CLI command?'
+        : 'Run the next command as u/' + target + '? The one-shot target will clear after this attempt.',
     )) return;
 
     setExecuteAsLoading(true);
-    setExecuteAsResult('');
+    setExecuteAsCommands('');
+    if (!isGlobal) setExecuteAsUsername('');
     try {
-      const response = await fetch('/api/dev/execute-as/execute', {
+      const response = await fetch('/api/dev/cli/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, commands: executeAsCommands }),
+        body: JSON.stringify({ command, ...(isGlobal ? {} : { username: target }) }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Execute As failed.');
-      const summary = [
-        'Committed ' + (data.results?.length ?? 0) + ' command(s) to u/' + (data.username ?? username) + '.',
-        'Save revision: ' + String(data.stateRevision ?? '?'),
-        ...(data.codexStoredSeparately ? ['The separately stored Codex was left unchanged.'] : []),
-        '',
-        JSON.stringify(data.results ?? [], null, 2),
-      ].join('\n');
-      setExecuteAsResult(summary);
-      await loadExecuteAsSave(true);
+      if (!response.ok) throw new Error(data.error || 'Admin CLI command failed.');
+
+      let output = '';
+      if (data.scope === 'everyone') {
+        output = data.menuControl
+          ? data.menuControl.enabled
+            ? 'Menus enabled for everyone.'
+            : 'Menus disabled for everyone.\nDeveloper reason: ' + data.menuControl.reason
+          : data.announcement?.message
+            ? 'Developer announcement updated.'
+            : 'Developer announcement cleared.';
+      } else {
+        output = 'Executed ' + (data.results?.length ?? 0) + ' save operation(s) as u/' + (data.username ?? target) + '.';
+        output += '\nSave revision: ' + String(data.stateRevision ?? '?');
+        if (data.invalidatedRollTicket) output += '\nThe player’s pending roll ticket was invalidated.';
+        output += '\n\n' + JSON.stringify(data.results ?? [], null, 2);
+      }
+      appendCliHistory(command, output, true);
     } catch (error: any) {
-      setExecuteAsResult('Execution failed: ' + (error?.message || 'Execute As failed.'));
+      appendCliHistory(command, 'Command failed: ' + (error?.message || 'Unknown Admin CLI error.'), false);
     } finally {
       setExecuteAsLoading(false);
     }
@@ -6715,79 +6765,110 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
           </div>
         </details>
 
-        <section id="io-tool-execute-as" hidden={activeAdminTool !== 'execute-as'} className={panelBase + ' border border-rose-500/30'}>
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-200">
-            <Wand2 className="w-4 h-4" /> Execute As Player
+        <section id="io-tool-admin-cli" hidden={activeAdminTool !== 'admin-cli'} className={panelBase + ' border border-rose-500/30'}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-200">
+                <Wand2 className="w-4 h-4" /> Admin Command Line
+              </div>
+              <p className="mt-1 text-[10px] leading-4 text-slate-400">
+                Arm a player with <code>as username</code>. Exactly the next player command runs against that account, then the target clears automatically. Global commands operate on everyone.
+              </p>
+            </div>
+            <div className={'rounded-lg border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider ' + (
+              executeAsUsername
+                ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+                : 'border-slate-700 bg-slate-900 text-slate-500'
+            )}>
+              {executeAsUsername ? 'Armed · u/' + executeAsUsername : 'No player target'}
+            </div>
           </div>
-          <p className="text-[10px] leading-4 text-slate-400">
-            Run validated save commands against another player’s account. This edits their saved gameplay state under that account’s mutation lock. It does not impersonate Reddit or send gameplay requests as the player.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <input
-              value={executeAsUsername}
-              onChange={event => setExecuteAsUsername(event.target.value)}
-              onKeyDown={event => { if (event.key === 'Enter') void loadExecuteAsSave(); }}
-              placeholder="Reddit username, without u/"
-              aria-label="Target Reddit username for Execute As"
-              className="min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-            />
-            <button type="button"
-              disabled={executeAsLoading || !executeAsUsername.trim()}
-              onClick={() => void loadExecuteAsSave()}
-              className={buttonBase + ' bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-4 py-2'}
-            >
-              <Eye className="inline w-3.5 h-3.5 mr-1" /> Load Save
-            </button>
-          </div>
-          <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 space-y-1.5">
-            <div className="text-[9px] font-black uppercase tracking-wider text-amber-200">Command syntax</div>
-            <div className="font-mono text-[10px] leading-5 text-slate-300 whitespace-pre-wrap">set coins 1e50{"\n"}add shards 1000{"\n"}set upgrades.speed 20{"\n"}set masterySkills.continuumLuck 50{"\n"}delete activeBoosters.fortune</div>
-            <p className="text-[9px] text-slate-500">
-              Supported operations: set, add, subtract, delete. Use dot paths into the saved state. Values accept JSON, numbers, booleans, or unquoted single-word strings. Up to 50 commands per batch.
+          <div className="rounded-xl border border-slate-800 bg-black/30 p-3 space-y-2">
+            <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Examples</div>
+            <pre className="whitespace-pre-wrap break-words text-[10px] leading-5 font-mono text-slate-300">{'as shadow_fen\n' +
+              'give coins 1000000\n' +
+              'upgrade speed 20\n' +
+              'set masterySkills.continuumLuck 50\n' +
+              'cooldown ready\n\n' +
+              'menus disable "The developer has disabled the menus."\n' +
+              'menus enable\n' +
+              'announce "Maintenance is complete."\n' +
+              'announce clear'}</pre>
+            <p className="text-[9px] leading-4 text-slate-500">
+              Also supports set, add, subtract, delete, give shards/dust/offline/rolls, mastery, prestige-upgrade, boost, and offline set/add. Up to 50 save commands per batch.
             </p>
-            <p className="text-[9px] text-amber-300/80">
-              Protected: account identity, save revision/generation, payment receipts, and the separately stored Codex. Arbitrary JavaScript is not evaluated.
+            <p className="text-[9px] leading-4 text-amber-300/80">
+              Player commands edit the target’s persisted game state using that account’s save lock. They do not impersonate Reddit or send arbitrary API requests. Global commands cannot be run while a player target is armed.
             </p>
           </div>
           <textarea
             value={executeAsCommands}
             onChange={event => setExecuteAsCommands(event.target.value)}
-            rows={7}
+            onKeyDown={event => {
+              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                event.preventDefault();
+                void runAdminCli();
+              }
+            }}
+            rows={4}
             spellCheck={false}
-            placeholder={'# One command per line\nset coins 1000000\nadd shards 500\nset upgrades.speed 20'}
-            aria-label="Execute As command script"
-            className="w-full rounded-xl border border-slate-700 bg-black/40 p-3 text-[11px] leading-5 font-mono text-slate-100 resize-y"
+            placeholder={'Enter a command, then press Run Command…\nas shadow_fen'}
+            aria-label="Admin CLI command input"
+            className="w-full rounded-xl border border-slate-700 bg-black/50 p-3 text-[11px] leading-5 font-mono text-slate-100 resize-y"
           />
           <div className="flex flex-wrap gap-2">
             <button type="button"
-              disabled={executeAsLoading || !executeAsUsername.trim() || !executeAsCommands.trim()}
-              onClick={() => void executeAs()}
+              disabled={executeAsLoading || !executeAsCommands.trim()}
+              onClick={() => void runAdminCli()}
               className={buttonBase + ' bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-4 py-2'}
             >
-              <Wand2 className="inline w-3.5 h-3.5 mr-1" /> {executeAsLoading ? 'Working…' : 'Execute Commands'}
+              <Wand2 className="inline w-3.5 h-3.5 mr-1" /> {executeAsLoading ? 'Executing…' : 'Run Command'}
             </button>
             <button type="button"
-              disabled={executeAsLoading || !executeAsCommands.trim()}
-              onClick={() => setExecuteAsCommands('')}
+              disabled={executeAsLoading || !executeAsUsername}
+              onClick={() => { setExecuteAsUsername(''); appendCliHistory('target clear', 'One-shot player target cleared.', true); }}
               className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 px-3 py-2'}
             >
-              Clear Commands
+              Clear Target
+            </button>
+            <button type="button"
+              disabled={executeAsLoading || cliHistory.length === 0}
+              onClick={() => { setCliHistory([]); setExecuteAsResult(''); }}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 px-3 py-2'}
+            >
+              Clear History
+            </button>
+            <button type="button"
+              disabled={executeAsLoading}
+              onClick={() => { setExecuteAsCommands('help'); }}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-cyan-200 px-3 py-2'}
+            >
+              Help
             </button>
           </div>
           {executeAsResult && (
             <pre role="status" className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-emerald-200">{executeAsResult}</pre>
           )}
-          <details className="rounded-xl border border-slate-800 bg-black/25 p-3">
-            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Loaded player save preview (JSON)</summary>
-            <textarea
-              readOnly
-              value={executeAsSavePreview || 'No player save loaded. Enter a username and choose Load Save.'}
-              rows={12}
-              spellCheck={false}
-              className="mt-2 w-full max-h-[32rem] rounded-lg border border-slate-800 bg-black/50 p-2 text-[9px] leading-4 font-mono text-slate-300 resize-y"
-              onFocus={event => event.currentTarget.select()}
-            />
-          </details>
+          <div className="rounded-xl border border-slate-800 bg-black/25 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wider text-slate-500">
+              <span>Command history</span><span>{cliHistory.length}/30</span>
+            </div>
+            {cliHistory.length ? (
+              <div className="max-h-72 space-y-2 overflow-auto">
+                {cliHistory.map((entry, index) => (
+                  <div key={entry.at.toString() + '-' + index} className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <code className="min-w-0 break-all text-[10px] text-cyan-200">{entry.command || 'Console'}</code>
+                      <span className={'shrink-0 text-[8px] font-black uppercase ' + (entry.ok ? 'text-emerald-300' : 'text-rose-300')}>{entry.ok ? 'OK' : 'FAILED'}</span>
+                    </div>
+                    <pre className="mt-1 whitespace-pre-wrap break-words text-[9px] leading-4 font-mono text-slate-400">{entry.output}</pre>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-slate-600">No commands have been run in this session.</div>
+            )}
+          </div>
         </section>
 
         <details id="io-tool-guild-chat" hidden={activeAdminTool !== 'guild-chat'} open={activeAdminTool === 'guild-chat'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
