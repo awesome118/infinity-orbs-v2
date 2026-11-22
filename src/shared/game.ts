@@ -1501,39 +1501,39 @@ const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }>
   },
   Empyrean: {
     color: '#C77DFF',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #F3D7FF, #C77DFF 52%, #581C87 100%)',
+    bgGradient: 'radial-gradient(circle at 29% 23%, #FFF7ED 0%, #FDBA74 18%, #C77DFF 43%, #6D28D9 70%, #1E1B4B 100%)',
   },
   Hyperversal: {
     color: '#355070',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #BFD7EA, #355070 52%, #14213D 100%)',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #DBEAFE 0%, #60A5FA 19%, #355070 43%, #7C3AED 70%, #111827 100%)',
   },
   Transfinite: {
     color: '#00F5D4',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00F5D4 52%, #064E3B 100%)',
+    bgGradient: 'radial-gradient(circle at 28% 24%, #CCFBF1 0%, #2DD4BF 18%, #00F5D4 42%, #3B82F6 70%, #082F49 100%)',
   },
   Metacosmic: {
     color: '#B08968',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #E8D1B8, #B08968 52%, #422006 100%)',
+    bgGradient: 'radial-gradient(circle at 29% 22%, #FEF3C7 0%, #D6A77A 20%, #B08968 42%, #A78BFA 70%, #422006 100%)',
   },
   Primordial: {
     color: '#00BFA6',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00BFA6 52%, #065F46 100%)',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #FFF7D6 0%, #F59E0B 18%, #00BFA6 44%, #047857 70%, #052E2B 100%)',
   },
   Unfathomable: {
     color: '#BE123C',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #FDA4AF, #BE123C 52%, #4C0519 100%)',
+    bgGradient: 'radial-gradient(circle at 28% 23%, #FDA4AF 0%, #BE123C 20%, #7C3AED 48%, #3B0764 72%, #1F0A1D 100%)',
   },
   Axiom: {
     color: '#F72585',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #FBCFE8, #F72585 52%, #701A75 100%)',
+    bgGradient: 'radial-gradient(circle at 29% 22%, #FBCFE8 0%, #F72585 20%, #8B5CF6 48%, #312E81 74%, #190B35 100%)',
   },
   Omniscient: {
     color: '#577590',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #D4E6F1, #577590 52%, #1F3A52 100%)',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #D4E6F1 0%, #577590 22%, #22D3EE 48%, #1D4ED8 72%, #10243A 100%)',
   },
   Omega: {
     color: '#FFFFFF',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #FFFFFF, #FFFFFF 52%, #4C1D95 100%)',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #FFFFFF 0%, #E9D5FF 19%, #A78BFA 42%, #7C3AED 68%, #2E1065 100%)',
   },
   Hyperion: {
     color: '#FF6B6B',
