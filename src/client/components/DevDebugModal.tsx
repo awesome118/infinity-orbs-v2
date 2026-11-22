@@ -1393,9 +1393,16 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
         'feature <name> enable',
         'feature gameplay disable [reason] stops all mapped game actions',
         'announce <message>            announce clear',
+        'balance list                  Show all live balance settings',
+        'balance get <key>             Read one value',
+        'balance preview <key> <value> Preview without changing it',
+        'balance set <key> <value>     Apply immediately for everyone',
+        'balance reset <key|all>       Restore default value(s)',
+        'balance history               Show retained audit revisions',
+        'balance rollback <revision>   Restore the configuration before that revision',
         '',
         'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
-        'Global menu, feature, and announcement commands never run as a player.',
+        'Global menu, feature, announcement, and balance commands never run as a player.',
         'Only registered commands are accepted. JavaScript and shell commands are not executed.',
       ].join('\n'), true);
       setExecuteAsCommands('');
@@ -1443,7 +1450,56 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       let output = '';
       if (data.localOnly) output = 'GitHub Pages simulation only. This does not change the live Devvit game.\n';
       if (data.scope === 'everyone') {
-        output += data.menuControl
+        if (data.balance) {
+          const balance = data.balance;
+          const formatValue = (value: unknown, unit: string) => {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? String(Number(numeric.toFixed(4))) + unit : String(value ?? '?');
+          };
+          if (balance.action === 'list') {
+            output += 'Live balance settings · revision ' + balance.revision + '\\n' +
+              (balance.settings ?? []).map((setting: any) =>
+                setting.key + ' = ' + formatValue(setting.value, setting.unit) +
+                ' (default ' + formatValue(setting.defaultValue, setting.unit) +
+                ', range ' + setting.min + '–' + setting.max + ')\\n  ' + setting.description,
+              ).join('\\n');
+          } else if (balance.action === 'history') {
+            output += 'Live balance history · current revision ' + balance.revision + '\\n' +
+              (balance.history?.length
+                ? balance.history.map((entry: any) =>
+                    '#' + entry.revision + ' ' + entry.action +
+                    (entry.key ? ' ' + entry.key : '') +
+                    ' by ' + (entry.updatedBy || 'unknown') +
+                    (entry.rollbackOf ? ' (rollback of #' + entry.rollbackOf + ')' : '') +
+                    ' · ' + new Date(entry.updatedAt).toLocaleString(),
+                  ).join('\\n')
+                : 'No balance changes have been made.');
+          } else if (balance.setting) {
+            const setting = balance.setting;
+            output += setting.key + ' = ' + formatValue(setting.value, setting.unit);
+            if (balance.action === 'preview') {
+              output += '\\nProposed: ' + formatValue(setting.proposedValue, setting.unit);
+              output += '\\n' + (setting.changed ? 'No changes applied.' : 'This is already the active value.');
+            }
+          } else if (balance.action === 'set') {
+            output += balance.changed
+              ? 'Updated ' + balance.key + ': ' + formatValue(balance.previousValue, '') + ' → ' + formatValue(balance.value, '') + '.\\nRevision ' + balance.revision + '.'
+              : balance.key + ' is already ' + formatValue(balance.value, '') + '. No new revision created.';
+          } else if (balance.action === 'reset') {
+            output += balance.changed
+              ? 'Reset ' + balance.key + ' to ' + formatValue(balance.value, '') + '. Revision ' + balance.revision + '.'
+              : balance.key + ' already has its default value.';
+          } else if (balance.action === 'reset-all') {
+            output += 'All live balance settings reset to defaults. Revision ' + balance.revision + '.';
+          } else if (balance.action === 'rollback') {
+            output += 'Restored the configuration from before revision #' + balance.rolledBackRevision + '. New revision: ' + balance.revision + '.';
+          } else {
+            output += JSON.stringify(balance, null, 2);
+          }
+          if (balance.action === 'set' || balance.action === 'reset' || balance.action === 'reset-all' || balance.action === 'rollback') {
+            window.dispatchEvent(new Event('io-live-balance-updated'));
+          }
+        } else output += data.menuControl
           ? data.menuControl.enabled
             ? 'Menus enabled for everyone.'
             : 'Menus disabled for everyone.\nDeveloper reason: ' + data.menuControl.reason
