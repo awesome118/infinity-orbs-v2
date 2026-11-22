@@ -106,16 +106,79 @@ test('CLI supports global feature switches with defaults, reasons, and status li
 test('global feature request mapping blocks only the intended write routes', async () => {
   const { globalFeatureForRequest } = await import('../src/shared/admin-cli.js');
   assert.equal(globalFeatureForRequest('POST', '/api/roll'), 'rolling');
-  assert.equal(globalFeatureForRequest('POST', '/auto-roll'), 'rolling');
+  assert.equal(globalFeatureForRequest('POST', '/auto-roll'), 'auto-roll');
   assert.equal(globalFeatureForRequest('POST', '/combat/beat'), 'combat');
   assert.equal(globalFeatureForRequest('POST', '/guilds/create'), 'guilds');
   assert.equal(globalFeatureForRequest('POST', '/prestige'), 'prestige');
   assert.equal(globalFeatureForRequest('POST', '/upgrade/batch'), 'upgrades');
-  assert.equal(globalFeatureForRequest('POST', '/quests/claim'), 'rewards');
+  assert.equal(globalFeatureForRequest('POST', '/quests/claim'), 'quests');
   assert.equal(globalFeatureForRequest('POST', '/offline/claim'), 'offline');
-  assert.equal(globalFeatureForRequest('POST', '/frenzy/start'), 'events');
+  assert.equal(globalFeatureForRequest('POST', '/frenzy/start'), 'frenzy');
   assert.equal(globalFeatureForRequest('POST', '/chat'), 'chat');
   assert.equal(globalFeatureForRequest('GET', '/roll'), null);
   assert.equal(globalFeatureForRequest('POST', '/frenzy/simulator/create'), null);
   assert.equal(globalFeatureForRequest('POST', '/chat/report'), null);
+});
+
+test('maintenance alias controls the gameplay master switch', () => {
+  assert.deepEqual(parseAdminCliCommand('maintenance on "Planned maintenance"'), {
+    kind: 'feature', feature: 'gameplay', enabled: false, reason: 'Planned maintenance',
+  });
+  assert.deepEqual(parseAdminCliCommand('maintenance on'), {
+    kind: 'feature', feature: 'gameplay', enabled: false, reason: 'The game is temporarily under maintenance.',
+  });
+  assert.deepEqual(parseAdminCliCommand('maintenance off'), {
+    kind: 'feature', feature: 'gameplay', enabled: true, reason: '',
+  });
+  assert.deepEqual(parseAdminCliCommand('features list'), { kind: 'feature-list' });
+});
+
+test('global feature manifest covers distinct game systems and has unique IDs', async () => {
+  const { GLOBAL_FEATURES } = await import('../src/shared/admin-cli.js');
+  const ids = GLOBAL_FEATURES.map(feature => feature.id);
+  assert.ok(ids.length >= 30);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const id of [
+    'gameplay', 'rolling', 'auto-roll', 'offline', 'upgrades', 'mastery', 'boosters',
+    'prestige', 'combat', 'dungeons', 'gear', 'skills', 'runes', 'arena',
+    'social', 'guilds', 'chat', 'sharing', 'rewards', 'daily-rewards', 'quests',
+    'community-rewards', 'events', 'frenzy', 'world-events', 'alignment',
+    'global-boosters', 'notifications', 'popups', 'tutorials', 'leaderboards',
+    'collection', 'feedback', 'purchases',
+  ]) assert.ok(ids.includes(id), 'Missing feature switch: ' + id);
+});
+
+test('global feature route map supports master, parent, and granular switches', async () => {
+  const { globalFeaturesForRequest } = await import('../src/shared/admin-cli.js');
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/roll'), ['gameplay', 'rolling']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/auto-roll'), ['gameplay', 'rolling', 'auto-roll']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/roll-ticket'), ['gameplay', 'rolling']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/dungeon'), ['gameplay', 'combat', 'dungeons']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/forge'), ['gameplay', 'combat', 'gear']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/skills/roll'), ['gameplay', 'combat', 'skills']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/runes/equip'), ['gameplay', 'combat', 'runes']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/arena/challenge'), ['gameplay', 'combat', 'arena']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/create'), ['gameplay', 'social', 'guilds']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/chat'), ['gameplay', 'social', 'chat']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/leaderboards'), ['gameplay', 'leaderboards']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/collection'), ['gameplay', 'collection']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/streak/claim'), ['gameplay', 'rewards', 'daily-rewards']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/quests/claim'), ['gameplay', 'rewards', 'quests']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/claim'), ['gameplay', 'events', 'frenzy']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/world-event'), ['gameplay', 'events', 'world-events']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/global-boosters/activate'), ['gameplay', 'global-boosters']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/notifications'), ['gameplay', 'notifications']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/feedback'), ['gameplay', 'feedback']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/products'), ['gameplay', 'purchases']);
+});
+
+test('global feature gate leaves admin, moderation reports, and telemetry available', async () => {
+  const { globalFeaturesForRequest } = await import('../src/shared/admin-cli.js');
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/dev/cli/execute'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/chat/report'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/activity/heartbeat'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/impressions'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/impressions/conversion'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/diagnostics/upgrade-rollback'), []);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/simulator/create'), []);
 });
