@@ -554,6 +554,7 @@ const FAKE_CCU_KEY_PREFIX = 'io:fake-ccu:';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
+const GLOBAL_MENU_CONTROL_KEY = 'io:global-menu-control:v1';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
@@ -1097,6 +1098,50 @@ export interface DeveloperAnnouncement {
   updatedBy: string;
 }
 export const DEFAULT_DEVELOPER_ANNOUNCEMENT = '';
+
+export interface GlobalMenuControl {
+  enabled: boolean;
+  reason: string;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+const DEFAULT_GLOBAL_MENU_CONTROL: GlobalMenuControl = {
+  enabled: true,
+  reason: '',
+  updatedAt: 0,
+  updatedBy: '',
+};
+
+export async function getGlobalMenuControl(): Promise<GlobalMenuControl> {
+  const raw = await redis.get(GLOBAL_MENU_CONTROL_KEY);
+  if (!raw) return { ...DEFAULT_GLOBAL_MENU_CONTROL };
+  const parsed = parseStoredJson<Partial<GlobalMenuControl>>(raw);
+  if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_GLOBAL_MENU_CONTROL };
+  return {
+    enabled: parsed.enabled !== false,
+    reason: String(parsed.reason ?? '').slice(0, 300),
+    updatedAt: Number.isFinite(Number(parsed.updatedAt)) ? Math.max(0, Number(parsed.updatedAt)) : 0,
+    updatedBy: String(parsed.updatedBy ?? '').slice(0, 100),
+  };
+}
+
+export async function setGlobalMenuControl(
+  enabled: boolean,
+  reason: string,
+  updatedBy: string,
+): Promise<GlobalMenuControl> {
+  const next: GlobalMenuControl = {
+    enabled: enabled === true,
+    reason: enabled === true
+      ? ''
+      : String(reason ?? '').trim().slice(0, 300) || 'The developer has disabled the menus.',
+    updatedAt: Date.now(),
+    updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
+  };
+  await redis.set(GLOBAL_MENU_CONTROL_KEY, JSON.stringify(next));
+  return next;
+}
 
 export async function getDeveloperAnnouncement(): Promise<DeveloperAnnouncement> {
   const raw = await redis.get(DEVELOPER_ANNOUNCEMENT_KEY);
