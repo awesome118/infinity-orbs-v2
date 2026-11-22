@@ -45,3 +45,5 @@ Retry prompt: single global menu state declaration is now before all component e
 Retry prompt: CLI shortcut parser captures the numeric token then validates it, covering exponent, zero, negative and fractional amounts.
 
 Retry prompt: corrected the expected newline in the exponential coin grant test.
+
+Deploy prompt: add nine global feature switches and enforce them on server routes.
