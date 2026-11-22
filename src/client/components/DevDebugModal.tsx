@@ -264,6 +264,7 @@ const ADMIN_CONSOLE_SECTIONS: AdminConsoleSection[] = [
     { id: 'player-list', label: 'Player List', target: 'io-tool-player-list' },
     { id: 'stat-spy', label: 'Stat Spy', target: 'io-tool-stat-spy' },
     { id: 'player-spy', label: 'Player Spy', target: 'io-tool-player-spy' },
+    { id: 'execute-as', label: 'Execute As', target: 'io-tool-execute-as' },
     { id: 'guild-chat', label: 'Guild Administration & Chat', target: 'io-tool-guild-chat' },
   ] },
   { id: 'combat', label: 'Combat', target: 'io-combat-tools', tools: [
@@ -553,6 +554,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [alignmentChoiceStatsError, setAlignmentChoiceStatsError] = useState<string | null>(null);
 
   const [targetUser, setTargetUser] = useState('');
+  const [executeAsUsername, setExecuteAsUsername] = useState('');
+  const [executeAsCommands, setExecuteAsCommands] = useState('');
+  const [executeAsSavePreview, setExecuteAsSavePreview] = useState('');
+  const [executeAsResult, setExecuteAsResult] = useState('');
+  const [executeAsLoading, setExecuteAsLoading] = useState(false);
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
   const [banDuration, setBanDuration] = useState('permanent');
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
@@ -1331,6 +1337,74 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPlayerSpyUserId('');
     } finally {
       setPlayerSpyLoading(false);
+    }
+  };
+
+  const loadExecuteAsSave = async (quiet = false) => {
+    const username = executeAsUsername.trim().replace(/^u\\//i, '');
+    if (!username) {
+      setExecuteAsResult('Enter a Reddit username first.');
+      return false;
+    }
+    setExecuteAsLoading(true);
+    try {
+      const response = await fetch('/api/dev/execute-as/save?username=' + encodeURIComponent(username), { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not load the target player save.');
+      setExecuteAsUsername(data.username ?? username);
+      setExecuteAsSavePreview(JSON.stringify(data.save ?? {}, null, 2));
+      if (!quiet) setExecuteAsResult(
+        'Loaded u/' + (data.username ?? username) + ' · ID ' + String(data.userId ?? '').slice(-10) +
+        (data.codexStoredSeparately ? '\\nThe Codex is stored separately and is not included in this save preview.' : ''),
+      );
+      return true;
+    } catch (error: any) {
+      setExecuteAsResult('Load failed: ' + (error?.message || 'Could not load the target player save.'));
+      return false;
+    } finally {
+      setExecuteAsLoading(false);
+    }
+  };
+
+  const executeAs = async () => {
+    const username = executeAsUsername.trim().replace(/^u\\//i, '');
+    const commandCount = executeAsCommands.split(/\\r?\\n/).filter(line => line.trim() && !line.trim().startsWith('#')).length;
+    if (!username) {
+      setExecuteAsResult('Enter a Reddit username first.');
+      return;
+    }
+    if (commandCount < 1) {
+      setExecuteAsResult('Enter at least one command.');
+      return;
+    }
+    if (!window.confirm(
+      'Execute ' + commandCount + ' save command(s) against u/' + username +
+      '? This writes directly to that player’s saved progression.',
+    )) return;
+
+    setExecuteAsLoading(true);
+    setExecuteAsResult('');
+    try {
+      const response = await fetch('/api/dev/execute-as/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, commands: executeAsCommands }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Execute As failed.');
+      const summary = [
+        'Committed ' + (data.results?.length ?? 0) + ' command(s) to u/' + (data.username ?? username) + '.',
+        'Save revision: ' + String(data.stateRevision ?? '?'),
+        ...(data.codexStoredSeparately ? ['The separately stored Codex was left unchanged.'] : []),
+        '',
+        JSON.stringify(data.results ?? [], null, 2),
+      ].join('\\n');
+      setExecuteAsResult(summary);
+      await loadExecuteAsSave(true);
+    } catch (error: any) {
+      setExecuteAsResult('Execution failed: ' + (error?.message || 'Execute As failed.'));
+    } finally {
+      setExecuteAsLoading(false);
     }
   };
 
@@ -6640,6 +6714,81 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
         </section>
           </div>
         </details>
+
+        <section id="io-tool-execute-as" hidden={activeAdminTool !== 'execute-as'} className={panelBase + ' border border-rose-500/30'}>
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-200">
+            <Wand2 className="w-4 h-4" /> Execute As Player
+          </div>
+          <p className="text-[10px] leading-4 text-slate-400">
+            Run validated save commands against another player’s account. This edits their saved gameplay state under that account’s mutation lock. It does not impersonate Reddit or send gameplay requests as the player.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <input
+              value={executeAsUsername}
+              onChange={event => setExecuteAsUsername(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Enter') void loadExecuteAsSave(); }}
+              placeholder="Reddit username, without u/"
+              aria-label="Target Reddit username for Execute As"
+              className="min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+            />
+            <button type="button"
+              disabled={executeAsLoading || !executeAsUsername.trim()}
+              onClick={() => void loadExecuteAsSave()}
+              className={buttonBase + ' bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 px-4 py-2'}
+            >
+              <Eye className="inline w-3.5 h-3.5 mr-1" /> Load Save
+            </button>
+          </div>
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 space-y-1.5">
+            <div className="text-[9px] font-black uppercase tracking-wider text-amber-200">Command syntax</div>
+            <div className="font-mono text-[10px] leading-5 text-slate-300 whitespace-pre-wrap">set coins 1e50{"\n"}add shards 1000{"\n"}set upgrades.speed 20{"\n"}set masterySkills.continuumLuck 50{"\n"}delete activeBoosters.fortune</div>
+            <p className="text-[9px] text-slate-500">
+              Supported operations: set, add, subtract, delete. Use dot paths into the saved state. Values accept JSON, numbers, booleans, or unquoted single-word strings. Up to 50 commands per batch.
+            </p>
+            <p className="text-[9px] text-amber-300/80">
+              Protected: account identity, save revision/generation, payment receipts, and the separately stored Codex. Arbitrary JavaScript is not evaluated.
+            </p>
+          </div>
+          <textarea
+            value={executeAsCommands}
+            onChange={event => setExecuteAsCommands(event.target.value)}
+            rows={7}
+            spellCheck={false}
+            placeholder={'# One command per line\nset coins 1000000\nadd shards 500\nset upgrades.speed 20'}
+            aria-label="Execute As command script"
+            className="w-full rounded-xl border border-slate-700 bg-black/40 p-3 text-[11px] leading-5 font-mono text-slate-100 resize-y"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button"
+              disabled={executeAsLoading || !executeAsUsername.trim() || !executeAsCommands.trim()}
+              onClick={() => void executeAs()}
+              className={buttonBase + ' bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-4 py-2'}
+            >
+              <Wand2 className="inline w-3.5 h-3.5 mr-1" /> {executeAsLoading ? 'Working…' : 'Execute Commands'}
+            </button>
+            <button type="button"
+              disabled={executeAsLoading || !executeAsCommands.trim()}
+              onClick={() => setExecuteAsCommands('')}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 px-3 py-2'}
+            >
+              Clear Commands
+            </button>
+          </div>
+          {executeAsResult && (
+            <pre role="status" className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-emerald-200">{executeAsResult}</pre>
+          )}
+          <details className="rounded-xl border border-slate-800 bg-black/25 p-3">
+            <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wider text-slate-300">Loaded player save preview (JSON)</summary>
+            <textarea
+              readOnly
+              value={executeAsSavePreview || 'No player save loaded. Enter a username and choose Load Save.'}
+              rows={12}
+              spellCheck={false}
+              className="mt-2 w-full max-h-[32rem] rounded-lg border border-slate-800 bg-black/50 p-2 text-[9px] leading-4 font-mono text-slate-300 resize-y"
+              onFocus={event => event.currentTarget.select()}
+            />
+          </details>
+        </section>
 
         <details id="io-tool-guild-chat" hidden={activeAdminTool !== 'guild-chat'} open={activeAdminTool === 'guild-chat'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">
