@@ -534,6 +534,7 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
           const applied = applyAdminSaveCommands(current as unknown as Record<string, unknown>, String(body.commands ?? ''));
           const nextState = applied.state as unknown as Awaited<ReturnType<typeof game.loadRaw>>;
           nextState.username = context.username;
+          nextState.stateRevision = Math.max(0, Number(current.stateRevision ?? 0)) + 1;
           await saveCurrentState(nextState);
           return {
             ok: true,
