@@ -39,3 +39,5 @@ Retry prompt: fix Execute As command numeric result type-check and rerun regress
 Deploy prompt: one-shot Admin CLI execution targets, global menu maintenance control with developer reason, and server-authorized player save commands.
 
 Retry prompt: global menu state moved before polling effects after type-check failure.
+
+Retry prompt: single global menu state declaration is now before all component effects.
