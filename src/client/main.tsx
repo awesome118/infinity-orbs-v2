@@ -554,6 +554,42 @@ function App() {
     if (!splashEntered) return;
     let cancelled = false;
     let inFlight = false;
+    const pollMenuControl = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const control = await getJson<{ enabled?: boolean; reason?: string; updatedAt?: number; updatedBy?: string }>('/api/menu-control');
+        if (!cancelled) setGlobalMenuControl({
+          enabled: control.enabled !== false,
+          reason: String(control.reason ?? '').slice(0, 300),
+          updatedAt: Number(control.updatedAt) || 0,
+          updatedBy: String(control.updatedBy ?? '').slice(0, 100),
+        });
+      } catch {
+        // Keep the last known menu status if the shared setting cannot be read.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollMenuControl(); };
+    void pollMenuControl();
+    const interval = window.setInterval(() => void pollMenuControl(), 10_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered]);
+
+  useEffect(() => {
+    if (menusDisabled) setMoreNavOpen(false);
+  }, [menusDisabled]);
+
+  useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const pollAnnouncement = async () => {
       if (cancelled || inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
@@ -645,6 +681,10 @@ function App() {
   const leaderboardLoadedAtRef = useRef(0);
   const [worldEvent, setWorldEvent] = useState<WorldEvent | null>(null);
   const [developerAnnouncement, setDeveloperAnnouncement] = useState<{ message: string; updatedAt: number; updatedBy: string } | null>(null);
+  const [globalMenuControl, setGlobalMenuControl] = useState<{ enabled: boolean; reason: string; updatedAt: number; updatedBy: string }>({
+    enabled: true, reason: '', updatedAt: 0, updatedBy: '',
+  });
+  const menusDisabled = globalMenuControl.enabled === false;
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
   // Modals
@@ -1012,6 +1052,10 @@ function App() {
   };
 
   const changeTab = (nextTab: ActiveTab) => {
+    if (menusDisabled) {
+      showToast('Menus are disabled by the developer. ' + (globalMenuControl.reason || ''), 'warn');
+      return;
+    }
     const feature = featureForTab(nextTab);
     if (feature && (state?.level ?? 1) < FEATURE_UNLOCK_LEVELS[feature]) {
       showToast(
@@ -1072,10 +1116,11 @@ function App() {
         key={target}
         type="button"
         onClick={() => changeTab(target)}
+        disabled={menusDisabled}
         aria-current={active ? 'page' : undefined}
-        aria-label={locked ? `${label}, unlocks at level ${unlockLevel}` : label}
-        title={locked ? `${label} unlocks at Level ${unlockLevel}.` : undefined}
-        className={`nav-tab io-nav-item${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
+        aria-label={menusDisabled ? `${label}, disabled by the developer` : locked ? `${label}, unlocks at level ${unlockLevel}` : label}
+        title={menusDisabled ? 'Menus disabled by the developer.' : locked ? `${label} unlocks at Level ${unlockLevel}.` : undefined}
+        className={`nav-tab io-nav-item${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}${menusDisabled ? ' opacity-40 cursor-not-allowed' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
       >
         <Icon className="io-nav-icon" />
         <span className="io-nav-label">{label}</span>
@@ -3882,6 +3927,18 @@ function App() {
         </div>
       )}
 
+      {!globalMenuControl.enabled && (
+        <div className="border-b border-rose-500/35 bg-rose-950/65 px-4 py-3" role="alert" aria-live="polite" data-testid="global-menu-disabled-banner">
+          <div className="max-w-6xl mx-auto flex items-start gap-3">
+            <Shield className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-wider text-rose-200">Menus disabled by the developer</div>
+              <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{globalMenuControl.reason || 'The developer has disabled the menus.'}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {developerAnnouncement?.message && (
         <div className="border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
           <div className="max-w-6xl mx-auto flex items-start gap-3">
@@ -4041,6 +4098,8 @@ function App() {
                     className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery', 'reddit-simulator'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
+                    disabled={menusDisabled}
+                    title={menusDisabled ? 'Menus disabled by the developer.' : undefined}
                     onClick={() => setMoreNavOpen(open => !open)}
                   >
                     <span className="io-nav-label">More</span>
