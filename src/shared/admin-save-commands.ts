@@ -116,30 +116,35 @@ function parsePath(pathText: string): string[] {
 }
 
 function getParent(root: Record<string, unknown>, parts: string[]): { parent: Record<string, unknown> | unknown[]; key: string; value: unknown } {
-  let current: unknown = root;
+  let current: Record<string, unknown> | unknown[] = root;
   for (let index = 0; index < parts.length - 1; index += 1) {
     const part = parts[index]!;
-    if (current === null || typeof current !== 'object') throw new Error('Save path does not exist: ' + parts.slice(0, index + 1).join('.'));
     if (Array.isArray(current)) {
-      if (!/^\d+$/.test(part)) throw new Error('Array paths must use a numeric index.');
+      if (!/^\\d+$/.test(part)) throw new Error('Array paths must use a numeric index.');
       const position = Number(part);
       if (position >= current.length) throw new Error('Array index is out of range: ' + part);
-      current = current[position];
+      const child = current[position];
+      if (child === null || typeof child !== 'object') throw new Error('Save path does not exist: ' + parts.slice(0, index + 1).join('.'));
+      current = child as Record<string, unknown> | unknown[];
     } else {
-      if (!Object.prototype.hasOwnProperty.call(current, part)) throw new Error('Save path does not exist: ' + parts.slice(0, index + 1).join('.'));
-      current = (current as Record<string, unknown>)[part];
+      let child = current[part];
+      if (child === undefined) {
+        if (/^\\d+$/.test(parts[index + 1]!)) throw new Error('Array paths must use an existing array.');
+        child = {};
+        current[part] = child;
+      }
+      if (child === null || typeof child !== 'object') throw new Error('Save path parent is not an object: ' + parts.slice(0, index + 1).join('.'));
+      current = child as Record<string, unknown> | unknown[];
     }
   }
-  if (current === null || typeof current !== 'object') throw new Error('Save path parent is not an object.');
   const key = parts[parts.length - 1]!;
   if (Array.isArray(current)) {
-    if (!/^\d+$/.test(key)) throw new Error('Array paths must use a numeric index.');
+    if (!/^\\d+$/.test(key)) throw new Error('Array paths must use a numeric index.');
     const index = Number(key);
     if (index >= current.length) throw new Error('Array index is out of range: ' + key);
     return { parent: current, key, value: current[index] };
   }
-  const parent = current as Record<string, unknown>;
-  return { parent, key, value: Object.prototype.hasOwnProperty.call(parent, key) ? parent[key] : undefined };
+  return { parent: current, key, value: Object.prototype.hasOwnProperty.call(current, key) ? current[key] : undefined };
 }
 
 function assign(parent: Record<string, unknown> | unknown[], key: string, value: unknown): void {
