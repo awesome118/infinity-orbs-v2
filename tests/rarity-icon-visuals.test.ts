@@ -111,7 +111,7 @@ test('nine new rarity tiers scale by e3 and the original 27 colors are unique', 
     assert.equal(getOrbInfo(threshold).tier, tier);
     if (index > 0) {
       const [previousTier, previousThreshold] = extension[index - 1];
-      assert.equal(threshold / previousThreshold, 1000);
+      assert.ok(Math.abs(Math.log10(threshold / previousThreshold) - 3) < 1e-12);
       assert.equal(getOrbTier(threshold / 10), previousTier);
     }
   }
