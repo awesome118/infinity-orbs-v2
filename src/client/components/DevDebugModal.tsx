@@ -1436,8 +1436,9 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!response.ok) throw new Error(data.error || 'Admin CLI command failed.');
 
       let output = '';
+      if (data.localOnly) output = 'GitHub Pages simulation only. This does not change the live Devvit game.\\n';
       if (data.scope === 'everyone') {
-        output = data.menuControl
+        output += data.menuControl
           ? data.menuControl.enabled
             ? 'Menus enabled for everyone.'
             : 'Menus disabled for everyone.\nDeveloper reason: ' + data.menuControl.reason
@@ -1445,7 +1446,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
             ? 'Developer announcement updated.'
             : 'Developer announcement cleared.';
       } else {
-        output = 'Executed ' + (data.results?.length ?? 0) + ' save operation(s) as u/' + (data.username ?? target) + '.';
+        output += 'Executed ' + (data.results?.length ?? 0) + ' save operation(s) as u/' + (data.username ?? target) + '.';
         output += '\nSave revision: ' + String(data.stateRevision ?? '?');
         if (data.invalidatedRollTicket) output += '\nThe player’s pending roll ticket was invalidated.';
         output += '\n\n' + JSON.stringify(data.results ?? [], null, 2);
