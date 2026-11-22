@@ -84,8 +84,8 @@ body.io-inline-post { margin: 0; }
 @keyframes float-gentle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes star-breathe { 0%, 100% { opacity: .34; transform: scale(.96); } 50% { opacity: .8; transform: scale(1.03); } }
 @keyframes orb-breathe { 0%, 100% { box-shadow: 0 0 38px rgba(102, 207, 195, .23), 0 0 110px rgba(73, 118, 168, .12), inset 0 0 38px rgba(255, 255, 255, .14); } 50% { box-shadow: 0 0 54px rgba(102, 207, 195, .36), 0 0 132px rgba(73, 118, 168, .19), inset 0 0 52px rgba(255, 255, 255, .19); } }
-.animate-orbit-ring { animation: orbit-cw 36s linear infinite; }
-.animate-orbit-counter { animation: orbit-ccw 36s linear infinite; }
+.animate-orbit-ring { animation: orbit-cw 18s linear infinite; }
+.animate-orbit-counter { animation: orbit-ccw 18s linear infinite; }
 .animate-float-slow { animation: float-gentle 4s ease-in-out infinite; }
 
 /* A quieter frame for the whole game: small controls, a calm header, and one strong play surface. */
