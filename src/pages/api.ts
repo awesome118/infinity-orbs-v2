@@ -4,6 +4,7 @@ import * as game from '../server/game.js';
 import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
 import { context } from './devvit-client.js';
+import { handlePagesAdminRequest } from './admin-api.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -56,9 +57,11 @@ function localOnlyResult(action: string) {
 async function handleApiRequest(url: URL, method: string, body: JsonRecord): Promise<Response> {
   const path = url.pathname;
 
-  // Administrative and payment APIs intentionally do not exist in this build.
-  if (path.startsWith('/api/dev/') || path.startsWith('/api/payments/')) {
-    return jsonResponse({ error: 'This endpoint is disabled in the GitHub Pages test build.' }, 404);
+  if (path.startsWith('/api/dev/')) {
+    return handlePagesAdminRequest(url, method, body);
+  }
+  if (path.startsWith('/api/payments/')) {
+    return jsonResponse({ error: 'Payments are unavailable in the GitHub Pages test build.' }, 404);
   }
 
   try {
