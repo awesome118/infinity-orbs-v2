@@ -12,11 +12,12 @@ import {
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_LOG_BASE,
   FRENZY_POST_COOLDOWN_MS,
-  FRENZY_CLAIM_COOLDOWN_MS,
+  FRENZY_CLAIMS_PER_DAY,
+  frenzyClaimsUsedToday,
+  frenzyClaimsRemainingToday,
   FRENZY_POST_LIFETIME_MS,
   canShowDailyFrenzyPrompt,
   frenzyCooldownRemaining,
-  frenzyClaimCooldownRemaining,
   frenzyPostExpiresAt,
   isFrenzyPostExpired,
   todayKey,
@@ -100,13 +101,23 @@ test('Frenzy owner rewards remain separate from roll-earned Shard telemetry', ()
   assert.equal(state.freeShardsEarnedToday, 50);
 });
 
-test('Frenzy cooldowns and expiry use precise timestamps', () => {
+test('Frenzy claims use a three-per-day limit while post creation retains its cooldown', () => {
+  const today = todayKey(NOW);
+  assert.equal(FRENZY_CLAIMS_PER_DAY, 3);
+  assert.equal(frenzyClaimsUsedToday(today, 0, NOW), 0);
+  assert.equal(frenzyClaimsRemainingToday(today, 0, NOW), 3);
+  assert.equal(frenzyClaimsUsedToday(today, 1, NOW), 1);
+  assert.equal(frenzyClaimsRemainingToday(today, 1, NOW), 2);
+  assert.equal(frenzyClaimsUsedToday(today, 3, NOW), 3);
+  assert.equal(frenzyClaimsRemainingToday(today, 3, NOW), 0);
+  // Legacy saves with a same-day timestamp but no counter conservatively count one claim.
+  assert.equal(frenzyClaimsUsedToday(today, undefined, NOW), 1);
+  assert.equal(frenzyClaimsUsedToday('2000-01-01', 3, NOW), 0);
+
   assert.equal(FRENZY_PROMPT_DELAY_MS, 3 * 60_000);
   assert.equal(FRENZY_POST_COOLDOWN_MS, 23 * 60 * 60 * 1000);
-  assert.equal(FRENZY_CLAIM_COOLDOWN_MS, 23 * 60 * 60 * 1000);
   assert.equal(FRENZY_POST_LIFETIME_MS, 24 * 60 * 60 * 1000);
   assert.equal(frenzyCooldownRemaining(NOW, NOW), FRENZY_POST_COOLDOWN_MS);
-  assert.equal(frenzyClaimCooldownRemaining(NOW, NOW), FRENZY_CLAIM_COOLDOWN_MS);
   assert.equal(canShowDailyFrenzyPrompt(NOW, NOW), false);
   assert.equal(canShowDailyFrenzyPrompt(NOW - FRENZY_POST_COOLDOWN_MS, NOW), true);
   assert.equal(frenzyPostExpiresAt(NOW), NOW + FRENZY_POST_LIFETIME_MS);
@@ -152,15 +163,16 @@ test('Frenzy posts use Orb terminology and claims return a visible Orb volley', 
   assert.match(server, /batch: visibleBatch/);
 });
 
-test('Frenzy claims expose 23-hour eligibility and expiry', () => {
+test('Frenzy claims expose a daily allowance and expiry', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/server/game.ts'), 'utf8');
-  assert.match(source, /canClaim: !expired && !alreadyClaimedByViewer && \(claimCooldownRemainingMs <= 0 \|\| selfClaimTest\)/);
+  assert.match(source, /canClaim: !expired && !alreadyClaimedByViewer && \(claimsRemainingToday > 0 \|\| selfClaimTest\)/);
   assert.match(source, /const alreadyClaimedByViewer = claimedReceipt != null \|\| data\.consumedBy === viewerId/);
   assert.match(source, /const claimReceiptKey = frenzyClaimReceiptKey\(postId, claimantId\)/);
   assert.match(source, /key: claimReceiptKey,[\s\S]*?expectedValue: null/);
   assert.match(source, /key: FRENZY_POST_PREFIX \+ postId/);
   assert.doesNotMatch(source, /nextValue: consumedPostValue/);
-  assert.match(source, /frenzyClaimCooldownRemaining/);
+  assert.match(source, /frenzyClaimsUsedToday/);
+  assert.match(source, /FRENZY_CLAIMS_PER_DAY/);
   assert.match(source, /isFrenzyPostExpired/);
   assert.match(source, /selfClaimTest/);
   assert.match(source, /data\.adminTest === true/);

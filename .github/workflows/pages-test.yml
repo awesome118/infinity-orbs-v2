@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type-check and run tests
+        run: npm run type-check && npm test
+
       - name: Build static Pages version
         run: npm run build:pages
 

@@ -565,6 +565,7 @@ export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 export const FRENZY_LOG_BASE = 1.004;
 export const FRENZY_MIN_ORBS = 1;
 export const FRENZY_OWNER_SHARD_REWARD = 100;
+export const FRENZY_CLAIMS_PER_DAY = 3;
 export const FRENZY_PROMPT_DELAY_MS = 3 * 60_000;
 export const FRENZY_POST_COOLDOWN_MS = 23 * 60 * 60 * 1000;
 export const FRENZY_CLAIM_COOLDOWN_MS = 23 * 60 * 60 * 1000;
@@ -610,6 +611,22 @@ export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now())
   return Math.max(0, lastFrenzyAt + FRENZY_POST_COOLDOWN_MS - now);
 }
 
+export function frenzyClaimsUsedToday(lastClaimDate?: string, claimsToday?: number, now = Date.now()): number {
+  const today = new Date(now).toISOString().slice(0, 10);
+  if (String(lastClaimDate ?? '') !== today) return 0;
+  // Older saves only recorded the last claim timestamp, so count one proven claim.
+  if (claimsToday === undefined || claimsToday === null) return 1;
+  const count = Number(claimsToday);
+  return Number.isSafeInteger(count) && count >= 0
+    ? Math.min(FRENZY_CLAIMS_PER_DAY, count)
+    : 1;
+}
+
+export function frenzyClaimsRemainingToday(lastClaimDate?: string, claimsToday?: number, now = Date.now()): number {
+  return Math.max(0, FRENZY_CLAIMS_PER_DAY - frenzyClaimsUsedToday(lastClaimDate, claimsToday, now));
+}
+
+/** @deprecated Claim eligibility now uses the per-day counter. Retained for legacy readers and compatibility tests. */
 export function frenzyClaimCooldownRemaining(lastFrenzyClaimAt?: number, now = Date.now()): number {
   if (lastFrenzyClaimAt == null) return 0;
   if (
@@ -1099,6 +1116,8 @@ export interface QuestItem {
   rewardShards?: number;
   rewardTokens?: number;
   rewardXp?: number;
+  minRarity?: number;
+  unlockRarity?: number;
   claimed: boolean;
 }
 
@@ -1226,6 +1245,9 @@ export interface PlayerState {
   lastFrenzyAt?: number;
   lastFrenzyClaimDate?: string;
   lastFrenzyClaimAt?: number;
+  frenzyClaimsToday?: number;
+  pendingFrenzyOfflineClaimCount?: number;
+  pendingFrenzyOfflineShards?: number;
   communityRewardClaimedTier?: number;
   paymentReceipts?: Record<string, PaymentReceipt | 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
@@ -1956,22 +1978,61 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
 };
 
-export function createInitialDailyQuests(): QuestItem[] {
+/**
+ * Quest objectives get up to 20% harder as the player's best Orb advances.
+ * Currency rewards grow separately, up to 50%, so whole-Shard rewards can
+ * increase at higher milestones without making objectives jump too sharply.
+ */
+export function questDifficultyMultiplier(highestRarity: unknown): number {
+  const raw = Number(highestRarity);
+  const rarity = Number.isFinite(raw) && raw > 0 ? raw : 2;
+  const decadesAboveRare = Math.max(0, Math.log10(rarity / 100));
+  return Math.min(1.20, 1 + decadesAboveRare * 0.025);
+}
+
+export function questRewardMultiplier(highestRarity: unknown): number {
+  const raw = Number(highestRarity);
+  const rarity = Number.isFinite(raw) && raw > 0 ? raw : 2;
+  const decadesAboveRare = Math.max(0, Math.log10(rarity / 100));
+  return Math.min(1.50, 1 + decadesAboveRare * 0.05);
+}
+
+function scaledQuestTarget(base: number, multiplier: number): number {
+  return Math.max(base, Math.ceil(base * multiplier));
+}
+
+function scaledQuestReward(base: number, multiplier: number): number {
+  return Math.max(base, Math.round(base * multiplier));
+}
+
+export function createInitialDailyQuests(highestRarity = 2): QuestItem[] {
+  const difficulty = questDifficultyMultiplier(highestRarity);
+  const reward = questRewardMultiplier(highestRarity);
+  const rareThreshold = scaledQuestTarget(100, difficulty);
+  const rolls25 = scaledQuestTarget(25, difficulty);
+  const rolls100 = scaledQuestTarget(100, difficulty);
+  const uniqueTarget = scaledQuestTarget(3, difficulty);
   return [
-    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: 'Perform 25 rolls', target: 25, progress: 0, rewardCoins: 100, rewardXp: 50, claimed: false },
-    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: 'Perform 100 rolls', target: 100, progress: 0, rewardCoins: 500, rewardShards: 1, rewardXp: 150, claimed: false },
-    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: 'Obtain an orb with 1/100+ rarity', target: 1, progress: 0, rewardCoins: 300, rewardXp: 100, claimed: false },
-    { id: 'daily-unique-3', title: 'Unique Orbs', desc: 'Obtain 3 unique orbs today', target: 3, progress: 0, rewardCoins: 200, rewardXp: 80, claimed: false },
-    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: 150, rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: `Perform ${rolls25} rolls`, target: rolls25, progress: 0, rewardCoins: scaledQuestReward(100, reward), rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: `Perform ${rolls100} rolls`, target: rolls100, progress: 0, rewardCoins: scaledQuestReward(500, reward), rewardShards: scaledQuestReward(1, reward), rewardXp: 150, claimed: false },
+    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: `Obtain an orb with 1/${rareThreshold}+ rarity`, target: 1, minRarity: rareThreshold, progress: 0, rewardCoins: scaledQuestReward(300, reward), rewardXp: 100, claimed: false },
+    { id: 'daily-unique-3', title: 'Unique Orbs', desc: `Obtain ${uniqueTarget} unique orbs today`, target: uniqueTarget, progress: 0, rewardCoins: scaledQuestReward(200, reward), rewardXp: 80, claimed: false },
+    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: scaledQuestReward(150, reward), rewardXp: 50, claimed: false },
   ];
 }
 
-export function createInitialWeeklyQuests(): QuestItem[] {
+export function createInitialWeeklyQuests(highestRarity = 2): QuestItem[] {
+  const difficulty = questDifficultyMultiplier(highestRarity);
+  const reward = questRewardMultiplier(highestRarity);
+  const rareThreshold = scaledQuestTarget(100, difficulty);
+  const epicThreshold = scaledQuestTarget(1_000, difficulty);
+  const weeklyRollTarget = scaledQuestTarget(1_000, difficulty);
+  const collectionTarget = scaledQuestTarget(10_000, difficulty);
   return [
-    { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 5, rewardXp: 600, claimed: false },
-    { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 3, rewardXp: 400, claimed: false },
-    { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardXp: 500, claimed: false },
-    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 2, rewardXp: 200, claimed: false, unlocked: false },
+    { id: 'weekly-grind', title: 'Weekly Rolls', desc: `Perform ${weeklyRollTarget.toLocaleString()} rolls this week`, target: weeklyRollTarget, progress: 0, rewardCoins: scaledQuestReward(5_000, reward), rewardShards: scaledQuestReward(5, reward), rewardXp: 600, claimed: false },
+    { id: 'weekly-epic', title: 'Find Epic Orb', desc: `Obtain an Epic orb (1/${epicThreshold.toLocaleString()}+)`, target: 1, minRarity: epicThreshold, progress: 0, rewardCoins: scaledQuestReward(3_000, reward), rewardShards: scaledQuestReward(3, reward), rewardXp: 400, claimed: false },
+    { id: 'weekly-guild', title: 'Collection Value', desc: `Contribute ${collectionTarget.toLocaleString()} collection value`, target: collectionTarget, progress: 0, rewardCoins: scaledQuestReward(4_000, reward), rewardXp: 500, claimed: false },
+    { id: 'weekly-share', title: 'Share Post', desc: `Share an orb to Reddit after discovering a Rare+ orb (1/${rareThreshold}+)`, target: 1, unlockRarity: rareThreshold, progress: 0, rewardCoins: scaledQuestReward(1_500, reward), rewardShards: scaledQuestReward(2, reward), rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
 
@@ -2064,7 +2125,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       cosmicReserve: 0,
       autoScrap: 0,
     },
-    streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
+    streak: { count: 0, lastClaimDate: '', longestStreak: 0 },
     dailyStreakCommunity: createInitialDailyStreakCommunity(now),
     dailyQuests: createInitialDailyQuests(),
     weeklyQuests: createInitialWeeklyQuests(),
@@ -2099,6 +2160,9 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastFrenzyAt: 0,
     lastFrenzyClaimDate: '',
     lastFrenzyClaimAt: 0,
+    frenzyClaimsToday: 0,
+    pendingFrenzyOfflineClaimCount: 0,
+    pendingFrenzyOfflineShards: 0,
     communityRewardClaimedTier: 0,
     currentRunRolls: 0,
     questsCompleted: 0,
@@ -2153,7 +2217,7 @@ export interface LevelMilestonePerk {
 
 export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 5, name: 'Novice Seeker', desc: '+15% XP from rolls, quests, and community rewards', bonusXpMultiplier: 1.15 },
-  { level: 10, name: 'Shard Sifter', desc: '+5% chance for bonus Shards', bonusShardChance: 0.05 },
+  { level: 10, name: 'Shard Sifter', desc: '+0.125 percentage points of Shard proc chance', bonusShardChance: 0.05 },
   { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms', bonusCooldownReductionMs: 150 },
   { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
   { level: 25, name: 'Twin Orb Conductor', desc: '+1 Extra Orb per activation!', bonusBalls: 1 },
@@ -2165,7 +2229,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 200, name: 'Void Fortune', desc: '+30% Luck!', bonusLuckMultiplier: 1.30 },
   { level: 300, name: 'Golden Age', desc: '1.50× Multiplicative Coin boost!', bonusCoinsMultiplier: 1.50 },
   { level: 400, name: 'Orb Battalion', desc: '+2 Extra Orbs per activation!', bonusBalls: 2 },
-  { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
+  { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +0.25 percentage points of Shard proc chance', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
   { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
   { level: 1250, name: 'Aether Cartographer', desc: 'Another +10% XP from all sources', bonusXpMultiplier: 1.10 },
@@ -2174,7 +2238,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 2500, name: 'Celestial Chorus', desc: '+1 Extra Orb per activation', bonusBalls: 1 },
   { level: 3000, name: 'Chrono Architect', desc: 'Cooldown floor reduced by another 100ms', bonusCooldownReductionMs: 100 },
   { level: 4000, name: 'Starlit Crucible', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
-  { level: 5000, name: 'Infinite Conductor', desc: '+1 Extra Orb and +2.5% Shard chance', bonusBalls: 1, bonusShardChance: 0.025 },
+  { level: 5000, name: 'Infinite Conductor', desc: '+1 Extra Orb and +0.0625 percentage points of Shard proc chance', bonusBalls: 1, bonusShardChance: 0.025 },
   { level: 7500, name: 'Paragon Fortune', desc: '+25% Luck', bonusLuckMultiplier: 1.25 },
   { level: 10000, name: 'Infinity Ascendant', desc: '+2 Extra Orbs, +25% Coins and +15% XP', bonusBalls: 2, bonusCoinsMultiplier: 1.25, bonusXpMultiplier: 1.15 },
 ];

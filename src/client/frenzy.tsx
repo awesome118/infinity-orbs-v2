@@ -4,7 +4,7 @@ import { context, requestExpandedMode } from '@devvit/web/client';
 import { ArrowRight, Flame, Users, Sparkles, Zap } from 'lucide-react';
 import './styles.css';
 import './post-revamp.css';
-import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, FRENZY_CLAIM_COOLDOWN_MS, MAX_ORB_RARITY } from '../shared/game.js';
+import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, FRENZY_CLAIMS_PER_DAY, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
@@ -31,8 +31,10 @@ interface FrenzyInfo {
   expired: boolean;
   consumed?: boolean;
   claimedToday: boolean;
-  claimCooldownRemainingMs: number;
-  claimCooldownEndsAt: number;
+  claimsRemainingToday: number;
+  claimLimitPerDay: number;
+  claimCooldownRemainingMs?: number;
+  claimCooldownEndsAt?: number;
   isOwner: boolean;
   canClaim: boolean;
   selfClaimTest: boolean;
@@ -176,7 +178,6 @@ function FrenzyPost() {
   const [inlineClaimedRarity, setInlineClaimedRarity] = useState<number | null>(null);
   const [inlineClaimedCount, setInlineClaimedCount] = useState(0);
   const [inlineClaimedIsInfinity, setInlineClaimedIsInfinity] = useState(false);
-  const [inlineClaimedAt, setInlineClaimedAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
   const load = async () => {
@@ -360,21 +361,13 @@ function FrenzyPost() {
   const expiryMinutes = Math.floor((totalExpirySeconds % 3600) / 60);
   const expirySeconds = totalExpirySeconds % 60;
   const expiryLabel = expiresIn <= 0 ? 'EXPIRED' : expiryHours + ':' + String(expiryMinutes).padStart(2, '0') + ':' + String(expirySeconds).padStart(2, '0');
-  const effectiveClaimCooldownEndsAt = Math.max(
-    Number(info.claimCooldownEndsAt) || 0,
-    inlineClaimedAt > 0 ? inlineClaimedAt + FRENZY_CLAIM_COOLDOWN_MS : 0,
-  );
-  const claimCooldownIn = Math.max(0, effectiveClaimCooldownEndsAt - now);
-  const claimTotalSeconds = Math.ceil(claimCooldownIn / 1000);
-  const claimHours = Math.floor(claimTotalSeconds / 3600);
-  const claimMinutes = Math.floor((claimTotalSeconds % 3600) / 60);
-  const claimSeconds = claimTotalSeconds % 60;
-  const claimCooldownLabel = claimCooldownIn > 0 ? claimHours + ':' + String(claimMinutes).padStart(2, '0') + ':' + String(claimSeconds).padStart(2, '0') : '';
-  const canClaim = info.canClaim && !openedGame && expiresIn > 0 && claimCooldownIn <= 0;
+  const claimLimit = Math.max(1, Math.floor(Number(info.claimLimitPerDay) || FRENZY_CLAIMS_PER_DAY));
+  const claimsRemainingToday = Math.max(0, Math.min(claimLimit, Math.floor(Number(info.claimsRemainingToday) || 0)));
+  const canClaim = info.canClaim && !openedGame && expiresIn > 0 && (claimsRemainingToday > 0 || info.selfClaimTest);
 
   if (inlineClaimedRarity !== null) {
     const rewardOrb = getOrbInfo(inlineClaimedRarity, inlineClaimedIsInfinity);
-    const cooldownStatus = claimCooldownIn > 0 ? claimCooldownLabel : 'Claimed today';
+    const claimsLeftAfterThisClaim = info.selfClaimTest ? claimsRemainingToday : Math.max(0, claimsRemainingToday - 1);
     return (
       <main className="io-public io-frenzy-success-shell">
         <div className="io-public-grid" aria-hidden="true" />
@@ -440,8 +433,8 @@ function FrenzyPost() {
                 <strong>{formatNumber(inlineClaimedCount)}</strong>
               </div>
               <div>
-                <span>PERSONAL COOLDOWN</span>
-                <strong>{cooldownStatus}</strong>
+                <span>FRENZY CLAIMS LEFT TODAY</span>
+                <strong>{claimsLeftAfterThisClaim} / {claimLimit}</strong>
               </div>
               <div>
                 <span>POST EXPIRES IN</span>
@@ -454,10 +447,10 @@ function FrenzyPost() {
             <div className="io-frenzy-cooldown-panel is-active" role="status">
               <div className="io-frenzy-cooldown-icon"><Zap className="w-4 h-4" /></div>
               <div className="io-frenzy-cooldown-copy">
-                <strong>{claimCooldownIn > 0 ? 'Your next Frenzy claim' : 'You have used today’s Frenzy claim'}</strong>
-                <span>{claimCooldownIn > 0 ? 'Available again in ' + claimCooldownLabel : 'The claim cooldown is still personal to you.'}</span>
+                <strong>Frenzy claims remaining today</strong>
+                <span>You can claim up to {claimLimit} Frenzies per day.</span>
               </div>
-              <span className="io-frenzy-cooldown-value">{cooldownStatus}</span>
+              <span className="io-frenzy-cooldown-value">{claimsLeftAfterThisClaim} left</span>
             </div>
 
             <div className="io-post-conversion io-frenzy-success-conversion">
@@ -557,7 +550,7 @@ function FrenzyPost() {
                 ? 'You have already claimed this Frenzy.'
                 : info.expired
                   ? 'This Frenzy has expired.'
-                  : 'Others can claim too—once every 23 hours per player. Upvote to thank the owner.'}
+                  : `Others can claim too—up to ${claimLimit} Frenzies per day per player. Upvote to thank the owner.`}
             </p>
             {canClaim && (
               <p className="io-frenzy-instruction">
@@ -571,13 +564,11 @@ function FrenzyPost() {
               <div className="io-frenzy-timer-label">Frenzy expires in</div>
               <div className="io-frenzy-timer-value" style={{ color: expiresIn > 0 ? orb.color : '#94a3b8' }}>{expiryLabel}</div>
             </div>
-            {(info.claimedToday || claimCooldownIn > 0) && (
-              <div className="io-frenzy-cooldown-mini" role="status">
-                <div className="io-frenzy-timer-label"><Zap className="w-3 h-3" /> Your claim cooldown</div>
-                <div className="io-frenzy-timer-value">{claimCooldownIn > 0 ? claimCooldownLabel : 'Claimed today'}</div>
-                <p>You can still play while this timer runs.</p>
-              </div>
-            )}
+            <div className="io-frenzy-cooldown-mini" role="status">
+              <div className="io-frenzy-timer-label"><Zap className="w-3 h-3" /> Your Frenzy claims remaining today</div>
+              <div className="io-frenzy-timer-value">{claimsRemainingToday} / {claimLimit}</div>
+              <p>Claims reset at midnight UTC. You can still play after using all your Frenzy claims.</p>
+            </div>
           </div>
 
           <FrenzyClaimActivity count={info.claimCount ?? 0} players={info.recentClaimers ?? []} />
@@ -638,7 +629,7 @@ function FrenzyPost() {
           {error && <p className="io-public-inline-error" role="alert">{error}</p>}
 
           <div className="io-public-note">
-            <div><Users className="w-3.5 h-3.5" /> One claim every 23 hours per player. Multi Roll scales your reward.</div>
+            <div><Users className="w-3.5 h-3.5" /> Up to {claimLimit} Frenzy claims per player each day. Multi Roll scales your reward.</div>
           </div>
         </section>
       </div>

@@ -22,6 +22,7 @@ import {
   Megaphone,
   X,
   Gem,
+  MessageSquare,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -65,6 +66,7 @@ import {
   frenzyCooldownRemaining,
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_OWNER_SHARD_REWARD,
+  FRENZY_CLAIMS_PER_DAY,
   rollsPerActivation,
   timeEnergyActivationsAvailable,
   upgradeCost,
@@ -101,11 +103,14 @@ import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { GettingStartedModal } from './components/GettingStartedModal.js';
 import { SplashScreen } from './components/SplashScreen.js';
+import { RedditPostSimulator } from './components/RedditPostSimulator.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
+
+const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 function optimisticShardSpend(
   state: PlayerState,
@@ -147,7 +152,8 @@ type ActiveTab =
   | 'gear'
   | 'forge'
   | 'skills'
-  | 'arena';
+  | 'arena'
+  | 'reddit-simulator';
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
 
@@ -721,6 +727,7 @@ function App() {
   const notificationPromptShownRef = useRef(false);
   const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
+  const [frenzyOfflineRewardAcknowledging, setFrenzyOfflineRewardAcknowledging] = useState(false);
   const frenzyPromptShownRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
@@ -3418,6 +3425,22 @@ function App() {
     }
   };
 
+  const handleAcknowledgeOfflineFrenzyReward = async () => {
+    if (frenzyOfflineRewardAcknowledging) return;
+    setFrenzyOfflineRewardAcknowledging(true);
+    try {
+      const result = await getJson<{ state: PlayerState }>('/api/frenzy/offline-reward/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      applyPlayerState(result.state);
+    } catch (error: any) {
+      showToast(error?.message || 'Could not dismiss the offline Frenzy summary. It will remain available.', 'warn');
+    } finally {
+      setFrenzyOfflineRewardAcknowledging(false);
+    }
+  };
+
   const handleToggleNotifications = async (): Promise<boolean> => {
     try {
       const nextPreferences = { updates: true, offlineOrbs: true };
@@ -4015,7 +4038,7 @@ function App() {
                 <div className="io-nav-more-wrap">
                   <button
                     type="button"
-                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery', 'reddit-simulator'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
                     onClick={() => setMoreNavOpen(open => !open)}
@@ -4024,6 +4047,7 @@ function App() {
                     {tab === 'boosters' && <span className="io-nav-current-page">Boosters</span>}
                     {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
+                    {tab === 'reddit-simulator' && <span className="io-nav-current-page">Reddit Simulator</span>}
                     {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
                     {tab === 'social' && <span className="io-nav-current-page">Guilds</span>}
                     {tab === 'profile' && <span className="io-nav-current-page">Progress</span>}
@@ -4046,6 +4070,7 @@ function App() {
                       {renderNavItem('boosters', 'Boosters', Dices)}
                       {renderNavItem('altar', 'Altar', Flame)}
                       {renderNavItem('mastery', 'Mastery', Sparkles, (state.masteryPoints ?? 0) > 0)}
+                      {IS_GITHUB_PAGES_TEST && renderNavItem('reddit-simulator', 'Reddit Simulator', MessageSquare)}
                     </div>
                   )}
                 </div>
@@ -4071,7 +4096,7 @@ function App() {
                 <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-nav-item" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="io-nav-icon" /><span className="io-nav-label">Skills</span></button>
                 <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'runes' ? " is-active" : "")}><Gem className="io-nav-icon" /><span className="io-nav-label">Runes</span></button>
                 <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'forge' ? " is-active" : "")}><Hammer className="io-nav-icon" /><span className="io-nav-label">Forge</span></button>
-                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span><span className="io-nav-unlock">Coming soon</span></button>
+                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span></button>
               </div>
               <div className="io-nav-trailing io-nav-combat-trailing">
                 <div className="io-nav-more-wrap io-nav-combat-mobile-more">
@@ -4288,9 +4313,34 @@ function App() {
             busy={false}
           />
         )}
+
+        {IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator' && (
+          <RedditPostSimulator state={state} />
+        )}
           </>
         )}
       </main>
+
+      {state && Number(state.pendingFrenzyOfflineClaimCount ?? 0) > 0 && !frenzyRunTriggered && (
+        <div className="fixed inset-0 z-[100] io-modal-backdrop flex items-center justify-center p-4" data-testid="offline-frenzy-reward-backdrop">
+          <section role="dialog" aria-modal="true" aria-labelledby="offline-frenzy-reward-title" className="io-modal-card w-full max-w-md bg-slate-950/95">
+            <div className="io-frenzy-prompt-kicker"><Flame className="w-4 h-4" /> OFFLINE FRENZY REWARDS</div>
+            <h2 id="offline-frenzy-reward-title" className="mt-2 text-2xl font-black text-white">Your Frenzy paid off</h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">
+              {formatNumber(state.pendingFrenzyOfflineClaimCount ?? 0)} {Number(state.pendingFrenzyOfflineClaimCount ?? 0) === 1 ? 'person rolled' : 'people rolled'} your Frenzy while you were offline.
+            </p>
+            <div className="io-frenzy-prompt-reward">
+              <div className="text-3xl font-black text-cyan-200">{formatNumber(state.pendingFrenzyOfflineShards ?? 0)} Shards</div>
+              <div className="mt-1 text-xs leading-relaxed text-slate-400">These owner rewards have already been added to your Shard balance.</div>
+            </div>
+            <div className="io-modal-actions">
+              <button type="button" onClick={() => void handleAcknowledgeOfflineFrenzyReward()} disabled={frenzyOfflineRewardAcknowledging} className="io-public-button io-public-button-primary">
+                {frenzyOfflineRewardAcknowledging ? 'Saving…' : 'Got it'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showFrenzyPrompt && (
         <div className="fixed inset-0 z-[70] io-modal-backdrop flex items-center justify-center p-4">
@@ -4303,7 +4353,7 @@ function App() {
             <h2 className="mt-2 text-2xl font-black text-white">Post today’s Frenzy</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
               Charge a public Frenzy from today’s best roll. Your next manual Roll creates the post
-              and lets other players claim that same Frenzy. Each player can claim it once, subject to their personal claim cooldown.
+              and lets other players claim that same Frenzy, up to {FRENZY_CLAIMS_PER_DAY} times per day for each player.
             </p>
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>

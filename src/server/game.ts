@@ -92,6 +92,9 @@ import {
   frenzyClaimCountForRarity,
   grantFrenzyOwnerShards,
   FRENZY_OWNER_SHARD_REWARD,
+  FRENZY_CLAIMS_PER_DAY,
+  frenzyClaimsUsedToday,
+  frenzyClaimsRemainingToday,
   frenzyCooldownRemaining,
   frenzyClaimCooldownRemaining,
   frenzyPostExpiresAt,
@@ -2465,7 +2468,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     const s = await settleOffline(await loadRaw());
     const now = Date.now();
     if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
-    const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+    const claimsUsedToday = frenzyClaimsUsedToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
     const isOwner = data.ownerId === viewerId;
     const selfClaimTest =
       isOwner &&
@@ -2473,8 +2476,8 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
       isFrenzyTestAdmin(s.username);
 
     if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
-    if (claimCooldown > 0 && !selfClaimTest) {
-      throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+    if (claimsUsedToday >= FRENZY_CLAIMS_PER_DAY && !selfClaimTest) {
+      throw new Error('You have used all ' + FRENZY_CLAIMS_PER_DAY + ' Frenzy claims available today.');
     }
 
     const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
@@ -2502,9 +2505,10 @@ async function prepareFrenzyOwnerRewardWrites(
 
   const ownerKey = playerKeyFor(safeOwnerId);
   const ownerGenerationKey = saveGenerationKeyFor(safeOwnerId);
-  const [raw, generationRaw] = await Promise.all([
+  const [raw, generationRaw, registryRaw] = await Promise.all([
     redis.get(ownerKey),
     redis.get(ownerGenerationKey),
+    redis.hGet(PLAYER_REGISTRY_KEY, safeOwnerId),
   ]);
   if (raw == null) throw new Error('Frenzy owner save was not found.');
   const ownerSave = await readStoredPlayerSave(safeOwnerId, raw);
@@ -2522,6 +2526,23 @@ async function prepareFrenzyOwnerRewardWrites(
   }
 
   const granted = grantFrenzyOwnerShards(ownerState, amount);
+  const ownerActivity = parseStoredJson<Record<string, unknown>>(registryRaw);
+  const activityCandidate = Number(ownerActivity?.lastActivityAt ?? ownerActivity?.lastSeenAt ?? ownerState.lastSeenAt ?? 0);
+  const ownerWasOffline = !Number.isSafeInteger(activityCandidate) ||
+    activityCandidate <= 0 ||
+    Date.now() - activityCandidate > PLAYTIME_ACTIVE_GAP_MS;
+  if (ownerWasOffline) {
+    const oldClaimCount = Number(ownerState.pendingFrenzyOfflineClaimCount ?? 0);
+    const oldShardTotal = Number(ownerState.pendingFrenzyOfflineShards ?? 0);
+    ownerState.pendingFrenzyOfflineClaimCount = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      (Number.isSafeInteger(oldClaimCount) && oldClaimCount >= 0 ? oldClaimCount : 0) + 1,
+    );
+    ownerState.pendingFrenzyOfflineShards = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      (Number.isSafeInteger(oldShardTotal) && oldShardTotal >= 0 ? oldShardTotal : 0) + granted,
+    );
+  }
   const currentRevision = Math.max(0, Math.floor(Number(ownerState.stateRevision ?? 0)) || 0);
   if (currentRevision >= Number.MAX_SAFE_INTEGER) {
     throw new Error('Frenzy owner save revision is exhausted; the claim was not consumed.');
@@ -3952,6 +3973,13 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
     lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
     lastFrenzyClaimAt: normalizeCooldownTimestamp(parsed.lastFrenzyClaimAt, base.lastFrenzyClaimAt ?? 0),
+    frenzyClaimsToday: (() => {
+      const rawCount = Number(parsed.frenzyClaimsToday);
+      if (Number.isSafeInteger(rawCount) && rawCount >= 0) return Math.min(FRENZY_CLAIMS_PER_DAY, rawCount);
+      return String(parsed.lastFrenzyClaimDate ?? '') === new Date().toISOString().slice(0, 10) ? 1 : 0;
+    })(),
+    pendingFrenzyOfflineClaimCount: finiteNonNegativeInteger(parsed.pendingFrenzyOfflineClaimCount, 0),
+    pendingFrenzyOfflineShards: finiteNonNegativeInteger(parsed.pendingFrenzyOfflineShards, 0),
     timeEnergy: Math.min(TIME_ENERGY_MAX_MS, finiteNonNegativeInteger(parsed.timeEnergy, base.timeEnergy ?? 0)),
     alignmentNextAt: finiteNonNegativeInteger(parsed.alignmentNextAt, base.alignmentNextAt ?? 0),
     alignmentPendingAt: finiteNonNegativeInteger(parsed.alignmentPendingAt, base.alignmentPendingAt ?? 0),
@@ -5043,19 +5071,20 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
   for (const q of s.dailyQuests) {
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('rolls')) q.progress = Math.min(q.target, q.progress + amount);
-    if (type === 'rare' && q.id.includes('rare') && amount >= 100) q.progress = Math.min(q.target, q.progress + 1);
+    if (type === 'rare' && q.id.includes('rare') && amount >= Math.max(2, Math.floor(Number(q.minRarity ?? 100) || 100))) q.progress = Math.min(q.target, q.progress + 1);
     if (type === 'unique' && q.id.includes('unique')) q.progress = Math.min(q.target, q.progress + Math.max(0, amount));
     if (type === 'social' && q.id.includes('social')) q.progress = Math.min(q.target, q.progress + 1);
   }
   for (const q of s.weeklyQuests) {
-    if (type === 'rare' && amount >= 100) {
+    if (type === 'rare') {
       const shareQuest = s.weeklyQuests.find(weekly => weekly.id === 'weekly-share');
-      if (shareQuest) shareQuest.unlocked = true;
+      const unlockRarity = Math.max(2, Math.floor(Number(shareQuest?.unlockRarity ?? 100) || 100));
+      if (shareQuest && amount >= unlockRarity) shareQuest.unlocked = true;
     }
     if (q.unlocked === false) continue;
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('grind')) q.progress = Math.min(q.target, q.progress + amount);
-    if (type === 'rare' && q.id.includes('epic') && amount >= 1000) q.progress = Math.min(q.target, q.progress + 1);
+    if (type === 'rare' && q.id.includes('epic') && amount >= Math.max(2, Math.floor(Number(q.minRarity ?? 1000) || 1000))) q.progress = Math.min(q.target, q.progress + 1);
     if (type === 'value' && q.id.includes('guild')) q.progress = Math.min(q.target, q.progress + amount);
     // Only a genuine server-created share advances the share quest.
     if (type === 'share' && q.id.includes('share')) q.progress = Math.min(q.target, q.progress + 1);
@@ -5065,13 +5094,13 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
 function checkPeriodicResets(s: PlayerState, now: number) {
   const today = new Date(now).toISOString().slice(0, 10);
   if (s.lastDailyReset !== today) {
-    s.dailyQuests = createInitialDailyQuests();
+    s.dailyQuests = createInitialDailyQuests(s.highestRarity);
     s.lastDailyReset = today;
   }
   const currentWeek = weekKey(now);
   const lastWeek = s.lastWeeklyReset ? weekKey(new Date(s.lastWeeklyReset).getTime()) : -1;
   if (currentWeek !== lastWeek) {
-    s.weeklyQuests = createInitialWeeklyQuests();
+    s.weeklyQuests = createInitialWeeklyQuests(s.highestRarity);
     s.lastWeeklyReset = today;
     // Community rewards are weekly. A new week starts the claim ladder over at Tier 1.
     s.communityRewardClaimedTier = 0;
@@ -6508,9 +6537,36 @@ export async function processOfflineFullNotification(
   });
 }
 
+function rescaleQuestList(
+  existing: PlayerState['dailyQuests'],
+  scaled: PlayerState['dailyQuests'],
+  highestRarity: number,
+): PlayerState['dailyQuests'] {
+  const previous = new Map(existing.map(quest => [quest.id, quest]));
+  return scaled.map(quest => {
+    const old = previous.get(quest.id);
+    const unlockedByRarity = quest.unlockRarity != null && highestRarity >= quest.unlockRarity;
+    return {
+      ...quest,
+      progress: Math.max(0, Number.isFinite(Number(old?.progress)) ? Math.floor(Number(old?.progress)) : 0),
+      claimed: old?.claimed === true,
+      ...(quest.unlocked === false
+        ? { unlocked: old?.unlocked === true || unlockedByRarity }
+        : old?.unlocked === undefined ? {} : { unlocked: old.unlocked }),
+    };
+  });
+}
+
+function rescaleQuestsForHighestRarity(s: PlayerState): void {
+  const highest = Math.max(2, Number(s.highestRarity) || 2);
+  s.dailyQuests = rescaleQuestList(s.dailyQuests ?? [], createInitialDailyQuests(highest), highest);
+  s.weeklyQuests = rescaleQuestList(s.weeklyQuests ?? [], createInitialWeeklyQuests(highest), highest);
+}
+
 export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean; previewOnly?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
+  rescaleQuestsForHighestRarity(s);
   resetFreeShardBudgetIfNeeded(s, now);
   // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
@@ -6744,6 +6800,7 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   // These are presentation-only projections. They are intentionally not saved.
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
+  rescaleQuestsForHighestRarity(s);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = options.registerActivity === false
     ? await getOnlinePlayers()
@@ -8449,7 +8506,7 @@ export async function startOrbFrenzy(options: {
     const expiresAt = frenzyPostExpiresAt(createdAt);
     const postText =
       `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
-      `Click below to claim it! You can only claim one every 23 hours.\n\n` +
+      `Click below to claim it! Each player can claim up to ${FRENZY_CLAIMS_PER_DAY} Frenzies per day.\n\n` +
       `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
       `This owner reward is granted separately from roll-earned Shards.\n\n` +
       `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
@@ -8634,6 +8691,8 @@ export async function getOrbFrenzyInfo(): Promise<{
   expired: boolean;
   consumed: boolean;
   claimedToday: boolean;
+  claimsRemainingToday: number;
+  claimLimitPerDay: number;
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
   isOwner: boolean;
@@ -8675,9 +8734,8 @@ export async function getOrbFrenzyInfo(): Promise<{
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
   // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
   const s = await loadRaw({ registerActivity: false });
-  const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
-  const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
-  const claimedToday = claimCooldownRemainingMs > 0;
+  const claimsRemainingToday = frenzyClaimsRemainingToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
+  const claimedToday = claimsRemainingToday <= 0;
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
     isOwner &&
@@ -8707,10 +8765,12 @@ export async function getOrbFrenzyInfo(): Promise<{
     // only this viewer's durable receipt (or legacy consumedBy) marks it claimed to them.
     consumed: alreadyClaimedByViewer,
     claimedToday,
-    claimCooldownRemainingMs,
-    claimCooldownEndsAt,
+    claimsRemainingToday,
+    claimLimitPerDay: FRENZY_CLAIMS_PER_DAY,
+    claimCooldownRemainingMs: 0,
+    claimCooldownEndsAt: 0,
     isOwner,
-    canClaim: !expired && !alreadyClaimedByViewer && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && !alreadyClaimedByViewer && (claimsRemainingToday > 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     claimCount: claimers.count,
@@ -8822,7 +8882,7 @@ export async function claimOrbFrenzy(options: {
   const loadedState = await loadRaw();
   const performClaim = async () => {
   const s = await settleOffline(loadedState);
-  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+  const claimsUsedToday = frenzyClaimsUsedToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
   const ownerSelfClaimAllowed =
     isOwner &&
     data.adminTest === true &&
@@ -8833,8 +8893,8 @@ export async function claimOrbFrenzy(options: {
   }
 
   const selfClaimTest = isOwner && ownerSelfClaimAllowed;
-  if (claimCooldown > 0 && !selfClaimTest) {
-    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+  if (claimsUsedToday >= FRENZY_CLAIMS_PER_DAY && !selfClaimTest) {
+    throw new Error('You have used all ' + FRENZY_CLAIMS_PER_DAY + ' Frenzy claims available today.');
   }
 
   const frenzyRollsPerActivation = rollsPerActivation(s);
@@ -8917,6 +8977,7 @@ export async function claimOrbFrenzy(options: {
 
   grantCooldownReclaimerTimeEnergy(s, frenzyActivations, reclaimedPerActivation);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
+  s.frenzyClaimsToday = selfClaimTest ? claimsUsedToday : Math.min(FRENZY_CLAIMS_PER_DAY, claimsUsedToday + 1);
   s.lastFrenzyClaimAt = now;
 
   let ownerRewardShards = 0;
@@ -9003,6 +9064,16 @@ export async function claimOrbFrenzy(options: {
   });
 }
 
+
+export async function acknowledgeFrenzyOfflineReward(): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
+    const s = await loadRaw();
+    s.pendingFrenzyOfflineClaimCount = 0;
+    s.pendingFrenzyOfflineShards = 0;
+    await save(s);
+    return s;
+  });
+}
 
 export async function postFrenzyThankYouComment(
   text: string,

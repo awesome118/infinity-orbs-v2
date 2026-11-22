@@ -44,6 +44,7 @@ import {
   getTimeEnergyRollProgress,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
+  acknowledgeFrenzyOfflineReward,
   startOrbFrenzy,
   grantPurchasedPack,
   refundPurchasedPack,
@@ -1685,6 +1686,12 @@ export function createApp() {
     res.set('Cache-Control', 'no-store');
     try { res.json(await armOrbFrenzyClaim()); }
     catch (e) { badRequest(res, e, 'Could not arm Orb Frenzy.'); }
+  });
+
+  app.post('/api/frenzy/offline-reward/ack', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { res.json({ state: await acknowledgeFrenzyOfflineReward() }); }
+    catch (e) { badRequest(res, e, 'Could not acknowledge offline Frenzy rewards.'); }
   });
 
   app.get('/api/frenzy/handoff', async (_req, res) => {

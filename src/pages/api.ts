@@ -211,6 +211,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await game.startOrbFrenzy());
       case '/api/frenzy/arm':
         return jsonResponse(await game.armOrbFrenzyClaim());
+      case '/api/frenzy/offline-reward/ack':
+        return jsonResponse({ state: await game.acknowledgeFrenzyOfflineReward() });
       case '/api/frenzy/claim': {
         const result = await game.claimOrbFrenzy({
           attemptId: typeof body.attemptId === 'string' ? body.attemptId : undefined,

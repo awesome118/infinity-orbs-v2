@@ -107,16 +107,6 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
   const pendingDust = calculateCosmicDust(state);
   const canPrestige = (state.level ?? 1) >= FEATURE_UNLOCK_LEVELS.prestige && pendingDust > 0 && currentRunVal >= 1_000_000;
 
-  const luckRatio = state.highestRarity > 0 ? state.totalRolls / state.highestRarity : 1;
-  const luckRating =
-    state.highestRarity >= 100000 && state.totalRolls < 5000
-      ? 'Very Lucky'
-      : luckRatio < 0.5
-      ? 'Above Average'
-      : luckRatio > 2.5
-      ? 'Below Average'
-      : 'Average';
-
   const hasForgeUpgrade = (state.prestigeUpgrades?.shardSynthesis ?? 0) > 0;
   const canSynthesize = (state.shards ?? 0) >= SHARD_SYNTHESIS_COST && state.cosmicDust < Number.MAX_SAFE_INTEGER;
 
@@ -303,17 +293,7 @@ export const ProfileAndPrestige: React.FC<ProfileAndPrestigeProps> = ({
           <h2 className="text-lg font-black text-white">Player Statistics</h2>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-              Luck Rating
-            </span>
-            <span className="text-sm font-black text-cyan-300 block truncate">
-              {luckRating}
-            </span>
-            <span className="text-[10px] text-slate-500">Odds vs Rolls</span>
-          </div>
-
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5">
             <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
               Rolls Since Best
