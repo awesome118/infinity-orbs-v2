@@ -49,3 +49,4 @@ Retry prompt: corrected the expected newline in the exponential coin grant test.
 Deploy prompt: add nine global feature switches and enforce them on server routes.
 Admin feature switches: master maintenance, granular feature controls, and route-map enforcement.
 Roll cooldown recovery: separate manual/auto timers and reset invalid future timestamps.
+Deploy prompt: validated live balance settings, runtime reward/cooldown tuning, audit history, and revision rollback.
