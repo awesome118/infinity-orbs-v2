@@ -1436,7 +1436,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       if (!response.ok) throw new Error(data.error || 'Admin CLI command failed.');
 
       let output = '';
-      if (data.localOnly) output = 'GitHub Pages simulation only. This does not change the live Devvit game.\\n';
+      if (data.localOnly) output = 'GitHub Pages simulation only. This does not change the live Devvit game.\n';
       if (data.scope === 'everyone') {
         output += data.menuControl
           ? data.menuControl.enabled
