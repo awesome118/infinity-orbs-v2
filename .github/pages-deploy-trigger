@@ -33,3 +33,5 @@ Deploy prompt: restore multiball orbit satellites and add nine animated e3 rarit
 Deploy prompt: faster rarity animations and multicolor gradients for rarity tiers 19-27.
 
 Deploy prompt: trusted-admin Execute As save editor, protected player command writes, and hue-synchronized animated orb borders.
+
+Retry prompt: fix Execute As command numeric result type-check and rerun regression tests.
