@@ -12,6 +12,14 @@ const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
 import { GLOBAL_FEATURES, type GlobalFeatureId } from '../shared/admin-cli.js';
 import { normalizeLastRollTimestamp } from '../shared/auto-roll-timing.js';
+import {
+  DEFAULT_LIVE_BALANCE_CONFIG,
+  LIVE_BALANCE_SETTINGS,
+  getLiveBalanceSetting,
+  normalizeLiveBalanceConfig,
+  validateLiveBalanceValue,
+  type LiveBalanceConfig,
+} from '../shared/live-balance.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
 import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
@@ -558,6 +566,7 @@ const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
 const GLOBAL_MENU_CONTROL_KEY = 'io:global-menu-control:v1';
 const GLOBAL_FEATURE_CONTROL_KEY_PREFIX = 'io:global-feature-control:v1:';
+const LIVE_BALANCE_CONFIG_KEY = 'io:live-balance-config:v1';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
@@ -1196,6 +1205,251 @@ export async function setGlobalFeatureControl(
   };
   await redis.set(GLOBAL_FEATURE_CONTROL_KEY_PREFIX + feature, JSON.stringify(next));
   return next;
+}
+
+
+export interface LiveBalanceHistoryEntry {
+  revision: number;
+  action: 'set' | 'reset' | 'reset-all' | 'rollback';
+  key: string | null;
+  before: LiveBalanceConfig;
+  after: LiveBalanceConfig;
+  updatedAt: number;
+  updatedBy: string;
+  rollbackOf?: number;
+}
+
+export interface LiveBalanceState {
+  revision: number;
+  values: LiveBalanceConfig;
+  history: LiveBalanceHistoryEntry[];
+}
+
+export interface LiveBalanceSnapshot {
+  revision: number;
+  values: LiveBalanceConfig;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+const LIVE_BALANCE_HISTORY_LIMIT = 30;
+
+function normalizeLiveBalanceHistory(value: unknown): LiveBalanceHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-LIVE_BALANCE_HISTORY_LIMIT).flatMap(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const entry = item as Record<string, unknown>;
+    const revision = Number(entry.revision);
+    const action = entry.action;
+    const updatedAt = Number(entry.updatedAt);
+    if (
+      !Number.isSafeInteger(revision) || revision < 1 ||
+      !['set', 'reset', 'reset-all', 'rollback'].includes(String(action)) ||
+      !Number.isFinite(updatedAt) || updatedAt < 0
+    ) return [];
+    return [{
+      revision,
+      action: action as LiveBalanceHistoryEntry['action'],
+      key: typeof entry.key === 'string' ? entry.key.slice(0, 100) : null,
+      before: normalizeLiveBalanceConfig(entry.before),
+      after: normalizeLiveBalanceConfig(entry.after),
+      updatedAt,
+      updatedBy: String(entry.updatedBy ?? '').slice(0, 100),
+      ...(Number.isSafeInteger(Number(entry.rollbackOf)) && Number(entry.rollbackOf) > 0
+        ? { rollbackOf: Number(entry.rollbackOf) }
+        : {}),
+    }];
+  });
+}
+
+function normalizeLiveBalanceState(value: unknown): LiveBalanceState {
+  const candidate = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const revision = Number(candidate.revision);
+  return {
+    revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : 0,
+    values: normalizeLiveBalanceConfig(candidate.values),
+    history: normalizeLiveBalanceHistory(candidate.history),
+  };
+}
+
+export async function getLiveBalanceState(): Promise<LiveBalanceState> {
+  const raw = await redis.get(LIVE_BALANCE_CONFIG_KEY);
+  return normalizeLiveBalanceState(parseStoredJson<unknown>(raw));
+}
+
+export async function getLiveBalanceConfig(): Promise<LiveBalanceConfig> {
+  return (await getLiveBalanceState()).values;
+}
+
+export async function getLiveBalanceSnapshot(): Promise<LiveBalanceSnapshot> {
+  const state = await getLiveBalanceState();
+  const latest = state.history[state.history.length - 1];
+  return {
+    revision: state.revision,
+    values: state.values,
+    updatedAt: latest?.updatedAt ?? 0,
+    updatedBy: latest?.updatedBy ?? '',
+  };
+}
+
+async function mutateLiveBalanceState(
+  action: LiveBalanceHistoryEntry['action'],
+  key: string | null,
+  updatedBy: string,
+  transform: (current: LiveBalanceConfig, history: LiveBalanceHistoryEntry[]) => LiveBalanceConfig,
+  rollbackOf?: number,
+): Promise<{ state: LiveBalanceState; changed: boolean }> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(LIVE_BALANCE_CONFIG_KEY);
+    let transactionClosed = false;
+    try {
+      const raw = await redis.get(LIVE_BALANCE_CONFIG_KEY);
+      const current = normalizeLiveBalanceState(parseStoredJson<unknown>(raw));
+      const nextValues = normalizeLiveBalanceConfig(transform(current.values, current.history));
+      const before = current.values;
+      if (LIVE_BALANCE_SETTINGS.every(setting => before[setting.key] === nextValues[setting.key])) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return { state: current, changed: false };
+      }
+      if (current.revision >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('Live balance revision limit reached. No change was applied.');
+      }
+      const nextRevision = current.revision + 1;
+      const entry: LiveBalanceHistoryEntry = {
+        revision: nextRevision,
+        action,
+        key,
+        before: { ...before },
+        after: { ...nextValues },
+        updatedAt: Date.now(),
+        updatedBy: String(updatedBy || context.username || 'Developer').slice(0, 100),
+        ...(rollbackOf ? { rollbackOf } : {}),
+      };
+      const nextState: LiveBalanceState = {
+        revision: nextRevision,
+        values: nextValues,
+        history: [...current.history, entry].slice(-LIVE_BALANCE_HISTORY_LIMIT),
+      };
+      await txn.multi();
+      await txn.set(LIVE_BALANCE_CONFIG_KEY, JSON.stringify(nextState));
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return { state: nextState, changed: true };
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Live balance configuration changed repeatedly. No update was committed; retry the command.');
+}
+
+export async function executeLiveBalanceCommand(
+  command: Extract<ParsedAdminCliCommand, { kind: 'balance' }>,
+  updatedBy = context.username ?? 'Developer',
+): Promise<Record<string, unknown>> {
+  const state = await getLiveBalanceState();
+  if (command.action === 'list') {
+    return {
+      action: 'list',
+      revision: state.revision,
+      settings: LIVE_BALANCE_SETTINGS.map(setting => ({
+        ...setting,
+        value: state.values[setting.key],
+        isDefault: state.values[setting.key] === setting.defaultValue,
+      })),
+    };
+  }
+  if (command.action === 'history') {
+    return {
+      action: 'history',
+      revision: state.revision,
+      history: state.history.map(entry => ({
+        revision: entry.revision,
+        action: entry.action,
+        key: entry.key,
+        updatedAt: entry.updatedAt,
+        updatedBy: entry.updatedBy,
+        rollbackOf: entry.rollbackOf ?? null,
+      })),
+    };
+  }
+  if (command.action === 'get' || command.action === 'preview') {
+    const setting = getLiveBalanceSetting(command.key);
+    if (!setting) throw new Error('Unknown balance setting "' + command.key + '".');
+    return {
+      action: command.action,
+      revision: state.revision,
+      setting: {
+        ...setting,
+        value: state.values[setting.key],
+        ...(command.action === 'preview'
+          ? {
+              proposedValue: validateLiveBalanceValue(setting.key, command.value),
+              changed: state.values[setting.key] !== command.value,
+            }
+          : {}),
+      },
+    };
+  }
+  if (command.action === 'set') {
+    const value = validateLiveBalanceValue(command.key, command.value);
+    const result = await mutateLiveBalanceState('set', command.key, updatedBy, current => ({
+      ...current,
+      [command.key]: value,
+    }));
+    return {
+      action: 'set',
+      changed: result.changed,
+      revision: result.state.revision,
+      key: command.key,
+      previousValue: state.values[command.key as keyof LiveBalanceConfig],
+      value: result.state.values[command.key as keyof LiveBalanceConfig],
+      updatedAt: result.state.history[result.state.history.length - 1]?.updatedAt ?? 0,
+    };
+  }
+  if (command.action === 'reset') {
+    const setting = getLiveBalanceSetting(command.key);
+    if (!setting) throw new Error('Unknown balance setting "' + command.key + '".');
+    const result = await mutateLiveBalanceState('reset', setting.key, updatedBy, current => ({
+      ...current,
+      [setting.key]: setting.defaultValue,
+    }));
+    return {
+      action: 'reset',
+      changed: result.changed,
+      revision: result.state.revision,
+      key: setting.key,
+      value: result.state.values[setting.key],
+    };
+  }
+  if (command.action === 'reset-all') {
+    const result = await mutateLiveBalanceState('reset-all', null, updatedBy, () => ({
+      ...DEFAULT_LIVE_BALANCE_CONFIG,
+    }));
+    return {
+      action: 'reset-all',
+      changed: result.changed,
+      revision: result.state.revision,
+      values: result.state.values,
+    };
+  }
+  if (command.action === 'rollback') {
+    const target = state.history.find(entry => entry.revision === command.revision);
+    if (!target) throw new Error('Balance revision ' + command.revision + ' is not in the retained history.');
+    const result = await mutateLiveBalanceState('rollback', null, updatedBy, () => ({
+      ...target.before,
+    }), command.revision);
+    return {
+      action: 'rollback',
+      changed: result.changed,
+      revision: result.state.revision,
+      rolledBackRevision: command.revision,
+      values: result.state.values,
+    };
+  }
+  throw new Error('Unsupported balance command.');
 }
 
 export async function getDeveloperAnnouncement(): Promise<DeveloperAnnouncement> {
