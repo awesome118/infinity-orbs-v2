@@ -533,12 +533,15 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
           return response({
             ok: true,
             scope: 'everyone',
+            localOnly: true,
             menuControl: await game.setGlobalMenuControl(parsed.enabled, parsed.reason, context.username ?? 'Pages Admin'),
           });
         }
         if (parsed.kind === 'announcement') {
           return response({
             ok: true,
+            scope: 'everyone',
+            localOnly: true,
             announcement: await game.setDeveloperAnnouncement(parsed.message, context.username ?? 'Pages Admin'),
           });
         }
