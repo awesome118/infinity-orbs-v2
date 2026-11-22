@@ -1352,6 +1352,13 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       return;
     }
 
+    if (/^(?:target\s+clear|clear\s+target|as\s+off)$/i.test(command)) {
+      setExecuteAsUsername('');
+      appendCliHistory(command, 'One-shot player target cleared.', true);
+      setExecuteAsCommands('');
+      return;
+    }
+
     const arm = /^(?:as|target)\s+(.+)$/i.exec(command);
     if (arm) {
       const username = arm[1]!.trim().replace(/^u\//i, '');
@@ -1362,13 +1369,6 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       }
       setExecuteAsUsername(username);
       appendCliHistory(command, 'Armed u/' + username + '. The next player command will run against that account, then the target will clear.', true);
-      setExecuteAsCommands('');
-      return;
-    }
-
-    if (/^(?:target\s+clear|clear\s+target|as\s+off)$/i.test(command)) {
-      setExecuteAsUsername('');
-      appendCliHistory(command, 'One-shot player target cleared.', true);
       setExecuteAsCommands('');
       return;
     }
