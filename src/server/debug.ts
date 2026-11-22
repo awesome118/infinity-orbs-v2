@@ -631,10 +631,10 @@ debugRouter.get('/execute-as/save', async (req, res) => {
 });
 
 debugRouter.post('/execute-as/execute', async (req, res) => {
-  const username = targetUsername(req.body?.username);
-  const commands = String(req.body?.commands ?? '');
   let userId = '';
   try {
+    const username = targetUsername(req.body?.username);
+    const commands = String(req.body?.commands ?? '');
     userId = await resolveUserId(username);
     const playerKey = 'player:' + userId;
     const generationKey = 'player-generation:' + userId;
