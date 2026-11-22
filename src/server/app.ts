@@ -50,6 +50,7 @@ import {
   refundPurchasedPack,
   appendPaymentDebugLog,
   getDeveloperAnnouncement,
+  getGlobalMenuControl,
   getGlobalBoosterAnnouncement,
   loadRaw,
   recordSocialVisit,
@@ -902,6 +903,15 @@ export function createApp() {
       res.json(await getDeveloperAnnouncement());
     } catch (e: any) {
       res.status(500).json({ error: e?.message || 'Failed to fetch developer announcement.' });
+    }
+  });
+
+  app.get('/api/menu-control', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await getGlobalMenuControl());
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load global menu settings.' });
     }
   });
 
