@@ -10,7 +10,7 @@ import * as notificationsModule from '@devvit/notifications';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
-import { GLOBAL_FEATURES, type GlobalFeatureId } from '../shared/admin-cli.js';
+import { GLOBAL_FEATURES, type GlobalFeatureId, type ParsedAdminCliCommand } from '../shared/admin-cli.js';
 import { normalizeLastRollTimestamp } from '../shared/auto-roll-timing.js';
 import {
   DEFAULT_LIVE_BALANCE_CONFIG,
