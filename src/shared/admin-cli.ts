@@ -70,7 +70,7 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
       return { kind: 'player-save', commands: 'set lastRollAt 0', invalidateRollTicket: true };
     }
 
-    const offlineMatch = /^offline\s+(add|set)\s+([\d.]+)$/i.exec(line);
+    const offlineMatch = /^offline\s+(add|set)\s+([+-]?[\d.]+)$/i.exec(line);
     if (offlineMatch) {
       const offlineAmount = numericText(offlineMatch[2]!, 'Offline rolls');
       if (!Number.isSafeInteger(offlineAmount)) throw new Error('Offline rolls must be whole numbers.');
@@ -81,7 +81,7 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
       };
     }
 
-    const giveMatch = /^give\s+(coins?|shards?|dust|offline|rolls)\s+([\d.]+)$/i.exec(line);
+    const giveMatch = /^give\s+(coins?|shards?|dust|offline|rolls)\s+([+-]?[\d.]+)$/i.exec(line);
     if (giveMatch) {
       const resource = giveMatch[1]!.toLowerCase();
       const amount = numericText(giveMatch[2]!, 'Grant amount');
