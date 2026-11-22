@@ -13,7 +13,7 @@ export const RarityOrbIcon: React.FC<RarityOrbIconProps> = ({ rarity, unlocked, 
   return (
     <span
       aria-hidden="true"
-      className={`io-rarity-orb-icon ${unlocked ? 'is-unlocked' : 'is-locked'} ${compact ? 'io-rarity-orb-icon--compact' : ''}`}
+      className={`io-rarity-orb-icon ${unlocked ? 'is-unlocked' : 'is-locked'} ${compact ? 'io-rarity-orb-icon--compact' : ''} ${info.animated ? 'io-rarity-color-cycle' : ''}`}
       style={{
         '--io-rarity-orb-color': info.color,
         '--io-rarity-orb-gradient': info.bgGradient,
