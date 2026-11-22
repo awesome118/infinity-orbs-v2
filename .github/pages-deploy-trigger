@@ -16,3 +16,4 @@ Deploy prompt: remove Luck Rating, correct shard chance and Chain Patcher displa
 Deploy validation fix: import Reddit simulator Bell icon and preserve floating reward tone literal types.
 
 Deploy validation refinement: run focused Frenzy, quest-scaling, offline-reward, and Pages simulator tests after type-checking; full legacy suite has unrelated stale source-contract failures.
+Pages update: manual cooldown, income-based quest rewards, and server-backed Frenzy simulator.

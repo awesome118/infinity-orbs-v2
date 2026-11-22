@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   Award,
   Bookmark,
@@ -10,7 +9,6 @@ import {
   MoreHorizontal,
   Share2,
   Sparkles,
-  Users,
   Zap,
 } from 'lucide-react';
 import type { PlayerState, RollResponse } from '../../shared/game.js';
@@ -315,7 +313,7 @@ export const RedditPostSimulator: React.FC<RedditPostSimulatorProps> = ({ state,
 
                   {claimResult && (
                     <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-                      **Claim saved.** {formatNumber(claimResult.frenzyCount ?? 0)} Orbs rolled. The results were applied to your game save.
+                      <strong>Claim saved.</strong> {formatNumber(claimResult.frenzyCount ?? 0)} Orbs rolled. The results were applied to your game save.
                     </div>
                   )}
 
