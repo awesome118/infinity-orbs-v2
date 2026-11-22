@@ -2839,4 +2839,43 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .io-runes-equip-button.is-equipped { color: #d9f99d; border-color: rgba(190,242,100,.32); background: rgba(132,204,22,.1); }
 .io-ui .io-main-orb.is-revealing { scale: 1.05; border-color: rgba(255,255,255,.78); box-shadow: 0 0 0 2px rgba(255,255,255,.32), 0 0 28px rgba(173,216,255,.48), inset 0 0 22px rgba(255,255,255,.22), 0 14px 42px rgba(0,0,0,.38); }
 .io-ui .io-main-orb.is-shaking { animation: io-orb-shake 450ms ease-in-out both; }
-@keyframes io-orb-shake { 0%,100% { translate: 0 0; } 18% { translate: -3px 1px; } 36% { translate: 3px -1px; } 54% { translate: -2px -1px; } 72% { translate: 2px 1px; } 90% { translate: -1px 0; } }
+@keyframes io-orb-shake {
+  0%,100% { translate: 0 0; }
+  18% { translate: var(--shake-x-a) var(--shake-y-a); }
+  36% { translate: var(--shake-x-b) var(--shake-y-b); }
+  54% { translate: var(--shake-x-c) var(--shake-y-c); }
+  72% { translate: var(--shake-x-d) var(--shake-y-d); }
+  90% { translate: var(--shake-x-e) 0; }
+}
+
+.roll-floating-rewards { position: absolute; z-index: 40; inset: 0; overflow: visible; pointer-events: none; }
+.roll-floating-stat {
+  position: absolute;
+  display: block;
+  width: max-content;
+  max-width: 180px;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.15;
+  font-weight: 950;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 8px rgba(0,0,0,.95), 0 0 14px currentColor;
+  transform: translate(-50%, -50%);
+  animation: io-roll-floating-stat 1050ms cubic-bezier(.17,.72,.2,1) both;
+}
+.roll-floating-stat-coins { color: #f7c96f; }
+.roll-floating-stat-xp { color: #c5a8ff; }
+.roll-floating-stat-shards { color: #7ce7e1; }
+.roll-floating-stat-value { color: #82d8ff; }
+@keyframes io-roll-floating-stat {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.9); }
+  12% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(-50% + var(--roll-float-x)), calc(-50% + var(--roll-float-y)), 0) scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-floating-stat { animation: none; opacity: 0; }
+}

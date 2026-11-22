@@ -2,7 +2,7 @@
 // This module does not synthesize audio at runtime.
 const SOUND_ASSETS = {
   confirmation: new URL('./assets/audio/equip-interface.wav', import.meta.url).href,
-  drop: new URL('./assets/audio/roll-bubble.wav', import.meta.url).href,
+  drop: new URL('./assets/audio/orb-roll.ogg', import.meta.url).href,
   glass: new URL('./assets/audio/rarity-magic.wav', import.meta.url).href,
   error: new URL('./assets/audio/error-interface.wav', import.meta.url).href,
   levelUp: new URL('./assets/audio/level-up.wav', import.meta.url).href,

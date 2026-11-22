@@ -59,6 +59,17 @@ interface RollSectionProps {
   onNewBest?: (orb: Orb, prevBest: number) => void;
 }
 
+interface FloatingRewardText {
+  id: number;
+  text: string;
+  tone: 'coins' | 'xp' | 'shards' | 'value';
+  left: number;
+  top: number;
+  dx: number;
+  dy: number;
+  delay: number;
+}
+
 function prefersReducedMotion(): boolean {
   try {
     return typeof window !== 'undefined' &&
@@ -108,6 +119,13 @@ export const RollSection: React.FC<RollSectionProps> = ({
   onNewBest,
 }) => {
   const [showBatchDetails, setShowBatchDetails] = useState(false);
+  const [floatingRewards, setFloatingRewards] = useState<FloatingRewardText[]>([]);
+  const [shakeIntensity, setShakeIntensity] = useState(0);
+  const rollStageRef = useRef<HTMLDivElement | null>(null);
+  const pendingRollOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const floatingRewardIdRef = useRef(0);
+  const floatingRewardTimersRef = useRef<number[]>([]);
+  const lastBatchSummaryRef = useRef(batchSummary);
   const [quickUpgradePendingCounts, setQuickUpgradePendingCounts] = useState<Partial<Record<UpgradeId, number>>>({});
   const [quickBuyAllBusy, setQuickBuyAllBusy] = useState(false);
   const quickUpgradePendingCountRef = useRef(0);
@@ -125,6 +143,79 @@ export const RollSection: React.FC<RollSectionProps> = ({
     media.addEventListener('change', updatePreference);
     return () => media.removeEventListener('change', updatePreference);
   }, []);
+
+  useEffect(() => () => {
+    floatingRewardTimersRef.current.forEach(timer => window.clearTimeout(timer));
+    floatingRewardTimersRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    if (batchSummary === lastBatchSummaryRef.current) return;
+    lastBatchSummaryRef.current = batchSummary;
+    if (!batchSummary) {
+      pendingRollOriginRef.current = null;
+      return;
+    }
+
+    const stage = rollStageRef.current;
+    if (!stage || reducedMotion) {
+      pendingRollOriginRef.current = null;
+      return;
+    }
+
+    const stageRect = stage.getBoundingClientRect();
+    const orbRect = stage.querySelector<HTMLElement>('.io-main-orb')?.getBoundingClientRect();
+    const orbCenter = orbRect
+      ? {
+          x: orbRect.left - stageRect.left + orbRect.width / 2,
+          y: orbRect.top - stageRect.top + orbRect.height / 2,
+        }
+      : { x: stageRect.width / 2, y: stageRect.height / 2 };
+
+    const clickedOrigin = pendingRollOriginRef.current;
+    pendingRollOriginRef.current = null;
+    let origin = !autoRoll && clickedOrigin ? clickedOrigin : null;
+    if (!origin) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 76 + Math.random() * 20;
+      origin = {
+        x: orbCenter.x + Math.cos(angle) * radius,
+        y: orbCenter.y + Math.sin(angle) * radius,
+      };
+    }
+
+    const rewardValues: Array<{ amount: number; text: string; tone: FloatingRewardText['tone'] }> = [
+      { amount: Number(batchSummary.coins), text: '+' + formatNumber(batchSummary.coins) + ' Coins', tone: 'coins' },
+      { amount: Number(batchSummary.xp), text: '+' + formatNumber(batchSummary.xp) + ' XP', tone: 'xp' },
+      { amount: Number(batchSummary.shards), text: '+' + formatShardAmount(batchSummary.shards) + ' Shards', tone: 'shards' },
+      { amount: Number(batchSummary.totalVal), text: '+' + formatNumber(batchSummary.totalVal) + ' Value', tone: 'value' },
+    ].filter(reward => Number.isFinite(reward.amount) && reward.amount > 0);
+
+    if (rewardValues.length === 0) return;
+
+    const nextRewards = rewardValues.map((reward, index): FloatingRewardText => {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 64 + Math.random() * 48;
+      return {
+        id: ++floatingRewardIdRef.current,
+        text: reward.text,
+        tone: reward.tone,
+        left: origin!.x,
+        top: origin!.y,
+        dx: Math.cos(angle) * distance,
+        dy: Math.sin(angle) * distance,
+        delay: index * 38,
+      };
+    });
+
+    const ids = new Set(nextRewards.map(reward => reward.id));
+    setFloatingRewards(current => [...current, ...nextRewards].slice(-48));
+    const expiryTimer = window.setTimeout(() => {
+      setFloatingRewards(current => current.filter(reward => !ids.has(reward.id)));
+      floatingRewardTimersRef.current = floatingRewardTimersRef.current.filter(timer => timer !== expiryTimer);
+    }, 1150);
+    floatingRewardTimersRef.current.push(expiryTimer);
+  }, [batchSummary, autoRoll, reducedMotion]);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -262,6 +353,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (reducedMotion) {
         setIsRevealing(false);
         setIsShaking(false);
+        setShakeIntensity(0);
         setSonarPinging(false);
       }
       return;
@@ -277,19 +369,39 @@ export const RollSection: React.FC<RollSectionProps> = ({
       setIsRevealing(false);
     }
 
-    if (lastOrb.rarity >= 1000 && !reducedMotion) {
-      setIsShaking(true);
-      shakeTimer = window.setTimeout(() => setIsShaking(false), 450);
-    } else {
-      setIsShaking(false);
-    }
-
     const nowTs = Date.now();
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
     const bestBefore = bestRarityForSoundRef.current;
     const isNewBest = lastOrb.isInfinity === true
       ? !bestWasInfinityRef.current
       : !bestWasInfinityRef.current && lastOrb.rarity > bestBefore;
+    const rarityProgress = !bestWasInfinityRef.current && bestBefore > 0 && Number.isFinite(lastOrb.rarity)
+      ? lastOrb.rarity / bestBefore
+      : 0;
+    const isWithinTenfold = !isNewBest && rarityProgress >= 0.1 && rarityProgress < 1;
+    const isWithinHundredfold = !isNewBest && rarityProgress >= 0.01 && rarityProgress < 1;
+
+    if ((isNewBest || isWithinHundredfold) && !reducedMotion) {
+      setIsShaking(true);
+      setShakeIntensity(isNewBest ? 1 : Math.sqrt(rarityProgress));
+      shakeTimer = window.setTimeout(() => {
+        setIsShaking(false);
+        setShakeIntensity(0);
+      }, 450);
+    } else {
+      setIsShaking(false);
+      setShakeIntensity(0);
+    }
+
+    if ((isNewBest || isWithinTenfold) && !reducedMotion) {
+      confetti({
+        particleCount: isNewBest ? 110 : 48,
+        spread: isNewBest ? 82 : 58,
+        origin: { y: 0.6 },
+        colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
+      });
+    }
+
     const nearBestRarity = Math.ceil(Math.max(2, bestBefore) * 0.9);
     const sonarOrb = !isNewBest && sound.sonarAlertMode === 'near-best' && isSilentSonar &&
       !bestWasInfinityRef.current && Number.isFinite(lastOrb.rarity) &&
@@ -311,25 +423,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
       if (lastOrb.rarity >= 100_000 && nowTs - lastFanfareTimeRef.current > 1200) {
         lastFanfareTimeRef.current = nowTs;
         sound.playMythicFanfare();
-        if (!reducedMotion) {
-          confetti({
-            particleCount: 120,
-            spread: 80,
-            origin: { y: 0.6 },
-            colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
-          });
-        }
       } else if (lastOrb.rarity >= 1_000 && nowTs - lastFanfareTimeRef.current > 800) {
         lastFanfareTimeRef.current = nowTs;
         sound.playEpicFanfare();
-        if (!reducedMotion) {
-          confetti({
-            particleCount: 50,
-            spread: 50,
-            origin: { y: 0.6 },
-            colors: ['#fb923c', '#4ade80', '#38bdf8'],
-          });
-        }
       } else {
         sound.playRollNormal();
       }
@@ -373,9 +469,21 @@ export const RollSection: React.FC<RollSectionProps> = ({
       : 'shadow-[0_0_35px_rgba(99,102,241,0.2)]';
 
   // Handle click on roll button or center orb
-  const handleRollClick = () => {
+  const handleRollClick = (event?: React.MouseEvent<HTMLElement>) => {
     if (busy) return;
     if (canRoll) {
+      pendingRollOriginRef.current = null;
+      if (!autoRoll && event && rollStageRef.current) {
+        const rect = rollStageRef.current.getBoundingClientRect();
+        const insideStage = event.clientX >= rect.left && event.clientX <= rect.right &&
+          event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (insideStage) {
+          pendingRollOriginRef.current = {
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          };
+        }
+      }
       if (cooldownNoticeTimerRef.current !== null) {
         window.clearTimeout(cooldownNoticeTimerRef.current);
         cooldownNoticeTimerRef.current = null;
@@ -384,6 +492,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       setCooldownNotice(null);
       void onRoll();
     } else if (chainPatcherPending && !chainPatcherCharged) {
+      pendingRollOriginRef.current = null;
       sound.playClick();
       setCooldownNotice('Chain Patcher target is invalid. Refresh your save before rolling.');
       if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
@@ -393,6 +502,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       }, 2500);
     } else if (remain > 0) {
       if (cooldownNoticeTimerRef.current !== null) window.clearTimeout(cooldownNoticeTimerRef.current);
+      pendingRollOriginRef.current = null;
       sound.playClick();
       setCooldownNotice(`Cooldown active (${(remain / 1000).toFixed(1)}s remaining)`);
       cooldownNoticeTimerRef.current = window.setTimeout(() => {
@@ -515,7 +625,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''}`}>
+      <div ref={rollStageRef} className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className="absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700"
@@ -562,6 +672,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
             background: orbInfo
               ? orbInfo.bgGradient
               : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
+            ...(isShaking ? {
+              '--shake-x-a': (-3 * shakeIntensity) + 'px',
+              '--shake-y-a': (1 * shakeIntensity) + 'px',
+              '--shake-x-b': (3 * shakeIntensity) + 'px',
+              '--shake-y-b': (-1 * shakeIntensity) + 'px',
+              '--shake-x-c': (-2 * shakeIntensity) + 'px',
+              '--shake-y-c': (-1 * shakeIntensity) + 'px',
+              '--shake-x-d': (2 * shakeIntensity) + 'px',
+              '--shake-y-d': (1 * shakeIntensity) + 'px',
+              '--shake-x-e': (-1 * shakeIntensity) + 'px',
+            } as React.CSSProperties : {}),
           }}
         >
           {/* Reward totals remain in the persistent summary below the Orb. */}
@@ -611,6 +732,23 @@ export const RollSection: React.FC<RollSectionProps> = ({
               ★ New find
             </div>
           )}
+        </div>
+        <div className="roll-floating-rewards" aria-hidden="true">
+          {floatingRewards.map(reward => (
+            <span
+              key={reward.id}
+              className={`roll-floating-stat roll-floating-stat-${reward.tone}`}
+              style={{
+                left: reward.left + 'px',
+                top: reward.top + 'px',
+                '--roll-float-x': reward.dx + 'px',
+                '--roll-float-y': reward.dy + 'px',
+                animationDelay: reward.delay + 'ms',
+              } as React.CSSProperties}
+            >
+              {reward.text}
+            </span>
+          ))}
         </div>
       </div>
 

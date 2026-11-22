@@ -9,7 +9,7 @@ Source: https://opengameart.org/content/rpg-sound-pack
 License: https://creativecommons.org/publicdomain/zero/1.0/
 
 - `equip-interface.wav` — `interface/interface2.wav`: equipment feedback
-- `roll-bubble.wav` — `inventory/bubble.wav`: normal Orb rolls
+- `orb-roll.ogg` — Kenney Digital Audio `phaseJump2.ogg`: normal Orb rolls
 - `rarity-magic.wav` — `battle/magic1.wav`: rare Orb feedback
 - `error-interface.wav` — `interface/interface6.wav`: failed actions
 - `reward-coin.wav` — `inventory/coin.wav`: coin, streak, and quest rewards
@@ -27,6 +27,7 @@ License: https://creativecommons.org/publicdomain/zero/1.0/
 Source: https://kenney.nl/assets/digital-audio
 License: https://creativecommons.org/publicdomain/zero/1.0/
 
+- `orb-roll.ogg` — `phaseJump2.ogg`: normal Orb rolls
 - `sonar-ping.ogg` — `highUp.ogg`: Silent Sonar
 - `alignment-phase.ogg` — `phaseJump1.ogg`: Celestial Alignment prompt and Mythic cue
 - `power-up.ogg` — `powerUp2.ogg`: boosters and new-best feedback

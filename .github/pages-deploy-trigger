@@ -8,3 +8,5 @@ Deploy prompt: replace the original Kenney UI samples with human-made OpenGameAr
 Clean Pages deployment retry after duplicate artifact metadata from the prior workflow run.
 
 Deploy prompt: replace all runtime-synthesized game audio with sourced non-AI sound-effect files, including sonar, alignment, sacrifice, and progression cues.
+
+Deploy prompt: replace bubble Orb-roll sound with a phase-shift effect; add directional floating reward text; gate confetti and scale Orb shake relative to personal best.
