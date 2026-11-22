@@ -80,6 +80,11 @@ import {
 
 } from '../shared/game.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
+import {
+  DEFAULT_LIVE_BALANCE_CONFIG,
+  normalizeLiveBalanceConfig,
+  type LiveBalanceConfig,
+} from '../shared/live-balance.js';
 import { sound } from './sound.js';
 import { autoRollCooldownRetryDelayMs, autoRollReadyAt, manualRollReadyAt } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
@@ -325,10 +330,48 @@ function App() {
   }, []);
 
   const [state, setState] = useState<PlayerState | null>(null);
+  const [liveBalance, setLiveBalance] = useState<LiveBalanceConfig>(DEFAULT_LIVE_BALANCE_CONFIG);
   const [globalMenuControl, setGlobalMenuControl] = useState<{ enabled: boolean; reason: string; updatedAt: number; updatedBy: string }>({
     enabled: true, reason: '', updatedAt: 0, updatedBy: '',
   });
   const menusDisabled = globalMenuControl.enabled === false;
+
+  // Live balance tuning is global and independent of each player's save.
+  // Refresh on focus, tab visibility, and periodically so admin changes flow
+  // into both the cooldown UI and the next local Time Energy estimate.
+  useEffect(() => {
+    let active = true;
+    let requestInFlight = false;
+    const refreshLiveBalance = async () => {
+      if (!active || requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const snapshot = await getJson<{ values?: unknown }>('/api/live-balance', { cache: 'no-store' });
+        if (active) setLiveBalance(normalizeLiveBalanceConfig(snapshot.values));
+      } catch {
+        // The last valid snapshot remains usable if a settings read briefly fails.
+      } finally {
+        requestInFlight = false;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshLiveBalance();
+    };
+    const onBalanceUpdated = () => { void refreshLiveBalance(); };
+    void refreshLiveBalance();
+    const interval = window.setInterval(() => { void refreshLiveBalance(); }, 10_000);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onBalanceUpdated);
+    window.addEventListener('io-live-balance-updated', onBalanceUpdated);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onBalanceUpdated);
+      window.removeEventListener('io-live-balance-updated', onBalanceUpdated);
+    };
+  }, []);
+
 
 
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
@@ -2090,7 +2133,7 @@ function App() {
     if (!frenzyArmed) sound.playRollNormal();
 
     const timeEnergyActivations = useTimeEnergy
-      ? timeEnergyActivationsAvailable(currentState.timeEnergy ?? 0, cooldownMs(currentState, false))
+      ? timeEnergyActivationsAvailable(currentState.timeEnergy ?? 0, cooldownMs(currentState, false, liveBalance))
       : 0;
     const timeEnergyOrbs = timeEnergyActivations * Math.max(1, rollsPerActivation(currentState));
     const shouldAnimateTimeEnergy = useTimeEnergy &&
@@ -2329,6 +2372,7 @@ function App() {
     frenzyArmed,
     splashEntered,
     combatMode,
+    liveBalance,
   ]);
 
   // Keep the manual Roll button aligned with the manual server cooldown.
@@ -2348,8 +2392,8 @@ function App() {
       setReadyAt(0);
       return;
     }
-    setReadyAt(manualRollReadyAt(lastRollAt, cooldownMs(timingState, false)));
-  }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
+    setReadyAt(manualRollReadyAt(lastRollAt, cooldownMs(timingState, false, liveBalance)));
+  }, [state, liveBalance, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto Roll uses a single scheduled wake-up, not a state-captured polling
   // interval. Every wake-up re-reads the latest save and recomputes the Auto
@@ -2393,7 +2437,7 @@ function App() {
       const lastRollAt = Math.max(0, Number(latest.lastRollAt ?? 0) || 0);
       const nextReadyAt = autoRollReadyAt(
         lastRollAt,
-        cooldownMs(latest, true),
+        cooldownMs(latest, true, liveBalance),
         autoRollCooldownRetryUntilRef.current,
       );
       const remaining = nextReadyAt - Date.now();
@@ -2424,6 +2468,7 @@ function App() {
     state?.autoRollEnabled,
     state?.upgrades.auto,
     state?.lastRollAt,
+    liveBalance,
     handleRoll,
     splashEntered,
     combatMode,
@@ -4261,6 +4306,7 @@ function App() {
         {tab === 'roll' && (
           <RollSection
             state={state}
+            liveBalance={liveBalance}
             lastOrb={lastOrb}
             lastBatch={lastBatch}
             batchSummary={batchSummary}
