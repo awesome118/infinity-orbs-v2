@@ -18,6 +18,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
+import type { LiveBalanceConfig } from '../../shared/live-balance.js';
 import {
   cooldownMs,
   timeEnergyActivationsAvailable,
@@ -41,6 +42,7 @@ import { OrbOrbit } from './OrbOrbit.js';
 
 interface RollSectionProps {
   state: PlayerState;
+  liveBalance: LiveBalanceConfig;
   lastOrb: Orb | null;
   lastBatch: Orb[];
   batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
@@ -101,6 +103,7 @@ function formatAlignmentRemaining(ms: number): string {
 
 export const RollSection: React.FC<RollSectionProps> = ({
   state,
+  liveBalance,
   lastOrb,
   lastBatch,
   batchSummary,
@@ -289,7 +292,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   const [isShaking, setIsShaking] = useState(false);
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
-  const cd = cooldownMs(state, false);
+  const cd = cooldownMs(state, false, liveBalance);
   const timeEnergyRollsAvailable = timeEnergyActivationsAvailable(timeEnergy, cd);
   const timeEnergySpendMs = timeEnergyRollsAvailable * cd;
   const timeEnergyProgressPct = cd > 0 ? Math.max(0, Math.min(100, (timeEnergy / cd) * 100)) : 0;
@@ -556,7 +559,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const nextLuckState: PlayerState = { ...state, upgrades: { ...state.upgrades, luck: luckLevel + 1 } };
   const nextMultiState: PlayerState = { ...state, upgrades: { ...state.upgrades, multi: multiLevel + 1 } };
   const quickUpgradeItems = [
-    { id: 'speed' as const, title: 'Roll speed', level: speedLevel, current: `${(cooldownMs(state) / 1000).toFixed(2)}s`, next: `${(cooldownMs(nextSpeedState) / 1000).toFixed(2)}s`, cost: upgradeCost('speed', speedLevel) },
+    { id: 'speed' as const, title: 'Roll speed', level: speedLevel, current: `${(cooldownMs(state, false, liveBalance) / 1000).toFixed(2)}s`, next: `${(cooldownMs(nextSpeedState, false, liveBalance) / 1000).toFixed(2)}s`, cost: upgradeCost('speed', speedLevel) },
     { id: 'multi' as const, title: 'Multi roll', level: multiLevel, current: `${rollsPerActivation(state)} orbs`, next: `${rollsPerActivation(nextMultiState)} orbs`, cost: upgradeCost('multi', multiLevel) },
     { id: 'luck' as const, title: 'Luck', level: luckLevel, current: `${luckMultiplier(state).toFixed(2)}×`, next: `${luckMultiplier(nextLuckState).toFixed(2)}×`, cost: upgradeCost('luck', luckLevel) },
     { id: 'coinBonus' as const, title: 'Coin bonus', level: coinBonusLevel, current: `+${coinBonusLevel * 15}%`, next: `+${(coinBonusLevel + 1) * 15}%`, cost: upgradeCost('coinBonus', coinBonusLevel) },
