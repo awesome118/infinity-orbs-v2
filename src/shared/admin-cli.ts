@@ -1,3 +1,4 @@
+import { validateLiveBalanceValue } from './live-balance.js';
 /**
  * Admin Console command grammar. Intentionally not a JavaScript interpreter.
  * The caller still has to pass the server-side admin gate before this parser
@@ -49,6 +50,11 @@ export type ParsedAdminCliCommand =
   | { kind: 'announcement'; message: string }
   | { kind: 'feature'; feature: GlobalFeatureId; enabled: boolean; reason: string }
   | { kind: 'feature-list' }
+  | { kind: 'balance'; action: 'list' | 'history' }
+  | { kind: 'balance'; action: 'get' | 'reset'; key: string }
+  | { kind: 'balance'; action: 'set' | 'preview'; key: string; value: number }
+  | { kind: 'balance'; action: 'reset-all' }
+  | { kind: 'balance'; action: 'rollback'; revision: number }
   | { kind: 'player-save'; commands: string; invalidateRollTicket: boolean };
 
 const DEFAULT_MENU_DISABLED_REASON = 'The developer has disabled the menus.';
@@ -191,6 +197,41 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
   if (lines.length === 1) {
     const line = lines[0]!;
     if (/^(?:features(?:\s+list)?|feature\s+list)$/i.test(line)) return { kind: 'feature-list' };
+
+    if (/^balance\s+(?:list|keys|help)$/i.test(line)) return { kind: 'balance', action: 'list' };
+    if (/^balance\s+history$/i.test(line)) return { kind: 'balance', action: 'history' };
+    if (/^balance\s+reset\s+all$/i.test(line)) return { kind: 'balance', action: 'reset-all' };
+
+    const balanceGetMatch = /^balance\s+get\s+(\S+)$/i.exec(line);
+    if (balanceGetMatch) {
+      validateLiveBalanceValue(balanceGetMatch[1]!, 0);
+      return { kind: 'balance', action: 'get', key: balanceGetMatch[1]! };
+    }
+
+    const balanceResetMatch = /^balance\s+reset\s+(\S+)$/i.exec(line);
+    if (balanceResetMatch) {
+      validateLiveBalanceValue(balanceResetMatch[1]!, 0);
+      return { kind: 'balance', action: 'reset', key: balanceResetMatch[1]! };
+    }
+
+    const balanceValueMatch = /^balance\s+(set|preview)\s+(\S+)\s+(\S+)$/i.exec(line);
+    if (balanceValueMatch) {
+      const value = numericText(balanceValueMatch[3]!, 'Balance value');
+      validateLiveBalanceValue(balanceValueMatch[2]!, value);
+      return {
+        kind: 'balance',
+        action: balanceValueMatch[1]!.toLowerCase() as 'set' | 'preview',
+        key: balanceValueMatch[2]!,
+        value,
+      };
+    }
+
+    const balanceRollbackMatch = /^balance\s+rollback\s+(\d+)$/i.exec(line);
+    if (balanceRollbackMatch) {
+      const revision = Number(balanceRollbackMatch[1]);
+      if (!Number.isSafeInteger(revision) || revision < 1) throw new Error('Balance revision must be a positive whole number.');
+      return { kind: 'balance', action: 'rollback', revision };
+    }
 
     const maintenanceMatch = /^maintenance\s+(on|off|enable|disable)(?:\s+([\s\S]+))?$/i.exec(line);
     if (maintenanceMatch) {
