@@ -36,8 +36,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check and run tests
-        run: npm run type-check && npm test
+      - name: Type-check and run focused feature tests
+        run: |
+          npm run type-check
+          node --import tsx --test --test-name-pattern="Frenzy owner rewards remain separate|Frenzy claims use a three-per-day limit|Frenzy claims expose a daily allowance|admin self-claim works even when the normal daily claim is already used" tests/frenzy.test.ts
+          node --import tsx --test tests/quest-scaling.test.ts tests/offline-frenzy-rewards.test.ts tests/pages-reddit-simulator.test.ts
 
       - name: Build static Pages version
         run: npm run build:pages

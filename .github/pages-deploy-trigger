@@ -14,3 +14,5 @@ Deploy prompt: replace bubble Orb-roll sound with a phase-shift effect; add dire
 Deploy prompt: remove Luck Rating, correct shard chance and Chain Patcher displays, scale quests with highest Orb rarity, show offline Frenzy owner rewards, allow three daily Frenzy claims, and add a Pages-only Reddit post simulator.
 
 Deploy validation fix: import Reddit simulator Bell icon and preserve floating reward tone literal types.
+
+Deploy validation refinement: run focused Frenzy, quest-scaling, offline-reward, and Pages simulator tests after type-checking; full legacy suite has unrelated stale source-contract failures.

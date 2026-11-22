@@ -1998,7 +1998,11 @@ export function questRewardMultiplier(highestRarity: unknown): number {
 }
 
 function scaledQuestTarget(base: number, multiplier: number): number {
-  return Math.max(base, Math.ceil(base * multiplier));
+  const scaled = base * multiplier;
+  // Avoid turning exact integer thresholds (for example 100 × 1.1) into
+  // the next whole number because of binary floating-point representation.
+  const precisionGuard = Math.max(1, Math.abs(scaled)) * Number.EPSILON * 4;
+  return Math.max(base, Math.ceil(scaled - precisionGuard));
 }
 
 function scaledQuestReward(base: number, multiplier: number): number {

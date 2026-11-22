@@ -226,9 +226,9 @@ test('admin self-claim works even when the normal daily claim is already used', 
   const clientSource = readFileSync(resolve(process.cwd(), 'src/client/frenzy.tsx'), 'utf8');
   assert.match(serverSource, /isFrenzyTestAdmin\(s\.username\)/);
   assert.match(serverSource, /data\.adminTest === true/);
-  assert.match(clientSource, /const canClaim = info\.canClaim && !openedGame/);
+  assert.match(clientSource, /const canClaim = info\.canClaim && !openedGame[\s\S]*claimsRemainingToday > 0 \|\| info\.selfClaimTest/);
   assert.match(clientSource, /Claim Your Frenzy · Test/);
-  assert.match(serverSource, /if \(claimCooldown > 0 && !selfClaimTest\)/);
+  assert.match(serverSource, /if \(claimsUsedToday >= FRENZY_CLAIMS_PER_DAY && !selfClaimTest\)/);
 });
 
 
