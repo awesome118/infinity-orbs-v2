@@ -10,6 +10,7 @@ import { getServerMonitorSnapshot, estimateKnownRedisStorage } from '../server/s
 import { auditKnownRedisStorage } from '../server/redis-storage-audit.js';
 import { getImpressionDashboard } from '../server/impressions.js';
 import { APP_VERSION } from '../shared/version.js';
+import { parseAdminCliCommand } from '../shared/admin-cli.js';
 import { applyAdminSaveCommands } from '../shared/admin-save-commands.js';
 
 type JsonRecord = Record<string, any>;
@@ -526,6 +527,43 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
     if (method !== 'POST') return fail('Method not supported by the Pages Admin Console.', 405);
 
     switch (path) {
+      case '/cli/execute': {
+        const parsed = parseAdminCliCommand(String(body.command ?? ''));
+        if (parsed.kind === 'menus') {
+          return response({
+            ok: true,
+            scope: 'everyone',
+            menuControl: await game.setGlobalMenuControl(parsed.enabled, parsed.reason, context.username ?? 'Pages Admin'),
+          });
+        }
+        if (parsed.kind === 'announcement') {
+          return response({
+            ok: true,
+            announcement: await game.setDeveloperAnnouncement(parsed.message, context.username ?? 'Pages Admin'),
+          });
+        }
+        const username = String(body.username ?? '');
+        const userId = requireCurrentProfile(username);
+        const result = await withPlayerMutationLock(async () => {
+          const current = await game.loadRaw({ registerActivity: false });
+          const applied = applyAdminSaveCommands(current as unknown as Record<string, unknown>, parsed.commands);
+          const nextState = applied.state as unknown as Awaited<ReturnType<typeof game.loadRaw>>;
+          nextState.username = context.username;
+          await saveCurrentState(nextState);
+          if (parsed.invalidateRollTicket) await redis.del('io:roll-ticket:' + userId);
+          return {
+            ok: true,
+            scope: 'player',
+            username: context.username,
+            userId,
+            stateRevision: Math.max(0, Math.floor(Number(current.stateRevision ?? 0)) || 0) + 1,
+            results: applied.results,
+            invalidatedRollTicket: parsed.invalidateRollTicket,
+            localOnly: true,
+          };
+        });
+        return response(result);
+      }
       case '/execute-as/execute': {
         const username = String(body.username ?? '');
         requireCurrentProfile(username);
