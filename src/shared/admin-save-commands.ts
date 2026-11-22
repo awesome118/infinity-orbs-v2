@@ -204,9 +204,9 @@ export function applyAdminSaveCommands<T extends Record<string, unknown>>(
     if (action === 'set') {
       after = parseCommandValue(valueText);
       assertSafeJsonValue(after);
-      if (parts.length === 1 && (after === null || typeof after !== 'object')) {
-        // Primitive top-level fields are permitted only when the existing field is primitive.
-        if (before !== undefined && typeof after !== typeof before) throw new Error('This save field must keep its current value type.');
+      if (parts.length === 1 && before !== undefined && before !== null && after !== null && typeof after !== typeof before) {
+        // Nullable and optional fields may be initialized; otherwise retain the field's existing type.
+        throw new Error('This save field must keep its current value type.');
       }
       assign(parent, key, after);
     } else {
