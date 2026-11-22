@@ -2430,9 +2430,9 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
   pointer-events: none;
 }
 
-/* The nine newest rarities continuously cycle hue, slowly enough to read. */
+/* New rarity hues cycle at a more visible pace. */
 .io-rarity-color-cycle {
-  animation: io-rarity-color-cycle 48s linear infinite;
+  animation: io-rarity-color-cycle 16s linear infinite;
 }
 .io-rarity-tier-row--animated {
   border-left-color: var(--io-rarity-tier-color) !important;
@@ -2446,22 +2446,28 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
   .io-ui .io-orbit-satellite { width: 19px; height: 19px; }
   .io-ui .io-orbit-satellite-core { width: 16px; height: 16px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .io-rarity-color-cycle,
-  .io-ui .animate-orbit-ring,
-  .io-ui .animate-orbit-counter {
-    animation: none !important;
-  }
-}
+
 
 /* Preserve existing orbit counter-rotation and Codex unlock pulse while the
    newly extended rarity palette slowly shifts hue. */
 .io-ui .io-orbit-satellite-core.io-rarity-color-cycle {
-  animation: orbit-ccw 36s linear infinite, io-rarity-color-cycle 48s linear infinite;
+  animation: orbit-ccw 18s linear infinite, io-rarity-color-cycle 16s linear infinite;
 }
 .io-rarity-orb-icon.io-rarity-color-cycle.is-unlocked {
-  animation: io-rarity-orb-pulse 3.2s ease-in-out infinite, io-rarity-color-cycle 48s linear infinite;
+  animation: io-rarity-orb-pulse 3.2s ease-in-out infinite, io-rarity-color-cycle 16s linear infinite;
 }
 .io-rarity-orb-icon.io-rarity-color-cycle.is-locked {
-  animation: io-rarity-color-cycle 48s linear infinite;
+  animation: io-rarity-color-cycle 16s linear infinite;
+}
+
+/* Keep the composed faster animations disabled when reduced motion is requested. */
+@media (prefers-reduced-motion: reduce) {
+  .io-rarity-color-cycle,
+  .io-ui .io-orbit-satellite-core.io-rarity-color-cycle,
+  .io-rarity-orb-icon.io-rarity-color-cycle.is-unlocked,
+  .io-rarity-orb-icon.io-rarity-color-cycle.is-locked,
+  .io-ui .animate-orbit-ring,
+  .io-ui .animate-orbit-counter {
+    animation: none !important;
+  }
 }
