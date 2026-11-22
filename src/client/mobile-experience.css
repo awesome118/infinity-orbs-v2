@@ -2430,6 +2430,14 @@ html,body,#root { width:100%; max-width:100%; min-width:320px; overflow-x:clip; 
   pointer-events: none;
 }
 
+/* Main and orbiting Orb borders use the exact base hue of their fill.
+   The same hue-rotation filter then shifts fill and border together. */
+.io-ui .io-main-orb {
+  border-color: var(--io-orb-current-color, rgba(213,232,255,.42));
+}
+.io-ui .io-orbit-satellite-core {
+  border-color: var(--io-orb-current-color, rgba(235,245,255,.62));
+}
 /* New rarity hues cycle at a more visible pace. */
 .io-rarity-color-cycle {
   animation: io-rarity-color-cycle 16s linear infinite;
