@@ -4542,7 +4542,8 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
       throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
     }
     const batches = Math.min(offlineRollCap(s), s.offlineRolls);
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+    const liveBalance = await getLiveBalanceConfig();
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
     s.offlineRolls = 0;
     if (batches > 0) {
       await applyRolls(s, batches, undefined, 'offline');
@@ -4568,7 +4569,8 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
       ]);
       if (subredditName) {
         const cap = offlineRollCap(s);
-        const tickMs = effectiveOfflineTickMs(s);
+        const liveBalance = await getLiveBalanceConfig();
+        const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
         await scheduleOfflineFullNotification(
           userId,
           subredditName,
@@ -6828,7 +6830,8 @@ export async function processOfflineFullNotification(
 
   const cap = offlineRollCap(s);
   const now = Date.now();
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const lastSeenAt = s.lastSeenAt || now;
   const elapsed = Math.max(0, now - lastSeenAt);
   const earned = Math.floor(elapsed / tickMs);
@@ -8896,7 +8899,8 @@ export async function startOrbFrenzy(options: {
     const forcedRarity = options.forcedRarity == null
       ? undefined
       : Math.max(2, Math.floor(Number(options.forcedRarity)));
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+    const liveBalance = await getLiveBalanceConfig();
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
     const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
 
     const subredditName = String(context.subredditName ?? '').trim();
@@ -9063,7 +9067,7 @@ export async function startOrbFrenzy(options: {
       coinsGained: result.coinsGained,
       shardsGained: result.shardsGained,
       xpGained: result.xpGained,
-      rollsRemainingUntilNext: cooldownMs(s),
+      rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
       rollsProcessed: result.rollCount,
       dramaticReveal: rarity >= 100,
     };
@@ -9372,7 +9376,8 @@ export async function claimOrbFrenzy(options: {
   }
 
   const frenzyRollsPerActivation = rollsPerActivation(s);
-  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
   const count = frenzyClaimCountForRarity(
     data.rarity,
     frenzyRollsPerActivation,
@@ -9526,7 +9531,7 @@ export async function claimOrbFrenzy(options: {
     shardsGained: shardsGained + (isOwner ? ownerRewardShards : 0),
     xpGained,
     state: s,
-    rollsRemainingUntilNext: cooldownMs(s),
+    rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
     dramaticReveal: bestOrb.rarity >= 100,
     frenzyCount: processedCount,
   };
