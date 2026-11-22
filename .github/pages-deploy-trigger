@@ -43,3 +43,5 @@ Retry prompt: global menu state moved before polling effects after type-check fa
 Retry prompt: single global menu state declaration is now before all component effects.
 
 Retry prompt: CLI shortcut parser captures the numeric token then validates it, covering exponent, zero, negative and fractional amounts.
+
+Retry prompt: corrected the expected newline in the exponential coin grant test.
