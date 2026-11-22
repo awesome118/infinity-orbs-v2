@@ -529,6 +529,14 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
     switch (path) {
       case '/cli/execute': {
         const parsed = parseAdminCliCommand(String(body.command ?? ''));
+        if (parsed.kind === 'balance') {
+          return response({
+            ok: true,
+            scope: 'everyone',
+            localOnly: true,
+            balance: await game.executeLiveBalanceCommand(parsed, context.username ?? 'Pages Admin'),
+          });
+        }
         if (parsed.kind === 'menus') {
           return response({
             ok: true,
