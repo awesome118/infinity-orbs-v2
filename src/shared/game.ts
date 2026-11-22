@@ -1345,7 +1345,7 @@ export interface RarityTierInfo {
   approxChance: string;
   color: string;
   bgGradient: string;
-  animated: boolean;
+  animated?: boolean;
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
