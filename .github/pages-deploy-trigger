@@ -41,3 +41,5 @@ Deploy prompt: one-shot Admin CLI execution targets, global menu maintenance con
 Retry prompt: global menu state moved before polling effects after type-check failure.
 
 Retry prompt: single global menu state declaration is now before all component effects.
+
+Retry prompt: CLI shortcut parser captures the numeric token then validates it, covering exponent, zero, negative and fractional amounts.
