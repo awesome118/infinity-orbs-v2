@@ -190,9 +190,9 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
 
   if (lines.length === 1) {
     const line = lines[0]!;
-    if (/^(?:features|feature\s+list)$/i.test(line)) return { kind: 'feature-list' };
+    if (/^(?:features(?:\s+list)?|feature\s+list)$/i.test(line)) return { kind: 'feature-list' };
 
-    const maintenanceMatch = /^maintenance\\s+(on|off|enable|disable)(?:\\s+([\\s\\S]+))?$/i.exec(line);
+    const maintenanceMatch = /^maintenance\s+(on|off|enable|disable)(?:\s+([\s\S]+))?$/i.exec(line);
     if (maintenanceMatch) {
       const maintenanceEnabled = /^(on|enable)$/i.test(maintenanceMatch[1]!);
       const reason = maintenanceEnabled
