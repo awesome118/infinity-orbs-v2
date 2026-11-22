@@ -25,3 +25,5 @@ Pages preview refinement: skip Reddit impressions for the embedded local Frenzy 
 Pages preview compile fix: correct escaped username-prefix regex in Frenzy simulator.
 
 Pages preview test refinement: assert that the preview has no executable Reddit submission call.
+
+Pages update: extend roll confetti particle lifetime to 320 ticks.
