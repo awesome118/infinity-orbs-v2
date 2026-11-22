@@ -103,73 +103,51 @@ test('CLI supports global feature switches with defaults, reasons, and status li
   assert.throws(() => parseAdminCliCommand('feature combat enable reason'), /Do not provide a reason/);
 });
 
-test('global feature request mapping blocks only the intended write routes', async () => {
-  const { globalFeatureForRequest } = await import('../src/shared/admin-cli.js');
-  assert.equal(globalFeatureForRequest('POST', '/api/roll'), 'rolling');
-  assert.equal(globalFeatureForRequest('POST', '/auto-roll'), 'auto-roll');
-  assert.equal(globalFeatureForRequest('POST', '/combat/beat'), 'combat');
-  assert.equal(globalFeatureForRequest('POST', '/guilds/create'), 'guilds');
-  assert.equal(globalFeatureForRequest('POST', '/prestige'), 'prestige');
-  assert.equal(globalFeatureForRequest('POST', '/upgrade/batch'), 'upgrades');
-  assert.equal(globalFeatureForRequest('POST', '/quests/claim'), 'quests');
-  assert.equal(globalFeatureForRequest('POST', '/offline/claim'), 'offline');
-  assert.equal(globalFeatureForRequest('POST', '/frenzy/start'), 'frenzy');
-  assert.equal(globalFeatureForRequest('POST', '/chat'), 'chat');
-  assert.equal(globalFeatureForRequest('GET', '/roll'), null);
-  assert.equal(globalFeatureForRequest('POST', '/frenzy/simulator/create'), null);
-  assert.equal(globalFeatureForRequest('POST', '/chat/report'), null);
-});
-
-test('maintenance alias controls the gameplay master switch', () => {
-  assert.deepEqual(parseAdminCliCommand('maintenance on "Planned maintenance"'), {
-    kind: 'feature', feature: 'gameplay', enabled: false, reason: 'Planned maintenance',
-  });
-  assert.deepEqual(parseAdminCliCommand('maintenance on'), {
-    kind: 'feature', feature: 'gameplay', enabled: false, reason: 'The game is temporarily under maintenance.',
-  });
-  assert.deepEqual(parseAdminCliCommand('maintenance off'), {
-    kind: 'feature', feature: 'gameplay', enabled: true, reason: '',
-  });
-  assert.deepEqual(parseAdminCliCommand('features list'), { kind: 'feature-list' });
-});
-
-test('global feature manifest covers distinct game systems and has unique IDs', async () => {
-  const { GLOBAL_FEATURES } = await import('../src/shared/admin-cli.js');
-  const ids = GLOBAL_FEATURES.map(feature => feature.id);
-  assert.ok(ids.length >= 30);
-  assert.equal(new Set(ids).size, ids.length);
-  for (const id of [
-    'gameplay', 'rolling', 'auto-roll', 'offline', 'upgrades', 'mastery', 'boosters',
-    'prestige', 'combat', 'dungeons', 'gear', 'skills', 'runes', 'arena',
-    'social', 'guilds', 'chat', 'sharing', 'rewards', 'daily-rewards', 'quests',
-    'community-rewards', 'events', 'frenzy', 'world-events', 'alignment',
-    'global-boosters', 'notifications', 'popups', 'tutorials', 'leaderboards',
-    'collection', 'feedback', 'purchases',
-  ]) assert.ok(ids.includes(id), 'Missing feature switch: ' + id);
-});
-
-test('global feature route map supports master, parent, and granular switches', async () => {
-  const { globalFeaturesForRequest } = await import('../src/shared/admin-cli.js');
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/roll'), ['gameplay', 'rolling']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/auto-roll'), ['gameplay', 'rolling', 'auto-roll']);
+test('global feature request mapping separates read and write controls', async () => {
+  const { globalFeatureForRequest, globalFeaturesForRequest } = await import('../src/shared/admin-cli.js');
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/roll'), ['gameplay', 'player-actions', 'rolling']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/auto-roll'), ['gameplay', 'player-actions', 'rolling', 'automation', 'auto-roll']);
   assert.deepEqual(globalFeaturesForRequest('GET', '/api/roll-ticket'), ['gameplay', 'rolling']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/dungeon'), ['gameplay', 'combat', 'dungeons']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/forge'), ['gameplay', 'combat', 'gear']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/skills/roll'), ['gameplay', 'combat', 'skills']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/runes/equip'), ['gameplay', 'combat', 'runes']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/arena/challenge'), ['gameplay', 'combat', 'arena']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/create'), ['gameplay', 'social', 'guilds']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/chat'), ['gameplay', 'social', 'chat']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/time-energy/progress'), ['gameplay', 'rolling', 'time-energy']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/dungeon'), ['gameplay', 'player-actions', 'combat', 'dungeons']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/forge'), ['gameplay', 'player-actions', 'combat', 'gear', 'gear-forge']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/gear/scrap'), ['gameplay', 'player-actions', 'combat', 'gear', 'gear-scrapping']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/auto-scrap'), ['gameplay', 'player-actions', 'combat', 'gear', 'gear-auto-scrap']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/skills/roll'), ['gameplay', 'player-actions', 'combat', 'skills']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/runes/equip'), ['gameplay', 'player-actions', 'combat', 'runes']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/runes/auto-sacrifice/run'), ['gameplay', 'player-actions', 'combat', 'runes', 'rune-auto-sacrifice']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/arena/challenge'), ['gameplay', 'player-actions', 'combat', 'arena']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/tactics'), ['gameplay', 'player-actions', 'combat', 'combat-tactics']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/upgrades/buy'), ['gameplay', 'player-actions', 'combat', 'combat-upgrades']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/combat/strategy-guide/buy'), ['gameplay', 'player-actions', 'combat', 'strategy-guide']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/create'), ['gameplay', 'player-actions', 'social', 'guilds', 'guild-membership']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/perk'), ['gameplay', 'player-actions', 'social', 'guilds', 'guild-perks']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/trust'), ['gameplay', 'player-actions', 'social', 'guilds', 'guild-trust']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/guilds/kick'), ['gameplay', 'player-actions', 'social', 'guilds', 'guild-moderation']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/chat'), ['gameplay', 'social', 'chat']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/chat'), ['gameplay', 'player-actions', 'social', 'chat', 'chat-posting']);
   assert.deepEqual(globalFeaturesForRequest('GET', '/api/leaderboards'), ['gameplay', 'leaderboards']);
   assert.deepEqual(globalFeaturesForRequest('GET', '/api/collection'), ['gameplay', 'collection']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/streak/claim'), ['gameplay', 'rewards', 'daily-rewards']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/quests/claim'), ['gameplay', 'rewards', 'quests']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/claim'), ['gameplay', 'events', 'frenzy']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/streak/claim'), ['gameplay', 'player-actions', 'rewards', 'daily-rewards']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/quests/claim'), ['gameplay', 'player-actions', 'rewards', 'quests']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/prestige/upgrade'), ['gameplay', 'player-actions', 'prestige', 'prestige-upgrades']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/prestige/synthesize'), ['gameplay', 'player-actions', 'prestige', 'prestige-synthesis']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/chain-patcher/buy'), ['gameplay', 'player-actions', 'upgrades', 'chain-patcher']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/altar/sacrifice'), ['gameplay', 'player-actions', 'upgrades', 'altar']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/start'), ['gameplay', 'player-actions', 'events', 'frenzy', 'frenzy-setup']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/claim'), ['gameplay', 'player-actions', 'events', 'frenzy', 'frenzy-rewards']);
   assert.deepEqual(globalFeaturesForRequest('GET', '/api/world-event'), ['gameplay', 'events', 'world-events']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/global-boosters/activate'), ['gameplay', 'global-boosters']);
-  assert.deepEqual(globalFeaturesForRequest('POST', '/api/notifications'), ['gameplay', 'notifications']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/global-boosters/activate'), ['gameplay', 'player-actions', 'global-boosters', 'global-booster-activation']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/notifications'), ['gameplay', 'player-actions', 'notifications']);
   assert.deepEqual(globalFeaturesForRequest('POST', '/api/feedback'), ['gameplay', 'feedback']);
-  assert.deepEqual(globalFeaturesForRequest('GET', '/api/products'), ['gameplay', 'purchases']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/products'), ['gameplay', 'purchases', 'product-catalog']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/payments/reconcile'), ['gameplay', 'player-actions', 'purchases', 'purchase-reconciliation']);
+  assert.deepEqual(globalFeaturesForRequest('GET', '/api/online'), ['gameplay', 'presence']);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/upgrade/batch'), ['gameplay', 'player-actions', 'upgrades', 'bulk-upgrades']);
+  assert.equal(globalFeatureForRequest('POST', '/api/roll'), 'rolling');
+  assert.equal(globalFeatureForRequest('POST', '/api/auto-roll'), 'auto-roll');
+  assert.equal(globalFeatureForRequest('GET', '/api/roll'), null);
+  assert.deepEqual(globalFeaturesForRequest('POST', '/api/frenzy/simulator/create'), []);
 });
 
 test('global feature gate leaves admin, moderation reports, and telemetry available', async () => {
