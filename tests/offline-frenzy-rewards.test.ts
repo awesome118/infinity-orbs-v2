@@ -32,6 +32,7 @@ test('Frenzy post shows remaining daily claims instead of a personal claim timer
 test('Reddit simulator uses the local post record and the real Frenzy claim engine', () => {
   const main = read('src/client/main.tsx');
   const simulator = read('src/client/components/RedditPostSimulator.tsx');
+  const frenzyEntry = read('src/client/frenzy.tsx');
   const server = read('src/server/game.ts');
   const pagesApi = read('src/pages/api.ts');
   assert.match(main, /hostname\.endsWith\('\.github\.io'\)/);
@@ -39,8 +40,8 @@ test('Reddit simulator uses the local post record and the real Frenzy claim engi
   assert.match(simulator, /Orb rarity to publish/);
   assert.match(simulator, /Create and view post/);
   assert.match(simulator, /\/api\/frenzy\/simulator\/create/);
-  assert.match(simulator, /\/api\/frenzy\/simulator\/info/);
-  assert.match(simulator, /\/api\/frenzy\/simulator\/claim/);
+  assert.match(frenzyEntry, /\/api\/frenzy\/simulator\/info/);
+  assert.match(frenzyEntry, /\/api\/frenzy\/simulator\/claim/);
   assert.match(simulator, /onClaimed\(result\)/);
   assert.match(server, /export async function createFrenzySimulatorPost/);
   assert.match(server, /export async function getOrbFrenzyInfo\(options:/);
