@@ -29,12 +29,30 @@ test('Frenzy post shows remaining daily claims instead of a personal claim timer
   assert.doesNotMatch(frenzy, /FRENZY_CLAIM_COOLDOWN_MS/);
 });
 
-test('Reddit simulator is Pages-only and does not call Reddit or game APIs', () => {
+test('Reddit simulator uses the local post record and the real Frenzy claim engine', () => {
   const main = read('src/client/main.tsx');
   const simulator = read('src/client/components/RedditPostSimulator.tsx');
+  const server = read('src/server/game.ts');
+  const pagesApi = read('src/pages/api.ts');
   assert.match(main, /hostname\.endsWith\('\.github\.io'\)/);
   assert.match(main, /IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator'/);
-  assert.match(simulator, /Local preview only/);
-  assert.match(simulator, /Claim Frenzy/);
-  assert.doesNotMatch(simulator, /fetch\(|XMLHttpRequest|window\.open/);
+  assert.match(simulator, /Orb rarity to publish/);
+  assert.match(simulator, /Create and view post/);
+  assert.match(simulator, /\/api\/frenzy\/simulator\/create/);
+  assert.match(simulator, /\/api\/frenzy\/simulator\/info/);
+  assert.match(simulator, /\/api\/frenzy\/simulator\/claim/);
+  assert.match(simulator, /onClaimed\(result\)/);
+  assert.match(server, /export async function createFrenzySimulatorPost/);
+  assert.match(server, /export async function getOrbFrenzyInfo\(options:/);
+  assert.match(pagesApi, /game\.claimOrbFrenzy\(\{[\s\S]*?postId,[\s\S]*?allowAdminTestOwner: true/);
+  assert.doesNotMatch(simulator, /window\.open|https?:\/\//);
+});
+
+test('manual Roll readiness uses the manual cooldown instead of Auto Roll timing', () => {
+  const main = read('src/client/main.tsx');
+  const start = main.indexOf('Keep the manual Roll button aligned with the manual server cooldown.');
+  const end = main.indexOf('// Auto Roll uses a single scheduled wake-up', start);
+  assert.ok(start >= 0 && end > start);
+  assert.match(main.slice(start, end), /cooldownMs\(timingState, false\)/);
+  assert.doesNotMatch(main.slice(start, end), /cooldownMs\(timingState, true\)/);
 });
