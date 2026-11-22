@@ -1146,6 +1146,7 @@ function App() {
   const handleToggleAutoRoll = useCallback(async () => {
     if (combatModeRef.current) return;
     const next = !autoRoll;
+    if (!next) autoRollCooldownRetryUntilRef.current = 0;
     const rollback = beginOptimisticState(current => ({
       ...current,
       autoRollEnabled: next,
@@ -2308,12 +2309,10 @@ function App() {
       await refreshAll().catch(() => null);
       mutationResyncNeededRef.current = false;
       if (autoCooldownRetryDelay !== null) {
-        // Cooldown errors are expected around very short Auto Roll intervals.
-        // Wait for the server-reported remainder plus a buffer instead of
-        // retrying on a fixed 150ms loop and repeatedly colliding with the lock.
+        // Auto Roll has its own cadence. Keep this retry deadline out of the
+        // manual Roll countdown so a stale Auto tick cannot block manual play.
         const retryAt = Date.now() + autoCooldownRetryDelay;
         autoRollCooldownRetryUntilRef.current = retryAt;
-        setReadyAt(retryAt);
       } else {
         showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
       }
@@ -2344,8 +2343,14 @@ function App() {
       ...state,
       alignmentActiveInstances: activeInstances,
     };
+    if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) {
+      // Prestige and fresh saves clear lastRollAt. Do not retain a countdown
+      // timestamp from the player's previous run.
+      setReadyAt(0);
+      return;
+    }
     const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, false);
-    setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current));
+    setReadyAt(authoritativeReadyAt);
   }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto Roll uses a single scheduled wake-up, not a state-captured polling
@@ -2391,7 +2396,7 @@ function App() {
       const authoritativeReadyAt = lastRollAt > 0
         ? lastRollAt + cooldownMs(latest, true)
         : 0;
-      const nextReadyAt = Math.max(readyAt, authoritativeReadyAt, autoRollCooldownRetryUntilRef.current);
+      const nextReadyAt = Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current);
       const remaining = nextReadyAt - Date.now();
       if (remaining > 0) {
         schedule(remaining);
@@ -2420,7 +2425,6 @@ function App() {
     state?.autoRollEnabled,
     state?.upgrades.auto,
     state?.lastRollAt,
-    readyAt,
     handleRoll,
     splashEntered,
     combatMode,
