@@ -52,6 +52,7 @@ import {
   getDeveloperAnnouncement,
   getGlobalMenuControl,
   getGlobalFeatureControl,
+  getLiveBalanceSnapshot,
   getGlobalBoosterAnnouncement,
   loadRaw,
   recordSocialVisit,
@@ -940,6 +941,15 @@ export function createApp() {
       res.json(await getGlobalMenuControl());
     } catch (error) {
       res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load global menu settings.' });
+    }
+  });
+
+  app.get('/api/live-balance', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await getLiveBalanceSnapshot());
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load live balance settings.' });
     }
   });
 
