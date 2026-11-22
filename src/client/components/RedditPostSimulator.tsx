@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   Award,
+  Bell,
   Bookmark,
   ChevronDown,
   MessageCircle,

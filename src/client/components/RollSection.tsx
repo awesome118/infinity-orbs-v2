@@ -185,10 +185,10 @@ export const RollSection: React.FC<RollSectionProps> = ({
     }
 
     const rewardValues: Array<{ amount: number; text: string; tone: FloatingRewardText['tone'] }> = [
-      { amount: Number(batchSummary.coins), text: '+' + formatNumber(batchSummary.coins) + ' Coins', tone: 'coins' },
-      { amount: Number(batchSummary.xp), text: '+' + formatNumber(batchSummary.xp) + ' XP', tone: 'xp' },
-      { amount: Number(batchSummary.shards), text: '+' + formatShardAmount(batchSummary.shards) + ' Shards', tone: 'shards' },
-      { amount: Number(batchSummary.totalVal), text: '+' + formatNumber(batchSummary.totalVal) + ' Value', tone: 'value' },
+      { amount: Number(batchSummary.coins), text: '+' + formatNumber(batchSummary.coins) + ' Coins', tone: 'coins' as const },
+      { amount: Number(batchSummary.xp), text: '+' + formatNumber(batchSummary.xp) + ' XP', tone: 'xp' as const },
+      { amount: Number(batchSummary.shards), text: '+' + formatShardAmount(batchSummary.shards) + ' Shards', tone: 'shards' as const },
+      { amount: Number(batchSummary.totalVal), text: '+' + formatNumber(batchSummary.totalVal) + ' Value', tone: 'value' as const },
     ].filter(reward => Number.isFinite(reward.amount) && reward.amount > 0);
 
     if (rewardValues.length === 0) return;
