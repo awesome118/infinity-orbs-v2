@@ -213,9 +213,10 @@ export function applyAdminSaveCommands<T extends Record<string, unknown>>(
       const amount = Number(valueText.trim());
       if (!Number.isFinite(amount) || amount < 0) throw new Error('Add/subtract amounts must be finite non-negative numbers.');
       if (typeof before !== 'number' || !Number.isFinite(before)) throw new Error('Add/subtract requires an existing numeric save field.');
-      after = action === 'add' ? before + amount : before - amount;
-      if (!Number.isFinite(after) || after < 0) throw new Error('The resulting value must remain finite and non-negative.');
-      assign(parent, key, after);
+      const numericAfter = action === 'add' ? before + amount : before - amount;
+      if (!Number.isFinite(numericAfter) || numericAfter < 0) throw new Error('The resulting value must remain finite and non-negative.');
+      after = numericAfter;
+      assign(parent, key, numericAfter);
     }
     results.push({ line: item.line, action, path: parts.join('.'), before: safeDisplay(before), after: safeDisplay(after) });
   }
