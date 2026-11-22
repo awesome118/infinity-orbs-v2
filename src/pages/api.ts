@@ -107,6 +107,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
           return jsonResponse(await game.getFollowRewardStatus());
         case '/api/developer-announcement':
           return jsonResponse(await game.getDeveloperAnnouncement());
+        case '/api/menu-control':
+          return jsonResponse(await game.getGlobalMenuControl());
         case '/api/health':
           return jsonResponse({ status: 'ok', runtime: 'github-pages-test' });
         case '/api/version':
