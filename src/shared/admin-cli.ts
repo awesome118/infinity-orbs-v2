@@ -72,7 +72,8 @@ export function parseAdminCliCommand(source: string): ParsedAdminCliCommand {
 
     const offlineMatch = /^offline\s+(add|set)\s+([\d.]+)$/i.exec(line);
     if (offlineMatch) {
-      numericText(offlineMatch[2]!, 'Offline rolls');
+      const offlineAmount = numericText(offlineMatch[2]!, 'Offline rolls');
+      if (!Number.isSafeInteger(offlineAmount)) throw new Error('Offline rolls must be whole numbers.');
       return {
         kind: 'player-save',
         commands: (offlineMatch[1]!.toLowerCase() === 'add' ? 'add offlineRolls ' : 'set offlineRolls ') + offlineMatch[2],
