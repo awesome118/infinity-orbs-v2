@@ -264,12 +264,12 @@ function FrenzyPost() {
     return () => { active = false; };
   }, []);
 
-  // Viewing a Frenzy post is an impression, not a live-player heartbeat.
+  // Previewing the embedded entry must not count as a real Reddit impression.
   useEffect(() => {
-    if (impressionRecordedRef.current) return;
+    if (previewPostId || impressionRecordedRef.current) return;
     impressionRecordedRef.current = true;
     void recordPostImpression('frenzy', context.postId);
-  }, []);
+  }, [previewPostId]);
 
   useEffect(() => {
     let timer: number | null = null;
