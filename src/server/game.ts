@@ -4089,6 +4089,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     alignmentActiveChoice: ['starseeker', 'goldenOrbit', 'clockwork'].includes(String(parsed.alignmentActiveChoice))
       ? parsed.alignmentActiveChoice as CelestialAlignmentChoice : null,
     lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
+    lastRollAt: normalizeLastRollTimestamp(parsed.lastRollAt),
     level: restoredLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
@@ -5118,6 +5119,16 @@ function normalizeCooldownTimestamp(value: unknown, fallback = 0): number {
   // A present but malformed cooldown marker fails closed for one full cooldown.
   return Date.now();
 }
+
+function normalizeLastRollTimestamp(value: unknown, now = Date.now()): number {
+  if (value == null) return 0;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return 0;
+  // lastRollAt is written by the server in milliseconds. A future value cannot
+  // represent a legitimate completed roll; treating it as zero prevents a
+  // corrupt/clock-shifted timestamp from locking an account out indefinitely.
+  return Math.min(value, now);
+}
+
 
 function normalizeEntitlementLots(
   value: unknown,
