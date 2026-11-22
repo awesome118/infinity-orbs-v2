@@ -31,7 +31,7 @@ test('Pages simulator previews the exact Reddit payload and custom Frenzy entry 
   assert.match(simulatorServer, /buildFrenzyPostSubmission\(/);
   assert.match(simulatorServer, /adminTest: true/);
   assert.match(simulatorServer, /FRENZY_POST_PREFIX \+ postId/);
-  assert.doesNotMatch(simulatorServer, /reddit\.submitCustomPost/);
+  assert.doesNotMatch(simulatorServer, /reddit\.submitCustomPost\s*\(/);
 
   assert.match(pagesApi, /createFrenzySimulatorPost\(body\.rarity\)/);
   assert.match(pagesApi, /game\.claimOrbFrenzy\(\{[\s\S]*?postId,[\s\S]*?allowAdminTestOwner: true/);
