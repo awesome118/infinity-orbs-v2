@@ -154,11 +154,11 @@ export const RiftChallengesSection: React.FC = () => {
       <div className="overflow-hidden rounded-3xl border border-indigo-400/25 bg-gradient-to-br from-indigo-950/90 via-slate-950 to-purple-950/70 p-5 sm:p-7 shadow-xl shadow-indigo-950/20">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
-            <div className="text-[10px] font-black uppercase tracking-[.24em] text-indigo-300">A separate way to play</div>
+            <div className="text-[10px] font-black uppercase tracking-[.24em] text-indigo-300">RIFT CHALLENGE MODE</div>
             <h2 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">Rift Challenges</h2>
             <p className="mt-3 text-sm leading-relaxed text-indigo-100/70">
-              Each challenge gives you a fresh save, a fixed objective, and a set of rules that change how you progress.
-              Your main-game achievements unlock which mechanics you can use inside.
+              Choose a fixed-objective run with its own temporary economy and restrictions.
+              Your main-game achievements unlock the mechanics available inside each run.
             </p>
           </div>
           <div className="rounded-2xl border border-indigo-300/20 bg-black/20 px-4 py-3 text-right">
