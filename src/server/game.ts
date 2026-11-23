@@ -3781,7 +3781,7 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
-export async function loadRaw(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
+export async function loadRaw(options: { registerActivity?: boolean; persistMigrations?: boolean } = {}): Promise<PlayerState> {
   const userId = currentUserId();
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
@@ -4022,7 +4022,7 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
   playerGuildScopes.set(restored, guildId);
   // Persist one-time migrations rather than only changing the read view.
   const levelExpansionMigration = restoredLevel > parsedLevel;
-  if (levelExpansionMigration || needsCodexMigration) {
+  if (options.persistMigrations !== false && (levelExpansionMigration || needsCodexMigration)) {
     try {
       await save(restored);
     } catch (error) {
