@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080d1a">
+  <meta name="description" content="A standalone browser preview of Infinity Orbs: Rift Challenges.">
+  <title>Rift Challenges · Infinity Orbs</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080d1a;--panel:#111a2d;--panel2:#0d1526;--line:#26334d;--muted:#91a0ba;--text:#f4f7ff;--cyan:#56d8f3;--blue:#6889ff;--violet:#a78bfa;--green:#57d6a0;--amber:#f5c76c;--red:#fb7185}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 12% -10%,#243368 0,transparent 42%),radial-gradient(ellipse at 100% 10%,#31215c 0,transparent 34%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input{font:inherit}
+    button{cursor:pointer}
+    .shell{max-width:1120px;margin:auto;padding:28px 20px 64px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand-mark{width:42px;height:42px;display:grid;place-items:center;border:1px solid #6c9bff66;border-radius:14px;background:linear-gradient(145deg,#1f477c,#30245f);box-shadow:0 0 30px #478ef433;font-size:23px}
+    .brand-title{font-size:13px;font-weight:900;letter-spacing:.16em;text-transform:uppercase;color:#dce9ff}
+    .brand-sub{font-size:11px;color:var(--muted)}
+    .preview-pill{border:1px solid #e9bd663d;background:#f1bd6412;color:#f6d99c;padding:7px 11px;border-radius:999px;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+    .hero{border:1px solid #829cff38;border-radius:26px;padding:26px;background:linear-gradient(120deg,#17284aee,#171b38ee 57%,#271b46dd);box-shadow:0 22px 70px #02061777;position:relative;overflow:hidden}
+    .hero:after{content:"";position:absolute;width:280px;height:280px;right:-80px;top:-145px;border-radius:50%;border:1px solid #9cc8ff24;box-shadow:0 0 0 28px #9cc8ff0b,0 0 0 58px #9cc8ff08}
+    .eyebrow{color:var(--cyan);font-size:10px;font-weight:900;letter-spacing:.22em;text-transform:uppercase}
+    h1{font-size:clamp(32px,5vw,48px);line-height:1.04;letter-spacing:-.04em;margin:9px 0 12px}
+    .hero-copy{max-width:670px;color:#c0cbe0;font-size:14px;margin:0}
+    .stat-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
+    .stat{background:#050b19a8;border:1px solid #a2b8ef20;border-radius:14px;padding:12px 14px}
+    .stat-label{font-size:9px;letter-spacing:.13em;color:#92a2c1;text-transform:uppercase;font-weight:900}
+    .stat-value{font-size:20px;font-weight:900;margin-top:3px;font-variant-numeric:tabular-nums}
+    .layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:16px;margin-top:16px}
+    .card{background:linear-gradient(150deg,#111b2e,#0c1424);border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 12px 40px #0003}
+    .card-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .kicker{font-size:9px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan)}
+    .status{font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;border:1px solid #5bd6a04a;background:#57d6a014;color:var(--green);border-radius:999px;padding:5px 8px}
+    h2{font-size:24px;line-height:1.15;margin:12px 0 5px;letter-spacing:-.025em}
+    h3{font-size:16px;margin:0}
+    .sub{color:var(--muted);font-size:12px;margin:0}
+    .description{color:#c4cee1;font-size:13px;margin:14px 0 0}
+    .objective{margin-top:17px;border:1px solid #52d8f33e;background:linear-gradient(130deg,#1a6b8724,#233d8323);border-radius:16px;padding:15px}
+    .objective-label{font-size:9px;font-weight:900;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan)}
+    .objective-target{font-size:25px;font-weight:950;margin-top:3px}
+    .objective small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+    .section-label{font-size:9px;font-weight:900;letter-spacing:.17em;text-transform:uppercase;color:#a8b6cf;margin:18px 0 9px}
+    .debuffs{display:grid;gap:7px}
+    .debuff{display:flex;gap:10px;padding:9px 11px;border:1px solid #2a354c;border-radius:12px;background:#080f1e88}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);margin-top:6px;flex:none;box-shadow:0 0 12px #f5c76c88}
+    .debuff b{font-size:11px;display:block}
+    .debuff span:last-child{font-size:10px;color:#8999b3;display:block}
+    .button{border:0;border-radius:12px;padding:11px 16px;font-weight:900;font-size:12px;transition:transform .15s,filter .15s,opacity .15s}
+    .button:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.1)}
+    .button:disabled{opacity:.35;cursor:not-allowed}
+    .primary{background:linear-gradient(100deg,#52d7ee,#77a5ff);color:#071322;box-shadow:0 8px 25px #3dbee52a}
+    .secondary{background:#17223a;color:#d6e3ff;border:1px solid #34476b}
+    .danger{background:#3b1827;color:#ffb7c4;border:1px solid #8c304d}
+    .full{width:100%;margin-top:17px}
+    .profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+    .profile-stat{border:1px solid #29364f;background:#080f1f;border-radius:12px;padding:10px}
+    .profile-stat small{font-size:9px;color:#8798b5;text-transform:uppercase;letter-spacing:.11em;font-weight:900;display:block}
+    .profile-stat strong{font-size:18px;font-variant-numeric:tabular-nums}
+    .unlock-list{display:grid;gap:10px;margin-top:14px}
+    .unlock{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #26334b;padding-bottom:9px}
+    .unlock:last-child{border:0;padding:0}
+    .unlock b{font-size:11px;display:block}
+    .unlock small{font-size:10px;color:#8493ad}
+    .locktag{font-size:9px;font-weight:900;color:#8896ae;background:#1b263b;border-radius:7px;padding:5px 7px;white-space:nowrap}
+    .locktag.open{background:#12352f;color:#74e3b5}
+    .archive{margin-top:14px;border:1px solid #2a3650;background:#090f1e;border-radius:14px;padding:13px}
+    .archive-label{font-size:9px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#a5b5d1}
+    .archive-value{font-size:14px;font-weight:850;margin-top:4px}
+    .archive small{font-size:10px;color:#8091ad}
+    .run{margin-top:16px;border:1px solid #777cff52;background:linear-gradient(145deg,#121a30,#11172b);border-radius:22px;padding:20px;box-shadow:0 15px 45px #0003}
+    .run-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .run-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:17px}
+    .run-stat{padding:11px;border-radius:12px;background:#070d1b;border:1px solid #29354e;min-width:0}
+    .run-stat small{display:block;color:#8292ae;text-transform:uppercase;letter-spacing:.1em;font-weight:900;font-size:8px}
+    .run-stat strong{font-size:19px;font-weight:950;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+    .bar-head{display:flex;justify-content:space-between;color:#9aaac4;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;margin:17px 0 7px}
+    .bar{height:9px;background:#050b17;border:1px solid #26334a;border-radius:99px;overflow:hidden}
+    .bar>span{height:100%;display:block;background:linear-gradient(90deg,#43d2ec,#668bff,#af87ff);border-radius:99px;transition:width .2s}
+    .result{margin-top:13px;border:1px solid #3bc4e348;background:#2aa4c210;padding:12px;border-radius:13px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .result small{display:block;color:var(--cyan);text-transform:uppercase;font-size:8px;font-weight:900;letter-spacing:.15em}
+    .result strong{font-size:18px}
+    .result .coins{color:var(--amber);font-weight:900;font-size:12px;text-align:right}
+    .run-actions{display:flex;align-items:center;gap:10px;margin-top:16px}
+    .run-actions .primary{flex:1;min-height:48px;font-size:14px}
+    .cooldown{font-size:10px;color:#8292ae;max-width:180px}
+    .upgrade-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:10px}
+    .upgrade{border:1px solid #2b3852;background:#0a1120;border-radius:14px;padding:12px}
+    .upgrade-head{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+    .upgrade h4{font-size:12px;margin:0}
+    .level{font-size:9px;border-radius:7px;background:#1e2a42;padding:4px 6px;color:#cedcff;font-weight:900;white-space:nowrap}
+    .upgrade p{font-size:10px;line-height:1.45;color:#899ab5;min-height:31px;margin:7px 0}
+    .upgrade-foot{display:flex;justify-content:space-between;align-items:center;gap:6px}
+    .cost{font-size:9px;color:#9caecb}
+    .upgrade button{padding:7px 9px;font-size:9px}
+    .hint{font-size:10px;color:#74849f;line-height:1.55;margin:10px 0 0}
+    .complete{margin-top:15px;border:1px solid #3dd69b48;background:#39cf8a0d;padding:15px;border-radius:15px}
+    .complete .kicker{color:var(--green)}
+    .complete h3{font-size:18px;margin-top:5px}
+    .complete p{font-size:11px;color:#a4b4c9}
+    .profile-editor{margin-top:14px;border-top:1px solid #2a3650;padding-top:12px}
+    .profile-editor label{display:block;font-size:9px;color:#9cacc5;font-weight:900;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}
+    .field{width:100%;border:1px solid #34435f;border-radius:9px;background:#070e1c;color:white;padding:8px 10px;font-size:13px}
+    .field:focus{outline:2px solid #63c9ef66;border-color:#63c9ef}
+    .form-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .notice{margin-top:18px;padding:13px 15px;border-radius:13px;border:1px solid #b18a4448;background:#a8791710;color:#c5b98f;font-size:10px;line-height:1.55}
+    .notice b{color:#f4d28b}
+    footer{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:17px;font-size:10px;color:#687995}
+    a{color:#8ec9ff}
+    .hidden{display:none!important}
+    @media(max-width:760px){.shell{padding:18px 13px 42px}.layout{grid-template-columns:1fr}.hero{padding:21px}.stat-row{gap:7px}.stat{padding:9px}.stat-value{font-size:16px}.run-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.run{padding:15px}.card{padding:16px}}
+    @media(max-width:430px){header{align-items:flex-start;flex-direction:column}.preview-pill{align-self:flex-start}.upgrade-grid{grid-template-columns:1fr}.run-actions{align-items:stretch;flex-direction:column}.cooldown{max-width:none;text-align:center}.objective-target{font-size:22px}.form-row{grid-template-columns:1fr 1fr}.form-row label:last-child{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">
+      <div class="brand-mark">◉</div>
+      <div><div class="brand-title">Infinity Orbs</div><div class="brand-sub">Rift Challenges · Web preview</div></div>
+    </div>
+    <div class="preview-pill">Standalone browser preview</div>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">A separate way to play</div>
+    <h1>Rift Challenges</h1>
+    <p class="hero-copy">A clean save. A fixed objective. A reality with rules that are just inconvenient enough. Your simulated main-game progress determines which mechanics are available when each run begins.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="stat-label">Main-game level</div><div class="stat-value" id="hero-level">5</div></div>
+      <div class="stat"><div class="stat-label">Completed runs</div><div class="stat-value" id="hero-completed">0</div></div>
+      <div class="stat"><div class="stat-label">Best rarity</div><div class="stat-value" id="hero-best">2</div></div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <section class="card">
+      <div class="card-top"><span class="kicker">Challenge 001</span><span class="status" id="availability">Available</span></div>
+      <h2>The First Spark</h2>
+      <p class="sub">A clean beginning in an unstable reality</p>
+      <p class="description">Build a temporary economy from nothing and discover an Orb with rarity 1 in 1,000. Your challenge wallet and upgrades exist only inside this run.</p>
+      <div class="objective">
+        <div class="objective-label">Required objective</div>
+        <div class="objective-target">Find a 1 / 1,000 Orb</div>
+        <small>Rarity progress is measured logarithmically. A 1-in-100 Orb is 66.7% of the way to the target.</small>
+      </div>
+      <div class="section-label">Challenge restrictions</div>
+      <div class="debuffs">
+        <div class="debuff"><span class="dot"></span><div><b>Fresh Save</b><span>Start with 0 Coins, 0 Shards, no upgrades, and baseline Luck.</span></div></div>
+        <div class="debuff"><span class="dot"></span><div><b>Dimensional Tax</b><span>Every 10 rolls increases challenge upgrade prices by 5%, up to 50%.</span></div></div>
+        <div class="debuff"><span class="dot"></span><div><b>Shards Disabled</b><span>Shards cannot drop or be spent during this challenge.</span></div></div>
+        <div class="debuff"><span class="dot"></span><div><b>No Automation</b><span>Auto Roll and offline rolls are unavailable.</span></div></div>
+        <div class="debuff"><span class="dot"></span><div><b>Sealed Progression</b><span>Main-game Mastery, Prestige, Rune, Guild, and booster bonuses do not apply.</span></div></div>
+      </div>
+      <div id="locked-note" class="notice hidden">Reach <b>Level 5</b> in the simulated main game to access this challenge.</div>
+      <button class="button primary full" id="start-btn">Start Challenge</button>
+    </section>
+
+    <aside class="card">
+      <div class="kicker">Main-game unlocks</div>
+      <h3 style="margin-top:9px">Your progress opens mechanics</h3>
+      <p class="sub" style="margin-top:6px">The preview uses a simulated main-game profile. A run freezes these values when it starts.</p>
+      <div class="profile-grid">
+        <div class="profile-stat"><small>Level at start</small><strong id="profile-level">5</strong></div>
+        <div class="profile-stat"><small>Rolls at start</small><strong id="profile-rolls">0</strong></div>
+        <div class="profile-stat"><small>Criticals at start</small><strong id="profile-crits">0</strong></div>
+        <div class="profile-stat"><small>Mechanics unlocked</small><strong id="profile-unlocks">1 / 4</strong></div>
+      </div>
+      <div class="unlock-list" id="unlock-list"></div>
+      <div class="profile-editor">
+        <div class="section-label" style="margin-top:0">Simulated main-game progress</div>
+        <div class="form-row">
+          <div><label for="main-level">Level</label><input class="field" id="main-level" type="number" min="1" max="100000" value="5"></div>
+          <div><label for="main-rolls">Total rolls</label><input class="field" id="main-rolls" type="number" min="0" max="1000000000" value="0"></div>
+          <div><label for="main-crits">Critical rolls</label><input class="field" id="main-crits" type="number" min="0" max="1000000000" value="0"></div>
+        </div>
+        <button class="button secondary full" id="save-profile" style="margin-top:9px">Apply simulated progress</button>
+        <p class="hint">Changes apply to your next run. They do not alter an active run's unlock snapshot.</p>
+      </div>
+      <div class="archive">
+        <div class="archive-label">Rift Archive</div>
+        <div class="archive-value" id="archive-state">No challenge completions yet</div>
+        <small id="archive-best">Best result: 2</small>
+      </div>
+    </aside>
+  </div>
+
+  <section class="run hidden" id="run-panel">
+    <div class="run-header">
+      <div><div class="kicker" id="run-kicker">Active challenge save</div><h2 style="margin:6px 0 3px">The First Spark</h2><p class="sub" id="run-started"></p></div>
+      <button class="button danger" id="abandon-btn">Abandon Run</button>
+    </div>
+    <div class="run-grid">
+      <div class="run-stat"><small>Challenge Coins</small><strong id="run-coins" style="color:var(--amber)">0</strong></div>
+      <div class="run-stat"><small>Rolls</small><strong id="run-rolls">0</strong></div>
+      <div class="run-stat"><small>Best rarity</small><strong id="run-best" style="color:var(--cyan)">2</strong></div>
+      <div class="run-stat"><small>Target</small><strong>1,000</strong></div>
+    </div>
+    <div class="bar-head"><span>Rarity progress</span><span id="progress-label">10%</span></div>
+    <div class="bar"><span id="progress-bar" style="width:10%"></span></div>
+    <div class="result hidden" id="last-result">
+      <div><small>Latest result</small><strong id="last-rarity">1 / 2</strong></div>
+      <div class="coins" id="last-coins">+1 Coins</div>
+    </div>
+    <div id="active-controls">
+      <div class="run-actions">
+        <button class="button primary" id="roll-btn">ROLL ORB</button>
+        <div class="cooldown" id="cooldown-copy">Each roll has a 1.5-second cooldown. The browser preview enforces it locally.</div>
+      </div>
+      <div class="section-label">Challenge upgrades</div>
+      <div class="upgrade-grid" id="upgrade-grid"></div>
+      <p class="hint">Upgrade prices rise by 5% every 10 rolls, up to 50%. Only this challenge's Coins can be spent here.</p>
+    </div>
+    <div class="complete hidden" id="complete-panel">
+      <div class="kicker">Objective achieved</div>
+      <h3>The First Spark is stable.</h3>
+      <p id="complete-copy"></p>
+      <button class="button primary" id="restart-btn">Start Another Fresh Run</button>
+    </div>
+  </section>
+
+  <div class="notice"><b>Preview limitations:</b> This page is a standalone static demo. Progress is saved only in this browser's local storage. The simulated main-game profile is not connected to Reddit or your real Infinity Orbs account. This is not the live Devvit service.</div>
+  <footer><span>Infinity Orbs · Rift Challenge preview</span><a href="https://github.com/awesome118/infinity-orbs-v2/tree/feature/rift-challenges-mvp">Source branch</a></footer>
+</div>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'io-rift-challenge-pages-preview-v1';
+  const TARGET = 1000;
+  const UPGRADE = {
+    fortune:{name:'Fortune Lens',desc:'+12% effective Luck per level in this challenge.',requirement:'Reach Level 5 in the main game',base:10,growth:1.42,max:10},
+    speed:{name:'Quickstep Coil',desc:'Reduces the challenge roll cooldown by 90ms per level.',requirement:'Reach Level 10 in the main game',base:18,growth:1.48,max:10},
+    prosperity:{name:'Coin Converter',desc:'+20% Coins earned per level in this challenge.',requirement:'Roll 25 Orbs in the main game',base:14,growth:1.45,max:10},
+    critical:{name:'Critical Echo',desc:'+1.5 percentage points of critical chance per level.',requirement:'Land 10 critical rolls in the main game',base:55,growth:1.65,max:10}
+  };
+  const defaults = {
+    main:{level:5,totalRolls:0,totalCrits:0},
+    archive:{activeRun:null,completed:false,bestRarity:2,totalCompletedRuns:0},
+  };
+  let data = load();
+  let now = Date.now();
+  let timer = null;
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return structuredClone(defaults);
+      const parsed = JSON.parse(raw);
+      return {
+        main:{level:clampInt(parsed.main?.level,1,100000,5),totalRolls:clampInt(parsed.main?.totalRolls,0,1e9,0),totalCrits:clampInt(parsed.main?.totalCrits,0,1e9,0)},
+        archive:{
+          activeRun:normalizeRun(parsed.archive?.activeRun),
+          completed:parsed.archive?.completed===true,
+          bestRarity:Math.max(2,Number(parsed.archive?.bestRarity)||2),
+          totalCompletedRuns:clampInt(parsed.archive?.totalCompletedRuns,0,Number.MAX_SAFE_INTEGER,0)
+        }
+      };
+    }catch{return structuredClone(defaults);}
+  }
+  function normalizeRun(r){
+    if(!r||r.challengeId!=='first-spark'||!['active','completed'].includes(r.status)) return null;
+    return {
+      runId:String(r.runId||''),
+      challengeId:'first-spark',
+      status:r.status,
+      startedAt:Number(r.startedAt)||Date.now(),
+      coins:clampInt(r.coins,0,Number.MAX_SAFE_INTEGER,0),
+      totalRolls:clampInt(r.totalRolls,0,Number.MAX_SAFE_INTEGER,0),
+      bestRarity:Math.max(2,Number(r.bestRarity)||2),
+      nextRollAt:Number(r.nextRollAt)||0,
+      upgradeLevels:Object.fromEntries(Object.keys(UPGRADE).map(id=>[id,clampInt(r.upgradeLevels?.[id],0,UPGRADE[id].max,0)])),
+      mainProgressAtStart:{level:clampInt(r.mainProgressAtStart?.level,1,100000,1),totalRolls:clampInt(r.mainProgressAtStart?.totalRolls,0,1e9,0),totalCrits:clampInt(r.mainProgressAtStart?.totalCrits,0,1e9,0)},
+      mechanicUnlocks:Object.fromEntries(Object.keys(UPGRADE).map(id=>[id,r.mechanicUnlocks?.[id]===true]))
+    };
+  }
+  function clampInt(v,min,max,fallback){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.floor(n))):fallback;}
+  function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
+  function fmt(n){return Math.max(0,Math.floor(Number(n)||0)).toLocaleString('en-US');}
+  function fmtRarity(n){const v=Math.max(0,Number(n)||0);return v>=1e8?v.toExponential(2).replace('e+','e'):fmt(v);}
+  function progress(r){return Math.max(0,Math.min(100,Math.log10(Math.max(2,r))/Math.log10(TARGET)*100));}
+  function unlocks(main){
+    return {fortune:main.level>=5,speed:main.level>=10,prosperity:main.totalRolls>=25,critical:main.totalCrits>=10};
+  }
+  function currentSnapshot(){return data.archive.activeRun?.mainProgressAtStart||data.main;}
+  function cost(id,run){
+    const u=UPGRADE[id],level=run.upgradeLevels[id],tax=Math.min(.5,Math.floor(run.totalRolls/10)*.05);
+    return Math.min(Number.MAX_SAFE_INTEGER,Math.ceil(u.base*Math.pow(u.growth,level)*(1+tax)));
+  }
+  function cooldown(run){return Math.max(600,1500-run.upgradeLevels.speed*90);}
+  function luck(run){return Math.sqrt(1+run.upgradeLevels.fortune*.12);}
+  function coinMultiplier(run){return 1+run.upgradeLevels.prosperity*.2;}
+  function critChance(run){return Math.min(.15,run.upgradeLevels.critical*.015);}
+  function random(){const x=new Uint32Array(2);crypto.getRandomValues(x);return ((x[0]>>>5)*67108864+(x[1]>>>6))/9007199254740992;}
+  function rollRarity(run){
+    const u=Math.max(Number.MIN_VALUE,random());
+    const base=Math.max(2,Math.floor((1/u)*luck(run)));
+    const critical=random()<critChance(run);
+    return {rarity:critical?Math.min(Number.MAX_SAFE_INTEGER,base*2):base,critical};
+  }
+  function coinValue(rarity){return Math.max(1,Math.round(Math.pow(rarity,.68)));}
+  function mechanicCount(unlock){return Object.values(unlock).filter(Boolean).length;}
+  function $(id){return document.getElementById(id);}
+  function render(){
+    const run=data.archive.activeRun;
+    const main=currentSnapshot(),unlock=unlocks(main);
+    $('hero-level').textContent=fmt(data.main.level);
+    $('hero-completed').textContent=fmt(data.archive.totalCompletedRuns);
+    $('hero-best').textContent=fmtRarity(data.archive.bestRarity);
+    $('profile-level').textContent=fmt(main.level);
+    $('profile-rolls').textContent=fmt(main.totalRolls);
+    $('profile-crits').textContent=fmt(main.totalCrits);
+    $('profile-unlocks').textContent=mechanicCount(unlock)+' / 4';
+    $('main-level').value=data.main.level;
+    $('main-rolls').value=data.main.totalRolls;
+    $('main-crits').value=data.main.totalCrits;
+    const available=data.main.level>=5;
+    $('availability').textContent=available?'Available':'Locked · Level 5';
+    $('availability').style.color=available?'var(--green)':'var(--amber)';
+    $('availability').style.borderColor=available?'#5bd6a04a':'#f5c76c55';
+    $('locked-note').classList.toggle('hidden',available);
+    $('start-btn').classList.toggle('hidden',!!run);
+    $('start-btn').disabled=!available;
+    $('start-btn').textContent=data.archive.completed?'Start a New Run':'Start Challenge';
+    $('archive-state').textContent=data.archive.completed?'First Spark completed':'No challenge completions yet';
+    $('archive-best').textContent='Best result: '+fmtRarity(data.archive.bestRarity);
+    $('unlock-list').innerHTML=Object.entries(UPGRADE).map(([id,u])=>{
+      const on=unlock[id];
+      return '<div class="unlock"><div><b>'+u.name+'</b><small>'+u.requirement+'</small></div><span class="locktag '+(on?'open':'')+'">'+(on?'UNLOCKED':'LOCKED')+'</span></div>';
+    }).join('');
+    $('run-panel').classList.toggle('hidden',!run);
+    if(!run) return;
+    const snap=run.mainProgressAtStart, snapUnlock=run.mechanicUnlocks;
+    $('profile-level').textContent=fmt(snap.level);
+    $('profile-rolls').textContent=fmt(snap.totalRolls);
+    $('profile-crits').textContent=fmt(snap.totalCrits);
+    $('profile-unlocks').textContent=mechanicCount(snapUnlock)+' / 4';
+    $('run-kicker').textContent=run.status==='completed'?'Challenge completed':'Active challenge save';
+    $('run-started').textContent='Started '+new Date(run.startedAt).toLocaleString()+' · unlocks frozen at run start';
+    $('abandon-btn').classList.toggle('hidden',run.status!=='active');
+    $('run-coins').textContent=fmt(run.coins);
+    $('run-rolls').textContent=fmt(run.totalRolls);
+    $('run-best').textContent=fmtRarity(run.bestRarity);
+    const pct=progress(run.bestRarity);
+    $('progress-label').textContent=pct.toFixed(1)+'%';
+    $('progress-bar').style.width=pct+'%';
+    $('last-result').classList.toggle('hidden',!run.lastRoll);
+    if(run.lastRoll){
+      $('last-rarity').textContent='1 / '+fmtRarity(run.lastRoll.rarity)+(run.lastRoll.critical?' · CRITICAL':'');
+      $('last-coins').textContent='+'+fmt(run.lastRoll.coins)+' Coins';
+    }
+    $('active-controls').classList.toggle('hidden',run.status!=='active');
+    $('complete-panel').classList.toggle('hidden',run.status!=='completed');
+    if(run.status==='completed'){
+      $('complete-copy').textContent='You found a 1 / '+fmtRarity(TARGET)+' Orb in '+fmt(run.totalRolls)+' rolls. The result is stored in this browser archive.';
+    }else{
+      $('roll-btn').disabled=run.nextRollAt>now;
+      $('roll-btn').textContent=run.nextRollAt>now?'Ready in '+((run.nextRollAt-now)/1000).toFixed(1)+'s':'ROLL ORB';
+      $('cooldown-copy').textContent='Current cooldown: '+(cooldown(run)/1000).toFixed(2)+' seconds.';
+      $('upgrade-grid').innerHTML=Object.entries(UPGRADE).map(([id,u])=>{
+        const level=run.upgradeLevels[id],isUnlocked=snapUnlock[id],price=cost(id,run),maxed=level>=u.max;
+        return '<article class="upgrade"><div class="upgrade-head"><h4>'+u.name+'</h4><span class="level">Lv '+level+'/'+u.max+'</span></div><p>'+u.desc+'</p><div class="upgrade-foot"><span class="cost">'+(!isUnlocked?u.requirement:maxed?'Maximum level':fmt(price)+' Coins')+'</span><button class="button secondary" data-upgrade="'+id+'" '+(!isUnlocked||maxed||run.coins<price?'disabled':'')+'>'+(maxed?'MAXED':'UPGRADE')+'</button></div></article>';
+      }).join('');
+    }
+  }
+  function start(){
+    if(data.main.level<5||data.archive.activeRun) return;
+    const snap={...data.main};
+    const ids=unlocks(snap);
+    data.archive.activeRun={runId:crypto.randomUUID?.()||String(Date.now())+'-'+Math.random(),challengeId:'first-spark',status:'active',startedAt:Date.now(),coins:0,totalRolls:0,bestRarity:2,nextRollAt:0,upgradeLevels:{fortune:0,speed:0,prosperity:0,critical:0},mainProgressAtStart:snap,mechanicUnlocks:ids,lastRoll:null};
+    data.archive.completed=false;save();render();
+  }
+  function doRoll(){
+    const run=data.archive.activeRun;
+    if(!run||run.status!=='active'||run.nextRollAt>Date.now()) return;
+    const result=rollRarity(run);
+    const coins=Math.max(1,Math.floor(coinValue(result.rarity)*coinMultiplier(run)));
+    run.coins=Math.min(Number.MAX_SAFE_INTEGER,run.coins+coins);
+    run.totalRolls++;run.bestRarity=Math.max(run.bestRarity,result.rarity);
+    run.lastRoll={rarity:result.rarity,critical:result.critical,coins,at:Date.now()};
+    run.nextRollAt=Date.now()+cooldown(run);
+    if(result.rarity>=TARGET){
+      run.status='completed';run.completedAt=Date.now();
+      data.archive.completed=true;data.archive.totalCompletedRuns++;
+      data.archive.bestRarity=Math.max(data.archive.bestRarity,run.bestRarity);
+    }
+    save();render();
+  }
+  function buy(id){
+    const run=data.archive.activeRun;
+    if(!run||run.status!=='active'||!run.mechanicUnlocks[id]) return;
+    const u=UPGRADE[id],price=cost(id,run);
+    if(run.upgradeLevels[id]>=u.max||run.coins<price) return;
+    run.coins-=price;run.upgradeLevels[id]++;
+    save();render();
+  }
+  function abandon(){
+    if(!data.archive.activeRun||data.archive.activeRun.status!=='active') return;
+    if(!confirm('Abandon this run? Challenge Coins and upgrades will be discarded.')) return;
+    data.archive.activeRun=null;save();render();
+  }
+  function applyProfile(){
+    data.main={
+      level:clampInt($('main-level').value,1,100000,5),
+      totalRolls:clampInt($('main-rolls').value,0,1e9,0),
+      totalCrits:clampInt($('main-crits').value,0,1e9,0)
+    };
+    save();render();
+  }
+  $('start-btn').addEventListener('click',start);
+  $('roll-btn').addEventListener('click',doRoll);
+  $('abandon-btn').addEventListener('click',abandon);
+  $('save-profile').addEventListener('click',applyProfile);
+  $('restart-btn').addEventListener('click',()=>{if(data.archive.activeRun?.status==='completed'){data.archive.activeRun=null;save();start();}});
+  $('upgrade-grid').addEventListener('click',event=>{const button=event.target.closest('[data-upgrade]');if(button)buy(button.dataset.upgrade);});
+  timer=setInterval(()=>{now=Date.now();const run=data.archive.activeRun;if(run?.status==='active'&&run.nextRollAt>0&&run.nextRollAt<=now){render();}else if(run?.status==='active'&&run.nextRollAt>now){$('roll-btn').textContent='Ready in '+((run.nextRollAt-now)/1000).toFixed(1)+'s';}},100);
+  render();
+})();
+</script>
+</body>
+</html>
