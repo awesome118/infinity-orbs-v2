@@ -248,6 +248,7 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
           </div>
           <div class="run-progress"><div class="progress-line"><span>Rarity progress</span><strong id="run-progress-text">10.0%</strong></div><div class="xp-track"><div class="xp-fill" id="run-progress-fill"></div></div></div>
           <div class="run-action-row" id="challenge-actions"><button class="roll-button" id="challenge-roll">ROLL IN THE RIFT</button><span class="cooldown" id="challenge-cooldown">1.50s base cooldown.</span></div>
+          <div class="milestone hidden" id="challenge-last-result" style="margin-top:12px"><span class="panel-kicker">Latest challenge result</span><strong id="challenge-last-main"></strong><small id="challenge-last-coins"></small></div>
           <div class="panel-kicker" style="margin-top:18px">Challenge upgrades</div>
           <div class="run-upgrades" id="challenge-upgrades"></div>
           <div class="complete-box hidden" id="challenge-complete"><strong>The First Spark is stable.</strong><p id="complete-copy"></p><button class="small-btn" id="new-challenge-run" style="margin-top:12px">START A FRESH RUN</button></div>
@@ -447,6 +448,8 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
     $('run-coins').textContent=fmt(run.coins);$('run-rolls').textContent=fmt(run.totalRolls);$('run-best').textContent=fmtRarity(run.bestRarity);
     const pct=pctRarity(run.bestRarity);$('run-progress-text').textContent=pct.toFixed(1)+'%';$('run-progress-fill').style.width=pct+'%';
     $('challenge-actions').classList.toggle('hidden',completed);$('challenge-complete').classList.toggle('hidden',!completed);
+    $('challenge-last-result').classList.toggle('hidden',!run.lastRoll);
+    if(run.lastRoll){$('challenge-last-main').textContent='1 / '+fmtRarity(run.lastRoll.rarity)+(run.lastRoll.isCritical?' · CRITICAL':'');$('challenge-last-coins').textContent='+'+fmt(run.lastRoll.coinsGained)+' challenge Coins';}
     if(completed){$('complete-copy').textContent='You found a 1 / '+fmtRarity(TARGET)+' Orb in '+fmt(run.totalRolls)+' challenge rolls. Your main-game save was not changed.';}
     else{
       $('challenge-roll').disabled=run.nextRollAt>Date.now();$('challenge-roll').textContent=run.nextRollAt>Date.now()?'READY IN '+((run.nextRollAt-Date.now())/1000).toFixed(1)+'S':'ROLL IN THE RIFT';
@@ -455,7 +458,6 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
         const level=run.upgradeLevels[id],on=run.mechanicUnlocks[id],price=cost(d,level,run.totalRolls),max=level>=d.max;
         return '<article class="run-upgrade"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><h4>'+d.name+'</h4><span class="upgrade-level">LV '+level+'/'+d.max+'</span></div><p>'+d.desc+'</p><div class="run-upgrade-foot"><span>'+(!on?d.requirement:max?'MAX LEVEL':fmt(price)+' Coins')+'</span><button class="small-btn" data-rift-upgrade="'+id+'" '+(!on||max||run.coins<price?'disabled':'')+'>UPGRADE</button></div></article>';
       }).join('');
-      $('challenge-upgrades').insertAdjacentHTML('beforebegin',run.lastRoll?'<div class="milestone" style="margin-top:12px"><span class="panel-kicker">Latest challenge result</span><strong>1 / '+fmtRarity(run.lastRoll.rarity)+(run.lastRoll.isCritical?' · CRITICAL':'')+'</strong><small>+'+fmt(run.lastRoll.coinsGained)+' challenge Coins</small></div>':'');
     }
   }
   function renderProgress(){
