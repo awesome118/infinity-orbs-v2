@@ -22,6 +22,7 @@ import {
   Megaphone,
   X,
   Gem,
+  Compass,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -82,6 +83,7 @@ import { sound } from './sound.js';
 import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
+import { RiftChallengesSection } from './components/RiftChallengesSection.js';
 import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
@@ -137,6 +139,7 @@ type ActiveTab =
   | 'boosters'
   | 'altar'
   | 'mastery'
+  | 'challenges'
   | 'collection'
   | 'runes'
   | 'quests'
@@ -992,6 +995,7 @@ function App() {
     boosters: 'Boosters',
     altar: 'Altar',
     mastery: 'Mastery',
+    challenges: 'Challenges',
     collection: 'Collection',
     social: 'Guilds',
     profile: 'Progress',
@@ -4015,7 +4019,7 @@ function App() {
                 <div className="io-nav-more-wrap">
                   <button
                     type="button"
-                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery', 'challenges'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
                     onClick={() => setMoreNavOpen(open => !open)}
@@ -4024,6 +4028,7 @@ function App() {
                     {tab === 'boosters' && <span className="io-nav-current-page">Boosters</span>}
                     {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
+                    {tab === 'challenges' && <span className="io-nav-current-page">Challenges</span>}
                     {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
                     {tab === 'social' && <span className="io-nav-current-page">Guilds</span>}
                     {tab === 'profile' && <span className="io-nav-current-page">Progress</span>}
@@ -4046,6 +4051,7 @@ function App() {
                       {renderNavItem('boosters', 'Boosters', Dices)}
                       {renderNavItem('altar', 'Altar', Flame)}
                       {renderNavItem('mastery', 'Mastery', Sparkles, (state.masteryPoints ?? 0) > 0)}
+                      {renderNavItem('challenges', 'Challenges', Compass)}
                     </div>
                   )}
                 </div>
@@ -4200,6 +4206,8 @@ function App() {
             busy={false}
           />
         )}
+
+        {tab === 'challenges' && <RiftChallengesSection />}
 
         {tab === 'boosters' && (
           <BoostersAndAutomation
