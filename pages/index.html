@@ -290,7 +290,7 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
     critical:{name:'Critical Echo',desc:'+1.5 percentage points of critical chance per level.',requirement:'Land 10 critical rolls in the main game',base:55,growth:1.65,max:10}
   };
   const defaults={
-    main:{coins:0,xp:0,level:1,levelXpFloor:0,totalRolls:0,totalCrits:0,bestRarity:2,upgrades:{luck:0,speed:0,coins:0,critical:0},lastRoll:null,recent:[],lastSavedAt:Date.now()},
+    main:{coins:0,xp:0,level:1,levelXpFloor:0,totalRolls:0,totalCrits:0,bestRarity:2,upgrades:{luck:0,speed:0,coins:0,critical:0},lastRoll:null,recent:[],nextRollAt:0,lastSavedAt:Date.now()},
     archive:{activeRun:null,completedChallengeIds:[],bestRarityByChallenge:{},totalCompletedRuns:0}
   };
   let data=load();
@@ -312,7 +312,7 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
       if(raw){
         const p=JSON.parse(raw),d=deep(defaults);
         const m=p.main||{};
-        Object.assign(d.main,{coins:clamp(m.coins,0,Number.MAX_SAFE_INTEGER,0),xp:clamp(m.xp,0,Number.MAX_SAFE_INTEGER,0),totalRolls:clamp(m.totalRolls,0,Number.MAX_SAFE_INTEGER,0),totalCrits:clamp(m.totalCrits,0,Number.MAX_SAFE_INTEGER,0),bestRarity:Math.max(2,Number(m.bestRarity)||2)});
+        Object.assign(d.main,{coins:clamp(m.coins,0,Number.MAX_SAFE_INTEGER,0),xp:clamp(m.xp,0,Number.MAX_SAFE_INTEGER,0),totalRolls:clamp(m.totalRolls,0,Number.MAX_SAFE_INTEGER,0),totalCrits:clamp(m.totalCrits,0,Number.MAX_SAFE_INTEGER,0),bestRarity:Math.max(2,Number(m.bestRarity)||2),nextRollAt:clamp(m.nextRollAt,0,Number.MAX_SAFE_INTEGER,0)});
         for(const id of Object.keys(UPGRADES))d.main.upgrades[id]=clamp(m.upgrades?.[id],0,UPGRADES[id].max,0);
         d.main.lastRoll=m.lastRoll&&typeof m.lastRoll==='object'?m.lastRoll:null;
         d.main.recent=Array.isArray(m.recent)?m.recent.slice(0,12):[];
@@ -480,7 +480,7 @@ h1{margin:5px 0 0;font-size:clamp(25px,3vw,34px);line-height:1.1;letter-spacing:
   $('challenge-upgrades').addEventListener('click',e=>{const b=e.target.closest('[data-rift-upgrade]');if(b)buyRift(b.dataset.riftUpgrade);});
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
   document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
-  $('reset-save').addEventListener('click',()=>{if(!confirm('Reset the local Infinity Orbs browser save, including Rift Challenge progress?'))return;localStorage.removeItem(STORAGE_KEY);data=deep(defaults);save();render();showView('main');});
+  $('reset-save').addEventListener('click',()=>{if(!confirm('Reset the local Infinity Orbs browser save, including Rift Challenge progress?'))return;localStorage.removeItem(STORAGE_KEY);localStorage.removeItem(OLD_KEY);data=deep(defaults);save();render();showView('main');});
   window.setInterval(()=>{now=Date.now();const run=data.archive.activeRun;if(run?.status==='active'&&run.nextRollAt>0){$('challenge-roll').disabled=run.nextRollAt>now;$('challenge-roll').textContent=run.nextRollAt>now?'READY IN '+((run.nextRollAt-now)/1000).toFixed(1)+'S':'ROLL IN THE RIFT';$('challenge-cooldown').textContent='Current cooldown: '+(riftCooldown(run)/1000).toFixed(2)+'s. Challenge Coins only.';}if(data.main.nextRollAt){$('main-roll').disabled=data.main.nextRollAt>now;$('main-roll').textContent=data.main.nextRollAt>now?'READY IN '+((data.main.nextRollAt-now)/1000).toFixed(1)+'S':'ROLL ORB';$('main-cooldown').textContent=data.main.nextRollAt>now?'Ready in '+((data.main.nextRollAt-now)/1000).toFixed(1)+'s':'Your rolls build Coins and XP in the main save.';}},100);
   render();
 })();
