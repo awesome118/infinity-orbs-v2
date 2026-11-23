@@ -3,13 +3,14 @@ name: Deploy Rift Challenge preview to GitHub Pages
 on:
   push:
     branches:
-      - feature/rift-challenges-mvp
+      - main
     paths:
       - "pages/**"
       - ".github/workflows/github-pages.yml"
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
