@@ -1,5 +1,7 @@
 name: Deploy Rift Challenge preview to GitHub Pages
 
+# Static-only preview; the Devvit server remains hosted by Reddit.
+
 on:
   push:
     branches:
