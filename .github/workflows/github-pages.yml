@@ -37,6 +37,9 @@ jobs:
         with:
           path: pages
 
+      - name: Wait for uploaded artifact metadata to become available
+        run: sleep 10
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
