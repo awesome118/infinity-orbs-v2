@@ -66,3 +66,5 @@ jobs:
       - name: Deploy test site
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
