@@ -1,14 +1,16 @@
-name: Deploy Rift Challenge preview to GitHub Pages
-
-# Static-only preview; the Devvit server remains hosted by Reddit.
+name: Deploy Infinity Orbs actual game to GitHub Pages
 
 on:
   push:
     branches:
       - main
     paths:
-      - "pages/**"
       - ".github/workflows/github-pages.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.pages.config.ts"
+      - "src/**"
+      - "tsconfig*.json"
   workflow_dispatch:
 
 permissions:
@@ -23,23 +25,44 @@ concurrency:
 
 jobs:
   deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - name: Check out preview
+      - name: Check out the actual game
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check the game
+        run: npm run type-check
+
+      - name: Test Rift Challenges and the Pages backend simulator
+        run: node --import tsx --test tests/rift-challenges.test.ts tests/pages-reddit-simulator.test.ts tests/pages-rift-challenges.test.ts
+
+      - name: Build the real Infinity Orbs client for Pages
+        run: npm run build:pages
+
+      - name: Mark output as a static site
+        run: touch dist-pages/.nojekyll
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload actual game
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: pages
+          path: dist-pages
 
-      - name: Wait for uploaded artifact metadata to become available
+      - name: Wait for uploaded artifact metadata
         run: sleep 10
 
       - name: Deploy
