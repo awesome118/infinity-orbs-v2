@@ -97,7 +97,7 @@ test('notification prompt works for returning players and admin preview does not
   assert.match(header, /Game updates/);
   assert.match(header, /Offline Orbs/);
   assert.match(server, /export async function getNotificationState/);
-  assert.match(server, /return notifications\.isOptedIn\(id\)/);
+  assert.match(server, /return \(await getNotificationPreferences\(userId\)\)\.enabled/);
   assert.match(server, /await notifications\.optInCurrentUser\(\)/);
   assert.match(server, /await notifications\.optOutCurrentUser\(\)/);
 });
