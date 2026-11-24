@@ -2074,6 +2074,7 @@ function normalizePopupConfig(value: unknown): PopupConfig {
   return {
     notification: typeof record.notification === 'boolean' ? record.notification : DEFAULT_POPUP_CONFIG.notification,
     frenzy: typeof record.frenzy === 'boolean' ? record.frenzy : DEFAULT_POPUP_CONFIG.frenzy,
+    frenzyShard: typeof record.frenzyShard === 'boolean' ? record.frenzyShard : DEFAULT_POPUP_CONFIG.frenzyShard,
     joinSubreddit: typeof record.joinSubreddit === 'boolean' ? record.joinSubreddit : DEFAULT_POPUP_CONFIG.joinSubreddit,
   };
 }
