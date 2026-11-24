@@ -325,7 +325,6 @@ function FrenzyPost() {
         setInlineClaimedRarity(claimedRarity);
         setInlineClaimedIsInfinity(payload.orb?.isInfinity === true);
         setInlineClaimedCount(Math.max(0, Math.floor(Number(payload.frenzyCount) || 0)));
-        setInlineClaimedAt(Date.now());
         window.parent.postMessage(
           { type: 'io-frenzy-preview-claimed', result: payload },
           window.location.origin,
