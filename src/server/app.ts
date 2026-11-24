@@ -1573,7 +1573,7 @@ export function createApp() {
               title,
               entry: 'rift',
               userGeneratedContent: {
-                text: `u/${completion.ownerUsername} has completed the rift ${completion.challengeName} for the first time!\\n\\nCelebrate this first clear with Kudos. Each player can send Kudos once, during the first 24 hours after the post is published.\\n\\nKudos gives you +10 Shards, gives the Rift champion +10 Shards, and adds 1 minute of progress to their Rift bar.\\n\\nUse the buttons below to open Infinity Orbs or send Kudos. Sending Kudos will not open the game.`,
+                text: `u/${completion.ownerUsername} has completed the rift ${completion.challengeName} for the first time!\n\nCelebrate this first clear with Kudos. Each player can send Kudos once, during the first 24 hours after the post is published.\n\nKudos gives you +10 Shards, gives the Rift champion +10 Shards, and adds 1 minute of progress to their Rift bar.\n\nUse the buttons below to open Infinity Orbs or send Kudos. Sending Kudos will not open the game.`,
               },
             });
             const postId = String(post?.id ?? '').trim();
