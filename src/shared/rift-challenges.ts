@@ -241,6 +241,8 @@ export interface RiftChallengeArchive {
   riftRatePerHour: number;
   riftLastAccruedAt: number;
   totalRiftPointsEarned: number;
+  /** Last permanently completed challenge's Rift-game progression, independent of the active run. */
+  riftPlayerProgress: RiftChallengeMainProgress | null;
   riftPerkLevels: RiftPerkLevels;
 }
 
@@ -360,6 +362,7 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftRatePerHour: RIFT_BASE_RATE_PER_HOUR,
     riftLastAccruedAt: Math.max(0, Math.floor(now)),
     totalRiftPointsEarned: 0,
+    riftPlayerProgress: null,
     riftPerkLevels,
   };
 }
