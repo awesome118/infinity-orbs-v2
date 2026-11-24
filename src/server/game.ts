@@ -385,7 +385,7 @@ async function ensureCodexStorageVersion(userId: string, generation: number, sta
 
 const NON_PERSISTED_PLAYER_FIELDS = new Set([
   'collection', 'codexChain', 'codexDevotionLuckPercent', 'guildPerks', 'guildCombo',
-  'globalBoosters', 'dailyStreakCommunity', 'onlinePlayers',
+  'globalBoosters', 'dailyStreakCommunity', 'onlinePlayers', 'riftChallengeFirstClear',
 ]);
 
 function serializePlayerStateForRedis(state: PlayerState): string {
@@ -584,7 +584,7 @@ const FOLLOW_ACTION_COUNT_KEY = 'io:follow-prompt-actions:v2';
 const FOLLOW_REWARD_ROLLS = 100;
 const POPUP_CONFIG_KEY = 'io:popup-config:v1';
 const POPUP_STATS_KEY_PREFIX = 'io:popup-stats:v1:';
-const POPUP_IDS: GamePopupId[] = ['notification', 'frenzy', 'joinSubreddit'];
+const POPUP_IDS: GamePopupId[] = ['notification', 'frenzy', 'frenzyShard', 'joinSubreddit'];
 const POPUP_EVENTS: GamePopupEvent[] = ['shown', 'accepted', 'dismissed'];
 const FOLLOW_TARGET_SUBREDDIT = 'infinityorbs';
 
@@ -2497,9 +2497,21 @@ export async function getOrbFrenzyHandoff(): Promise<{ armed: boolean; postId?: 
   return handoff ? { armed: true, postId: handoff.postId } : { armed: false };
 }
 
-async function prepareFrenzyOwnerRewardWrites(
+function queueFrenzyShardPopup(state: PlayerState, amount: number): void {
+  const granted = Math.max(0, Math.floor(Number(amount) || 0));
+  if (granted <= 0) return;
+  const previous = state.frenzyShardPopupPending;
+  state.frenzyShardPopupPending = {
+    amount: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Number(previous?.amount) || 0) + granted),
+    eventCount: Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(Number(previous?.eventCount) || 0)) + 1),
+    lastRewardAt: Date.now(),
+  };
+}
+
+export async function prepareFrenzyOwnerRewardWrites(
   ownerId: string,
   amount = FRENZY_OWNER_SHARD_REWARD,
+  queuePopup = true,
 ): Promise<{ granted: number; writes: SaveExtraWrite[] }> {
   const safeOwnerId = String(ownerId ?? '').trim();
   if (!safeOwnerId || safeOwnerId === 'unknown') {
@@ -2528,6 +2540,7 @@ async function prepareFrenzyOwnerRewardWrites(
   }
 
   const granted = grantFrenzyOwnerShards(ownerState, amount);
+  if (queuePopup) queueFrenzyShardPopup(ownerState, granted);
   const currentRevision = Math.max(0, Math.floor(Number(ownerState.stateRevision ?? 0)) || 0);
   if (currentRevision >= Number.MAX_SAFE_INTEGER) {
     throw new Error('Frenzy owner save revision is exhausted; the claim was not consumed.');
@@ -3902,6 +3915,8 @@ function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerS
   delete stored.collection;
   delete stored.riftSession;
   delete stored.riftRunComplete;
+  delete stored.riftChallengeFirstClear;
+  delete stored.frenzyShardPopupPending;
   delete stored.riftSaveContext;
   delete stored.gameBan;
   delete stored.onlinePlayers;
@@ -4019,6 +4034,7 @@ async function saveActiveRiftPlayerState(
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
+      let firstClear = false;
       if (riftBestRarity >= challenge.targetRarity) {
         completed = true;
         run.status = 'completed';
@@ -4027,7 +4043,7 @@ async function saveActiveRiftPlayerState(
         const completedIds = Array.isArray(archive.completedChallengeIds)
           ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
           : [];
-        const firstClear = !completedIds.includes(challenge.id);
+        firstClear = !completedIds.includes(challenge.id);
         if (firstClear) completedIds.push(challenge.id);
         archive.completedChallengeIds = completedIds;
         archive.riftPlayerProgress = {
@@ -4066,6 +4082,16 @@ async function saveActiveRiftPlayerState(
         state.riftSaveContext = 'rift:' + session.runId;
         if (completed) {
           state.riftRunComplete = true;
+          if (firstClear) {
+            state.riftChallengeFirstClear = {
+              challengeId: challenge.id,
+              challengeName: challenge.name,
+              runId: session.runId,
+              completedAt: now,
+              ownerId: userId,
+              ownerUsername: String(context.username ?? state.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor',
+            };
+          }
           delete state.riftSession;
           void deleteRiftCodexForRun(session.runId).catch(error => {
             console.error('[Rift Save] Completed challenge Codex cleanup failed:', error);
@@ -9432,6 +9458,7 @@ export async function claimOrbFrenzy(options: {
   let ownerRewardWrites: SaveExtraWrite[] = [];
   if (isOwner) {
     ownerRewardShards = grantFrenzyOwnerShards(s, FRENZY_OWNER_SHARD_REWARD);
+    queueFrenzyShardPopup(s, ownerRewardShards);
   } else {
     const ownerReward = await prepareFrenzyOwnerRewardWrites(
       data.ownerId,
