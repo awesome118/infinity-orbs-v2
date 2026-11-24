@@ -42,8 +42,16 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /const mainProgress = archive\.activeRun\?\.gameState/);
   assert.match(game, /state\.riftRunComplete = true/);
   assert.match(game, /riftCodexOwnerId\(userId, session\.runId\)/);
-  assert.match(game, /if \(usingChainPatcher\) s\.adminGuaranteedRollQueued = false/);
+  assert.match(game, /if \(usingChainPatcher\) \{\s*s\.chainPatcherNextRarity = 0;\s*s\.adminGuaranteedRollQueued = false;/);
   assert.match(game, /s\.adminGuaranteedRollQueued === true/);
+  const queuedPagesAdminStart = adminApi.indexOf("case '/queue-force-roll'");
+  const queuedPagesAdminEnd = adminApi.indexOf("case '/frenzy/start'", queuedPagesAdminStart);
+  assert.ok(queuedPagesAdminStart >= 0 && queuedPagesAdminEnd > queuedPagesAdminStart);
+  assert.doesNotMatch(adminApi.slice(queuedPagesAdminStart, queuedPagesAdminEnd), /applyRolls\(/);
+  const queuedDevAdminStart = adminDebug.indexOf("debugRouter.post('/queue-force-roll'");
+  const queuedDevAdminEnd = adminDebug.indexOf("debugRouter.post('/frenzy/start'", queuedDevAdminStart);
+  assert.ok(queuedDevAdminStart >= 0 && queuedDevAdminEnd > queuedDevAdminStart);
+  assert.doesNotMatch(adminDebug.slice(queuedDevAdminStart, queuedDevAdminEnd), /applyRolls\(/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
   assert.match(game, /challengeCoinMultiplier/);
   assert.match(game, /Auto Roll is disabled in The First Spark/);
