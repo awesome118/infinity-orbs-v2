@@ -1,6 +1,6 @@
 import { context, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
-import { loadRaw } from './game.js';
+import { loadRaw, deleteRiftCodexForRun } from './game.js';
 import {
   createInitialState,
   calculateLevelFromXp,
@@ -399,8 +399,12 @@ export async function abandonRiftChallenge(expectedRunIdValue: unknown): Promise
       throw new Error('CHALLENGE_RUN_MISMATCH');
     }
     assertExpectedRunId(archive.activeRun, expectedRunIdValue);
+    const completedRunId = archive.activeRun.runId;
     archive.activeRun = null;
     await writeArchive(archive);
+    await deleteRiftCodexForRun(completedRunId).catch(error => {
+      console.error('[Rift Challenges] Abandoned run Codex cleanup failed:', error);
+    });
     return snapshot(archive, await readMainProgress());
   });
 }
