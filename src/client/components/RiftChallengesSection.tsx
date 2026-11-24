@@ -3,7 +3,6 @@ import {
   RIFT_CHALLENGES,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
-  riftChallengeCooldownMs,
   riftChallengeUpgradeCost,
   riftPerkCost,
   type RiftChallengeId,
@@ -28,11 +27,6 @@ async function challengeRequest<T>(path: string, method = 'GET', body?: Record<s
   return payload as T;
 }
 
-function formatCooldown(milliseconds: number): string {
-  const seconds = Math.max(0, milliseconds) / 1000;
-  return seconds >= 10 ? seconds.toFixed(0) + 's' : seconds.toFixed(1) + 's';
-}
-
 function formatDuration(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -43,7 +37,11 @@ function formatDuration(milliseconds: number): string {
   return seconds + 's';
 }
 
-export const RiftChallengesSection: React.FC = () => {
+export const RiftChallengesSection: React.FC<{
+  onEnterGame?: () => void;
+  onExit?: () => void;
+  onRefreshPlayer?: () => void;
+}> = ({ onEnterGame, onExit, onRefreshPlayer }) => {
   const [snapshot, setSnapshot] = useState<RiftChallengeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -74,7 +72,6 @@ export const RiftChallengesSection: React.FC = () => {
   const archive = snapshot?.archive;
   const run = archive?.activeRun ?? null;
   const challenge = run ? RIFT_CHALLENGES.find(item => item.id === run.challengeId) : null;
-  const remainingCooldown = Math.max(0, (run?.nextRollAt ?? 0) - now);
   const riftProjection = useMemo(() => {
     if (!archive) return { points: 0, progress: 0, rate: 1, nextPointMs: 3_600_000 };
     const elapsed = Math.max(0, now - archive.riftLastAccruedAt);
@@ -109,6 +106,9 @@ export const RiftChallengesSection: React.FC = () => {
       const result = await challengeRequest<RiftChallengeSnapshot>(path, body ? 'POST' : 'GET', body);
       setSnapshot(result);
       setConfirmAbandon(false);
+      if (action.startsWith('start-')) onEnterGame?.();
+      else if (action === 'abandon') onExit?.();
+      else onRefreshPlayer?.();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'The Rift action failed.';
       if (message.includes('challenge run changed in another tab')) {
@@ -129,7 +129,6 @@ export const RiftChallengesSection: React.FC = () => {
     '/api/rift-challenges/start',
     { challengeId: id },
   );
-  const roll = () => void performAction('roll', '/api/rift-challenges/roll', { runId: run?.runId });
   const buyUpgrade = (id: RiftChallengeUpgradeId) => void performAction(
     id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
   );
@@ -164,7 +163,7 @@ export const RiftChallengesSection: React.FC = () => {
             </div>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">The Rift</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
-              Rift energy accumulates while you play and while you are away. Clear challenges to permanently accelerate the bar, then spend Rift Points on upgrades that cross back into the main game.
+              Rift energy accumulates while you play and while you are away. Clear challenges to accelerate the bar, then spend Rift Points on permanent perks. While a challenge is active, every normal game menu uses its isolated Rift save.
             </p>
           </div>
           <div className="min-w-36 rounded-2xl border border-cyan-300/20 bg-black/20 px-4 py-3">
@@ -214,7 +213,7 @@ export const RiftChallengesSection: React.FC = () => {
             <div className="mt-1 text-lg font-black text-white">{formatNumber(archive.totalCompletedRuns)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Main-game level</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Rift level</div>
             <div className="mt-1 text-lg font-black text-white">Lv {formatNumber(mainLevel)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
@@ -233,7 +232,7 @@ export const RiftChallengesSection: React.FC = () => {
             <h2 className="mt-1 text-xl font-black text-white">Challenges</h2>
             <p className="mt-1 text-xs text-slate-400">First clears improve your permanent generation rate. Replays award additional Rift Points.</p>
           </div>
-          <div className="text-[10px] text-slate-500">Your current main save is never reset.</div>
+          <div className="text-[10px] text-slate-500">Your main save is preserved and restored when the Rift run ends.</div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -307,7 +306,7 @@ export const RiftChallengesSection: React.FC = () => {
           <div>
             <div className="text-[10px] font-black uppercase tracking-[.2em] text-violet-300">02 · Permanent upgrades</div>
             <h2 className="mt-1 text-xl font-black text-white">Rift Point shop</h2>
-            <p className="mt-1 text-xs text-slate-400">These perks persist across challenges and sessions. Main-game perks affect real Orb rolls.</p>
+            <p className="mt-1 text-xs text-slate-400">These perks persist across challenges and sessions. Main-game perks affect the normal Orb engine, including while it runs on Rift progress.</p>
           </div>
           <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
             <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Available</div>
@@ -370,7 +369,7 @@ export const RiftChallengesSection: React.FC = () => {
                 {isCompleted ? 'Challenge completed' : 'Active challenge save'}
               </div>
               <h2 className="mt-1 text-2xl font-black text-white">{challenge.name}</h2>
-              <p className="mt-1 text-xs text-slate-500">Started {new Date(run.startedAt).toLocaleString()} · Separate challenge economy</p>
+              <p className="mt-1 text-xs text-slate-500">Started {new Date(run.startedAt).toLocaleString()} · Isolated Rift player save</p>
             </div>
             {isActive && (
               <button
@@ -386,8 +385,8 @@ export const RiftChallengesSection: React.FC = () => {
 
           {confirmAbandon && (
             <div className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/5 p-4" role="alertdialog" aria-label="Confirm abandoning this challenge">
-              <div className="text-sm font-black text-white">Abandon this run?</div>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">Temporary challenge Coins and run upgrades will be discarded. Your main save, Rift Points, permanent perks, and completed challenges remain untouched.</p>
+              <div className="text-sm font-black text-white">Abandon this Rift run?</div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">The isolated Rift player save will be discarded. Your original main save, Rift Points, permanent perks, and completed challenge records will be restored unchanged.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void performAction('abandon', '/api/rift-challenges/abandon', { runId: run.runId })} disabled={busyAction !== null} className="rounded-lg bg-rose-500 px-3 py-2 text-[10px] font-black text-white hover:bg-rose-400 disabled:opacity-40">
                   {busyAction === 'abandon' ? 'Abandoning…' : 'Confirm abandon'}
@@ -440,18 +439,19 @@ export const RiftChallengesSection: React.FC = () => {
 
           {isActive && (
             <>
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Rift game active</div>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                  Your normal Roll, Upgrades, Collection, Quests, Prestige, and other player menus now read and write this Rift save. The original main save is isolated.
+                </p>
                 <button
                   type="button"
-                  onClick={roll}
-                  disabled={busyAction !== null || remainingCooldown > 0}
-                  className="min-h-12 flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => onEnterGame?.()}
+                  disabled={busyAction !== null || !onEnterGame}
+                  className="mt-3 min-h-12 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {busyAction === 'roll' ? 'Rolling…' : remainingCooldown > 0 ? 'Ready in ' + formatCooldown(remainingCooldown) : 'ROLL ORB'}
+                  ENTER RIFT GAME
                 </button>
-                <div className="text-center text-[10px] text-slate-500 sm:max-w-48 sm:text-left">
-                  Server-timed roll interval: {formatCooldown(Math.max(450, riftChallengeCooldownMs(run.upgradeLevels.speed, challenge.baseCooldownMs) * Math.max(0.65, 1 - archive.riftPerkLevels.riftSpeed * 0.03)))}
-                </div>
               </div>
 
               <div className="mt-6">
