@@ -258,7 +258,7 @@ export function combatRuneEffectText(rune: Pick<CombatRune, 'stat' | 'value' | '
   const value = combatRuneScaledValue(rune);
   if (rune.stat === 'luckPct') return '+' + runePercentText(value, 2) + '% Orb Luck';
   if (rune.stat === 'coinGainPct') return '+' + runePercentText(value, 2) + '% Coins';
-  if (rune.stat === 'shardChancePct') return '+' + runePercentText(value, 3) + '% Shard chance';
+  if (rune.stat === 'shardChancePct') return '+' + runePercentText(value * 0.025, 5) + '% effective Shard chance';
   return '+' + runePercentText(value, 2) + '% XP';
 }
 /**

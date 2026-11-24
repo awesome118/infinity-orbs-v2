@@ -67,6 +67,7 @@ import {
   frenzyCooldownRemaining,
   FRENZY_PROMPT_DELAY_MS,
   FRENZY_OWNER_SHARD_REWARD,
+  FRENZY_CLAIMS_PER_DAY,
   rollsPerActivation,
   timeEnergyActivationsAvailable,
   upgradeCost,
@@ -79,9 +80,15 @@ import {
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
+import { RIFT_CHALLENGES } from '../shared/rift-challenges.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
+import {
+  DEFAULT_LIVE_BALANCE_CONFIG,
+  normalizeLiveBalanceConfig,
+  type LiveBalanceConfig,
+} from '../shared/live-balance.js';
 import { sound } from './sound.js';
-import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
+import { autoRollCooldownRetryDelayMs, autoRollReadyAt, manualRollReadyAt } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
 import { RiftChallengesSection } from './components/RiftChallengesSection.js';
@@ -112,6 +119,8 @@ import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
 import './rift-theme.css';
+
+const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 function optimisticShardSpend(
   state: PlayerState,
@@ -329,6 +338,50 @@ function App() {
   }, []);
 
   const [state, setState] = useState<PlayerState | null>(null);
+  const [liveBalance, setLiveBalance] = useState<LiveBalanceConfig>(DEFAULT_LIVE_BALANCE_CONFIG);
+  const [globalMenuControl, setGlobalMenuControl] = useState<{ enabled: boolean; reason: string; updatedAt: number; updatedBy: string }>({
+    enabled: true, reason: '', updatedAt: 0, updatedBy: '',
+  });
+  const menusDisabled = globalMenuControl.enabled === false;
+
+  // Live balance tuning is global and independent of each player's save.
+  // Refresh on focus, tab visibility, and periodically so admin changes flow
+  // into both the cooldown UI and the next local Time Energy estimate.
+  useEffect(() => {
+    let active = true;
+    let requestInFlight = false;
+    const refreshLiveBalance = async () => {
+      if (!active || requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const snapshot = await getJson<{ values?: unknown }>('/api/live-balance', { cache: 'no-store' });
+        if (active) setLiveBalance(normalizeLiveBalanceConfig(snapshot.values));
+      } catch {
+        // The last valid snapshot remains usable if a settings read briefly fails.
+      } finally {
+        requestInFlight = false;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshLiveBalance();
+    };
+    const onBalanceUpdated = () => { void refreshLiveBalance(); };
+    void refreshLiveBalance();
+    const interval = window.setInterval(() => { void refreshLiveBalance(); }, 10_000);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onBalanceUpdated);
+    window.addEventListener('io-live-balance-updated', onBalanceUpdated);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onBalanceUpdated);
+      window.removeEventListener('io-live-balance-updated', onBalanceUpdated);
+    };
+  }, []);
+
+
+
   const journeyStartPromiseRef = useRef<Promise<void> | null>(null);
   const journeyReadyReportedRef = useRef(false);
   const journeyEndedRef = useRef(false);
@@ -579,6 +632,42 @@ function App() {
     if (!splashEntered) return;
     let cancelled = false;
     let inFlight = false;
+    const pollMenuControl = async () => {
+      if (cancelled || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const control = await getJson<{ enabled?: boolean; reason?: string; updatedAt?: number; updatedBy?: string }>('/api/menu-control');
+        if (!cancelled) setGlobalMenuControl({
+          enabled: control.enabled !== false,
+          reason: String(control.reason ?? '').slice(0, 300),
+          updatedAt: Number(control.updatedAt) || 0,
+          updatedBy: String(control.updatedBy ?? '').slice(0, 100),
+        });
+      } catch {
+        // Keep the last known menu status if the shared setting cannot be read.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void pollMenuControl(); };
+    void pollMenuControl();
+    const interval = window.setInterval(() => void pollMenuControl(), 10_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [splashEntered]);
+
+  useEffect(() => {
+    if (menusDisabled) setMoreNavOpen(false);
+  }, [menusDisabled]);
+
+  useEffect(() => {
+    if (!splashEntered) return;
+    let cancelled = false;
+    let inFlight = false;
     const pollAnnouncement = async () => {
       if (cancelled || inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
@@ -738,6 +827,12 @@ function App() {
       ? Math.min(95, (frenzyProgressCount / frenzyProgress.total) * 95)
       : frenzyProgress.percent;
   const [frenzyArmed, setFrenzyArmed] = useState(false);
+  useEffect(() => {
+    if (riftActive) {
+      setFrenzyArmed(false);
+      setNewBestModalData(null);
+    }
+  }, [riftActive]);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
   const [frenzyShardPopup, setFrenzyShardPopup] = useState<{ amount: number; eventCount: number; preview: boolean } | null>(null);
@@ -753,6 +848,7 @@ function App() {
   const notificationPromptShownRef = useRef(false);
   const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
+  const [frenzyOfflineRewardAcknowledging, setFrenzyOfflineRewardAcknowledging] = useState(false);
   const frenzyPromptShownRef = useRef(false);
   const frenzyShardPopupShownAtRef = useRef('');
   const riftGameOpenedRef = useRef(false);
@@ -1098,6 +1194,10 @@ function App() {
   };
 
   const changeTab = (nextTab: ActiveTab) => {
+    if (menusDisabled) {
+      showToast('Menus are disabled by the developer. ' + (globalMenuControl.reason || ''), 'warn');
+      return;
+    }
     const feature = featureForTab(nextTab);
     if (feature && (state?.level ?? 1) < FEATURE_UNLOCK_LEVELS[feature]) {
       showToast(
@@ -1160,10 +1260,11 @@ function App() {
         key={target}
         type="button"
         onClick={() => changeTab(target)}
+        disabled={menusDisabled}
         aria-current={active ? 'page' : undefined}
-        aria-label={locked ? `${label}, unlocks at level ${unlockLevel}` : label}
-        title={locked ? `${label} unlocks at Level ${unlockLevel}.` : undefined}
-        className={`nav-tab io-nav-item${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
+        aria-label={menusDisabled ? `${label}, disabled by the developer` : locked ? `${label}, unlocks at level ${unlockLevel}` : label}
+        title={menusDisabled ? 'Menus disabled by the developer.' : locked ? `${label} unlocks at Level ${unlockLevel}.` : undefined}
+        className={`nav-tab io-nav-item${active ? ' is-active' : ''}${locked ? ' is-locked' : ''}${menusDisabled ? ' opacity-40 cursor-not-allowed' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
       >
         <Icon className="io-nav-icon" />
         <span className="io-nav-label">{label}</span>
@@ -1187,6 +1288,7 @@ function App() {
   const handleToggleAutoRoll = useCallback(async () => {
     if (combatModeRef.current) return;
     const next = !autoRoll;
+    if (!next) autoRollCooldownRetryUntilRef.current = 0;
     const rollback = beginOptimisticState(current => ({
       ...current,
       autoRollEnabled: next,
@@ -2178,7 +2280,7 @@ function App() {
     if (!frenzyArmed) sound.playRollNormal();
 
     const timeEnergyActivations = useTimeEnergy
-      ? timeEnergyActivationsAvailable(currentState.timeEnergy ?? 0, cooldownMs(currentState, false))
+      ? timeEnergyActivationsAvailable(currentState.timeEnergy ?? 0, cooldownMs(currentState, false, liveBalance))
       : 0;
     const timeEnergyOrbs = timeEnergyActivations * Math.max(1, rollsPerActivation(currentState));
     const shouldAnimateTimeEnergy = useTimeEnergy &&
@@ -2242,7 +2344,7 @@ function App() {
     };
 
     try {
-      if (!isAutoRoll && !useTimeEnergy && frenzyArmed) {
+      if (!isAutoRoll && !useTimeEnergy && frenzyArmed && !(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'))) {
         frenzySubmissionInFlight = true;
         // Consume the armed state immediately so a failed request cannot
         // leave the UI stuck in a dead "RELEASE FRENZY" state.
@@ -2266,7 +2368,9 @@ function App() {
 
         const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
         if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-          setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
         }
         applyPlayerState(res.state);
         setFrenzyArmed(false);
@@ -2297,16 +2401,19 @@ function App() {
       const expectedPredictionRevision = ticket.predictionBaseRevision +
         Math.max(0, ticketIndex - ticket.predictionStartIndex);
       const prediction = ticket.predictions.find(item => item.index === ticketIndex);
+      const isRiftSaveForRoll = Boolean(stateForRoll.riftSession || stateForRoll.riftSaveContext?.startsWith('rift:'));
       const canShowPrediction = Boolean(
         prediction &&
         stateForRoll.stateRevision === expectedPredictionRevision &&
         (isAutoRoll || (stateForRoll.freeRolls ?? 0) <= 0) &&
-        !useTimeEnergy,
+        !useTimeEnergy &&
+        Number(stateForRoll.chainPatcherNextRarity ?? 0) === 0 &&
+        !isRiftSaveForRoll,
       );
       if (canShowPrediction && prediction) {
         setLastOrb(prediction.orb);
         setLastBatch([prediction.orb]);
-        setBatchSummary(null);
+        // Keep the previous confirmed reward text visible until the server commits this roll.
       }
       const ticketSeed = ticket.seeds[ticketIndex - ticket.predictionStartIndex];
       if (!ticketSeed) throw new Error('Roll prediction seed is unavailable. Refresh the game.');
@@ -2340,7 +2447,9 @@ function App() {
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       const isRiftSave = Boolean(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'));
       if (!isAutoRoll && !isRiftSave && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
       }
       const isRiftCompletion = res.state.riftRunComplete === true && isRiftSave;
       if (isRiftCompletion) {
@@ -2416,12 +2525,10 @@ function App() {
       await refreshAll().catch(() => null);
       mutationResyncNeededRef.current = false;
       if (autoCooldownRetryDelay !== null) {
-        // Cooldown errors are expected around very short Auto Roll intervals.
-        // Wait for the server-reported remainder plus a buffer instead of
-        // retrying on a fixed 150ms loop and repeatedly colliding with the lock.
+        // Auto Roll has its own cadence. Keep this retry deadline out of the
+        // manual Roll countdown so a stale Auto tick cannot block manual play.
         const retryAt = Date.now() + autoCooldownRetryDelay;
         autoRollCooldownRetryUntilRef.current = retryAt;
-        setReadyAt(retryAt);
       } else {
         showToast(error?.message || 'Roll failed. State refreshed.', 'warn');
       }
@@ -2438,23 +2545,28 @@ function App() {
     frenzyArmed,
     splashEntered,
     combatMode,
+    liveBalance,
   ]);
 
-  // Recalculate an already-running Auto Roll wait when an Alignment starts or expires.
-  // Clockwork must shorten the current wait immediately, not only the next server response.
+  // Keep the manual Roll button aligned with the manual server cooldown.
+  // Auto Roll has its own scheduler and computes its separate faster cadence.
   useEffect(() => {
     if (!state) return;
     const lastRollAt = Number(state.lastRollAt ?? 0);
-    if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) return;
     const activeInstances = alignmentStatus?.activeInstances ??
       state.alignmentActiveInstances ?? [];
     const timingState: PlayerState = {
       ...state,
       alignmentActiveInstances: activeInstances,
     };
-    const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true);
-    setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current));
-  }, [state, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
+    if (!Number.isFinite(lastRollAt) || lastRollAt <= 0) {
+      // Prestige and fresh saves clear lastRollAt. Do not retain a countdown
+      // timestamp from the player's previous run.
+      setReadyAt(0);
+      return;
+    }
+    setReadyAt(manualRollReadyAt(lastRollAt, cooldownMs(timingState, false, liveBalance)));
+  }, [state, liveBalance, alignmentStatus?.activeInstances, alignmentStatus?.activeChoice, alignmentStatus?.activeUntil]);
 
   // Auto Roll uses a single scheduled wake-up, not a state-captured polling
   // interval. Every wake-up re-reads the latest save and recomputes the Auto
@@ -2496,10 +2608,11 @@ function App() {
       }
 
       const lastRollAt = Math.max(0, Number(latest.lastRollAt ?? 0) || 0);
-      const authoritativeReadyAt = lastRollAt > 0
-        ? lastRollAt + cooldownMs(latest, true)
-        : 0;
-      const nextReadyAt = Math.max(readyAt, authoritativeReadyAt, autoRollCooldownRetryUntilRef.current);
+      const nextReadyAt = autoRollReadyAt(
+        lastRollAt,
+        cooldownMs(latest, true, liveBalance),
+        autoRollCooldownRetryUntilRef.current,
+      );
       const remaining = nextReadyAt - Date.now();
       if (remaining > 0) {
         schedule(remaining);
@@ -2528,7 +2641,7 @@ function App() {
     state?.autoRollEnabled,
     state?.upgrades.auto,
     state?.lastRollAt,
-    readyAt,
+    liveBalance,
     handleRoll,
     splashEntered,
     combatMode,
@@ -2688,7 +2801,7 @@ function App() {
     stateRef.current = nextState;
     stateRevisionRef.current += 1;
     setState(nextState);
-    sound.playChime(659.25, 'sine', 0.2);
+    sound.playPurchaseSound();
 
     return new Promise<boolean>((resolve) => {
       upgradeBatchQueueRef.current.push({ id, resolve });
@@ -2766,7 +2879,7 @@ function App() {
     stateRef.current = next;
     stateRevisionRef.current += 1;
     setState(next);
-    sound.playChime(523.25, 'triangle', 0.3);
+    sound.playPurchaseSound();
 
     pendingMutationCountRef.current += 1;
     return enqueueMutation(async () => {
@@ -2819,7 +2932,7 @@ function App() {
     try {
       const res = await getJson<{ state: PlayerState }>('/api/turbo/activate', { method: 'POST' });
       applyPlayerState(res.state);
-      sound.playChime(880, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       const turboDescription = durationMinutes === 60
         ? '35% faster cooldowns for 60 minutes'
         : '25% faster cooldowns for 30 minutes';
@@ -2842,6 +2955,11 @@ function App() {
     }
     if (frenzyArmed) return;
     if (!current) return;
+    if (current.riftSession || current.riftSaveContext?.startsWith('rift:')) {
+      setFrenzyArmed(false);
+      showToast('Orb Frenzy cannot be charged during a Rift run.', 'info');
+      return;
+    }
     const remaining = frenzyCooldownRemaining(current.lastFrenzyAt);
     if (remaining > 0) {
       const total = Math.ceil(remaining / 1000);
@@ -2881,7 +2999,7 @@ function App() {
       }
 
       setFrenzyArmed(true);
-      sound.playChime(1040, 'sawtooth', 0.22);
+      sound.playPowerUpSound();
       showToast('⚡ Frenzy armed. Your next manual Roll will submit it.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Could not arm Orb Frenzy', 'warn');
@@ -2931,7 +3049,7 @@ function App() {
         setBoosterAnnouncement(null);
         boosterAnnouncementTimerRef.current = null;
       }, 5000);
-      sound.playChime(960, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       showToast(
         res.usedCredit ? 'Global Booster activated with a free credit.' : 'Global Booster activated.',
         'success',
@@ -2966,7 +3084,7 @@ function App() {
         body: JSON.stringify({ id }),
       });
       applyPlayerState(res.state);
-      sound.playChime(1046, 'sawtooth', 0.3);
+      sound.playPowerUpSound();
       showToast('Premium booster activated.', 'success');
     } catch (e: any) {
       rollback?.();
@@ -3020,7 +3138,7 @@ function App() {
       }>('/api/community/reward/claim', { method: 'POST' });
       applyPlayerState(res.state);
       if (res.rewardCoins > 0) {
-        sound.playChime(880, 'triangle', 0.3);
+        sound.playRewardSound();
         showToast(
           `Community cache claimed! +${formatNumber(res.rewardCoins)} Coins, +${formatNumber(res.rewardXp)} XP.`,
           'success',
@@ -3046,7 +3164,9 @@ function App() {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
       }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
@@ -3289,7 +3409,7 @@ function App() {
         { method: 'POST' }
       );
       applyPlayerState(res.state);
-      sound.playChime(784, 'triangle', 0.3);
+      sound.playRewardSound();
       showToast(
         `Streak claimed! +${formatNumber(res.rewardCoins)} Coins ${res.rewardShards > 0 ? `+${formatNumber(res.rewardShards)} Shards` : ''}`,
         'success'
@@ -3340,7 +3460,7 @@ function App() {
         }
       );
       applyPlayerState(res.state);
-      sound.playChime(700, 'sine', 0.25);
+      sound.playRewardSound();
       showToast(`Quest completed! +${formatNumber(res.rewardCoins)} Coins`, 'success');
     } catch (e: any) {
       rollback?.();
@@ -3416,7 +3536,7 @@ function App() {
         body: JSON.stringify({ id }),
       });
       applyPlayerState(res.state);
-      sound.playChime(659.25, 'sine', 0.25);
+      sound.playPurchaseSound();
       showToast('Permanent cosmic upgrade obtained!', 'success');
     } catch (e: any) {
       rollback?.();
@@ -3443,7 +3563,7 @@ function App() {
         method: 'POST',
       });
       applyPlayerState(res.state);
-      sound.playChime(1046.5, 'triangle', 0.4);
+      sound.playPowerUpSound();
       showToast(`+${res.dustEarned} Cosmic Dust forged in the Astral Forge!`, 'success');
       void refreshAll();
     } catch (e: any) {
@@ -3463,7 +3583,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ perk }),
       });
-      sound.playChime(784, 'triangle', 0.3);
+      sound.playLevelUpFanfare();
       showToast('Guild Perk leveled up for all members!', 'success');
       void refreshGuildData().catch(() => undefined);
     } catch (e: any) {
@@ -3584,6 +3704,22 @@ function App() {
       showToast(error?.message || 'Could not post your thank-you comment.', 'warn');
     } finally {
       setPostingFrenzyThanks(false);
+    }
+  };
+
+  const handleAcknowledgeOfflineFrenzyReward = async () => {
+    if (frenzyOfflineRewardAcknowledging) return;
+    setFrenzyOfflineRewardAcknowledging(true);
+    try {
+      const result = await getJson<{ state: PlayerState }>('/api/frenzy/offline-reward/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      applyPlayerState(result.state);
+    } catch (error: any) {
+      showToast(error?.message || 'Could not dismiss the offline Frenzy summary. It will remain available.', 'warn');
+    } finally {
+      setFrenzyOfflineRewardAcknowledging(false);
     }
   };
 
@@ -4068,6 +4204,18 @@ function App() {
         </div>
       )}
 
+      {!globalMenuControl.enabled && (
+        <div className="border-b border-rose-500/35 bg-rose-950/65 px-4 py-3" role="alert" aria-live="polite" data-testid="global-menu-disabled-banner">
+          <div className="max-w-6xl mx-auto flex items-start gap-3">
+            <Shield className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-wider text-rose-200">Menus disabled by the developer</div>
+              <div className="mt-1 text-sm text-slate-200 whitespace-pre-wrap break-words">{globalMenuControl.reason || 'The developer has disabled the menus.'}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {developerAnnouncement?.message && (
         <div className="border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
           <div className="max-w-6xl mx-auto flex items-start gap-3">
@@ -4224,9 +4372,11 @@ function App() {
                 <div className="io-nav-more-wrap">
                   <button
                     type="button"
-                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery', 'reddit-simulator'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
+                    disabled={menusDisabled}
+                    title={menusDisabled ? 'Menus disabled by the developer.' : undefined}
                     onClick={() => setMoreNavOpen(open => !open)}
                   >
                     <span className="io-nav-label">More</span>
@@ -4292,7 +4442,7 @@ function App() {
                 <button type="button" aria-current={tab === 'skills' ? 'page' : undefined} onClick={() => changeTab('skills')} className={"nav-tab io-nav-item" + (tab === 'skills' ? " is-active" : "")}><Sparkles className="io-nav-icon" /><span className="io-nav-label">Skills</span></button>
                 <button type="button" aria-current={tab === 'runes' ? 'page' : undefined} onClick={() => changeTab('runes')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'runes' ? " is-active" : "")}><Gem className="io-nav-icon" /><span className="io-nav-label">Runes</span></button>
                 <button type="button" aria-current={tab === 'forge' ? 'page' : undefined} onClick={() => changeTab('forge')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'forge' ? " is-active" : "")}><Hammer className="io-nav-icon" /><span className="io-nav-label">Forge</span></button>
-                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span><span className="io-nav-unlock">Coming soon</span></button>
+                <button type="button" aria-current={tab === 'arena' ? 'page' : undefined} onClick={() => changeTab('arena')} className={"nav-tab io-nav-item io-nav-combat-overflow" + (tab === 'arena' ? " is-active" : "")}><Users className="io-nav-icon" /><span className="io-nav-label">Arena</span></button>
               </div>
               <div className="io-nav-trailing io-nav-combat-trailing">
                 <div className="io-nav-more-wrap io-nav-combat-mobile-more">
@@ -4447,12 +4597,15 @@ function App() {
         {tab === 'roll' && (
           <RollSection
             state={state}
+            liveBalance={liveBalance}
             lastOrb={lastOrb}
             lastBatch={lastBatch}
             batchSummary={batchSummary}
             readyAt={readyAt}
             busy={isRolling || Boolean(riftCompletionReveal)}
             autoRoll={autoRoll}
+            riftCompletionReveal={riftCompletionReveal}
+            onRiftCompletionRevealComplete={finishRiftCompletionReveal}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onOpenUpgrades={() => changeTab('upgrades')}
@@ -4591,9 +4744,50 @@ function App() {
             busy={false}
           />
         )}
+
+        {IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator' && (
+          <RedditPostSimulator
+            state={state}
+            onClaimed={res => {
+              applyPlayerState(res.state);
+              setLastOrb(res.orb);
+              setLastBatch(res.batch ?? [res.orb]);
+              setBatchSummary({
+                totalVal: res.totalRollValue,
+                coins: res.coinsGained,
+                shards: res.shardsGained,
+                xp: res.xpGained,
+                frenzyCount: res.frenzyCount ?? 0,
+              });
+              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+              showToast(`Simulator Frenzy claimed. ${formatNumber(res.frenzyCount ?? 0)} Orbs rolled.`, 'success');
+            }}
+          />
+        )}
           </>
         )}
       </main>
+
+      {state && Number(state.pendingFrenzyOfflineClaimCount ?? 0) > 0 && !frenzyRunTriggered && (
+        <div className="fixed inset-0 z-[100] io-modal-backdrop flex items-center justify-center p-4" data-testid="offline-frenzy-reward-backdrop">
+          <section role="dialog" aria-modal="true" aria-labelledby="offline-frenzy-reward-title" className="io-modal-card w-full max-w-md bg-slate-950/95">
+            <div className="io-frenzy-prompt-kicker"><Flame className="w-4 h-4" /> OFFLINE FRENZY REWARDS</div>
+            <h2 id="offline-frenzy-reward-title" className="mt-2 text-2xl font-black text-white">Your Frenzy paid off</h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">
+              {formatNumber(state.pendingFrenzyOfflineClaimCount ?? 0)} {Number(state.pendingFrenzyOfflineClaimCount ?? 0) === 1 ? 'person rolled' : 'people rolled'} your Frenzy while you were offline.
+            </p>
+            <div className="io-frenzy-prompt-reward">
+              <div className="text-3xl font-black text-cyan-200">{formatNumber(state.pendingFrenzyOfflineShards ?? 0)} Shards</div>
+              <div className="mt-1 text-xs leading-relaxed text-slate-400">These owner rewards have already been added to your Shard balance.</div>
+            </div>
+            <div className="io-modal-actions">
+              <button type="button" onClick={() => void handleAcknowledgeOfflineFrenzyReward()} disabled={frenzyOfflineRewardAcknowledging} className="io-public-button io-public-button-primary">
+                {frenzyOfflineRewardAcknowledging ? 'Saving…' : 'Got it'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showFrenzyPrompt && (
         <div className="fixed inset-0 z-[70] io-modal-backdrop flex items-center justify-center p-4">
@@ -4606,7 +4800,7 @@ function App() {
             <h2 className="mt-2 text-2xl font-black text-white">Post today’s Frenzy</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
               Charge a public Frenzy from today’s best roll. Your next manual Roll creates the post
-              and lets other players claim that same Frenzy. Each player can claim it once, subject to their personal claim cooldown.
+              and lets other players claim that same Frenzy, up to {FRENZY_CLAIMS_PER_DAY} times per day for each player.
             </p>
             <div className="io-frenzy-prompt-reward">
               <div className="text-3xl font-black text-fuchsia-200">+{FRENZY_OWNER_SHARD_REWARD} Shards</div>

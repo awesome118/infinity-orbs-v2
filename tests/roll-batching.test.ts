@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { autoRollReadyAt, manualRollReadyAt, normalizeLastRollTimestamp } from '../src/shared/auto-roll-timing.js';
 import {
   MAX_EFFECTIVE_ROLLS_PER_BATCH,
   MAX_SIMULATED_ROLLS_PER_BATCH,
@@ -204,4 +205,27 @@ test('server uses weighted sample counts for Luck, player totals, XP, Coins, and
   assert.match(apply, /MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH/);
   assert.match(frenzy, /MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH, remainingCount/);
   assert.match(frenzy, /writeFrenzyClaimProgress\(claimantId, postId, attemptId, count, absoluteProcessed, false\)/);
+});
+
+
+test('manual and Auto Roll cooldown clocks are independent', () => {
+  const lastRollAt = 10_000;
+  const manualCooldown = 15_000;
+  const autoCooldown = 2_000;
+  const retryUntil = 13_500;
+
+  assert.equal(manualRollReadyAt(lastRollAt, manualCooldown), 25_000);
+  assert.equal(autoRollReadyAt(lastRollAt, autoCooldown, retryUntil), 13_500);
+  assert.equal(autoRollReadyAt(lastRollAt, autoCooldown, 0), 12_000);
+  assert.equal(manualRollReadyAt(null, manualCooldown), 0);
+  assert.equal(manualRollReadyAt(undefined, manualCooldown), 0);
+});
+
+test('invalid and future saved roll timestamps cannot strand a player on cooldown', () => {
+  const now = 100_000;
+  assert.equal(normalizeLastRollTimestamp(null, now), 0);
+  assert.equal(normalizeLastRollTimestamp(-1, now), 0);
+  assert.equal(normalizeLastRollTimestamp('1000', now), 0);
+  assert.equal(normalizeLastRollTimestamp(now + 60_000, now), 0);
+  assert.equal(normalizeLastRollTimestamp(now - 5_000, now), now - 5_000);
 });

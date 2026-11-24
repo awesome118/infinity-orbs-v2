@@ -171,7 +171,7 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
   const isAutoUnlocked = manualRolls >= 3;
 
   const currentCoinBonusPct = (state.upgrades.coinBonus ?? 0) * 15;
-  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.075).toFixed(3);
+  const currentShardChancePct = ((state.upgrades.shardChance ?? 0) * 0.00375).toFixed(5);
   const currentXpBonusPct = (state.upgrades.xpBonus ?? 0) * 20;
   const currentCritChancePct = (state.upgrades.critChance ?? 0) * 3;
 
@@ -284,8 +284,8 @@ export const UpgradesSection: React.FC<UpgradesSectionProps> = ({
       icon: <Gem className="w-5 h-5 text-cyan-400" />,
       level: state.upgrades.shardChance ?? 0,
       currentVal: `${currentShardChancePct}%`,
-      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.075).toFixed(3)}%`,
-      desc: '+0.075 percentage points of Shard proc chance per level, before other reduced bonuses.',
+      nextVal: `${(((state.upgrades.shardChance ?? 0) + 1) * 0.00375).toFixed(5)}%`,
+      desc: '+0.00375 percentage points of effective Shard proc chance per level. Other Shard bonuses are reduced by the same proc scaling.',
       cost: upgradeCost('shardChance', state.upgrades.shardChance ?? 0),
     },
     {

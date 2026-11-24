@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Coins, Info, Pause, Play, Sparkles, Swords, Zap, Sword, Shield, Crown, Hand, Footprints, CircleDot, Gem, Hammer, Clock3, Timer, type LucideIcon } from 'lucide-react';
 import { RunesSection } from './RunesSection.js';
+import { sound } from '../sound.js';
 import type { CombatAction, CombatArenaProfile, CombatArenaResult, CombatAutoScrapSettings, CombatCommand, CombatEnemy, CombatGear, CombatGearSlot, CombatIntent, CombatOrbRoll, CombatPage, CombatSkillDefinition, CombatSkillId, CombatSnapshot, CombatState, CombatStats, CombatTactic } from '../../shared/combat.js';
 import { COMBAT_ABILITY_SLOTS, combatBeatIntervalMsFor, COMBAT_SKILLS, COMBAT_UPGRADES, COMBAT_UPGRADE_RANK_CAP, SKILL_GACHA_RANK_MAX, SKILL_RANK_CAP, combatAbilityType, combatBountyReward, combatEffectiveFlurryBonusAttacks, combatEnergyAfterRegen, combatFlurryAttackMultiplier, combatForgeQualityCost, combatGearRarityForQuality, combatGearStatBudgetMultiplier, combatNextBeatDelayMs, combatNextActor, combatTurnStep, combatScrapValue, combatSkillCopiesForNextRank, combatSkillCooldown, combatSkillEnergyCost, combatSkillRarityOdds, STRATEGY_GUIDE_RANKS, tacticianManualDropChance, combatUpgradeCost, combatUpgradeRank, floorQualityRequirement, gearQualityEffectiveness, skillGachaRankRequirement, skillPullCost, skillRarityUnlocked, combatBossLuckBonus, combatTotalBossesBeaten } from '../../shared/combat.js';
 
@@ -525,6 +526,7 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
       if(url==='/api/combat/forge')setForgeFeedback(null);
       const result=await request<ApiResponse>(url,'POST',body);
       accept(result);
+      if(url==='/api/combat/skills/equip'||url==='/api/combat/equip')sound.playEquip();
       if(Array.isArray(result.skillRolls)&&result.skillRolls.length)setLastSkills(result.skillRolls);
       else if(result.skillRoll)setLastSkills([result.skillRoll]);
       if(result.actions?.length)setActions(old=>[...result.actions!,...old].slice(0,30));
@@ -836,8 +838,8 @@ export const CombatSection:React.FC<Props>=({page,onNavigate})=>{
             <span className="io-combat-eyebrow">{skill.rarity.toUpperCase()} · {!unlocked?'GACHA RANK '+rarityUnlockRank:rank?'RANK '+fmt(rank):'NOT OWNED'}</span>
             <strong>{skill.name}</strong><p>{skillValue(skill,Math.max(1,rank),stats.speed)}</p>
             {rank>0&&<><small>{fmt(copies)} / {fmt(needed)} copies toward Rank {fmt(rank+1)}</small><div className="io-combat-skill-progress" role="progressbar" aria-label={skill.name+' duplicate progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={copyProgressPct}><span style={{width:copyProgressPct+'%'}}/></div></>}
-            <button type="button" className={isEquipped?'io-combat-button is-equipped':'io-combat-button'} disabled={mutating||!unlocked||rank===0||(!isEquipped&&slotsFull)} onClick={()=>void mutate('/api/combat/skills/equip',{skillId:skill.id,equip:!isEquipped})}>{actionLabel}</button>
           </div>
+          <button type="button" className={isEquipped?'io-combat-button is-equipped io-combat-skill-equip-button':'io-combat-button is-primary io-combat-skill-equip-button'} disabled={mutating||!unlocked||rank===0||(!isEquipped&&slotsFull)} onClick={()=>void mutate('/api/combat/skills/equip',{skillId:skill.id,equip:!isEquipped})}>{actionLabel}</button>
         </article>;
       })}</div>
       {mobileDetailSkill&&createPortal(

@@ -293,7 +293,10 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                 <div>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h4 className="text-sm font-bold text-white">{q.title}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-white">{q.title}</h4>
+                        {!isUnlocked && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700">Locked</span>}
+                      </div>
                       <p className="text-xs text-slate-400 mt-0.5">{q.desc}</p>
                     </div>
                     <div className="flex items-center gap-2 text-xs font-bold shrink-0">
@@ -347,7 +350,7 @@ export const QuestsAndStreaks: React.FC<QuestsAndStreaksProps> = ({
                           : 'bg-slate-950 text-slate-500 border border-slate-800 cursor-not-allowed'
                       }`}
                     >
-                      <span>{isComplete ? 'Claim Reward' : 'In Progress'}</span>
+                      <span>{!isUnlocked ? 'Locked' : isComplete ? 'Claim Reward' : 'In Progress'}</span>
                     </button>
                   )}
                 </div>

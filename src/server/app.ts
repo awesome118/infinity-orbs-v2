@@ -44,11 +44,15 @@ import {
   getTimeEnergyRollProgress,
   getOrbFrenzyHandoff,
   armOrbFrenzyClaim,
+  acknowledgeFrenzyOfflineReward,
   startOrbFrenzy,
   grantPurchasedPack,
   refundPurchasedPack,
   appendPaymentDebugLog,
   getDeveloperAnnouncement,
+  getGlobalMenuControl,
+  getGlobalFeatureControl,
+  getLiveBalanceSnapshot,
   getGlobalBoosterAnnouncement,
   loadRaw,
   recordSocialVisit,
@@ -118,8 +122,9 @@ import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest, recordUpgradeBatchDiagnostic } from './server-monitor.js';
 import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, bestCodexChain, codexDevotionLuckPercent, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
+import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
 import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge, markRiftGameOpened, registerRiftCompletionPost, getRiftCompletionPostInfo, awardRiftCompletionKudos } from './rift-challenges.js';
 
@@ -346,6 +351,15 @@ export function createApp() {
       copy.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2
         ? pendingPatcherRarity
         : nextCodexChainRarity(sourceCollection);
+      // Preserve compact Codex Devotion projections before removing the large collection.
+      const codexChain = bestCodexChain(sourceCollection);
+      copy.codexChain = codexChain.length;
+      copy.codexChainStart = codexChain.start;
+      copy.codexChainEnd = codexChain.end;
+      copy.codexDevotionLuckPercent = codexDevotionLuckPercent(
+        copy.masterySkills?.celestialSurge ?? 0,
+        codexChain.length,
+      );
       copy.collection = {};
       copy.collectionCount = Object.keys(sourceCollection).length;
       return copy;
@@ -524,6 +538,32 @@ export function createApp() {
       return res.status(503).json({
         error: 'Could not verify game ban status. Please retry.',
       });
+    }
+    next();
+  });
+
+
+  // Global feature switches are enforced server-side, including direct API
+  // requests that bypass the client UI. Each mapped request checks the gameplay
+  // master switch first, then its parent and subsystem switches. Admin routes,
+  // chat reports, and telemetry deliberately remain outside this gate.
+  app.use('/api', async (req, res, next) => {
+    const features = globalFeaturesForRequest(req.method, req.path);
+    if (!features.length) return next();
+    try {
+      const controls = await Promise.all(features.map(feature => getGlobalFeatureControl(feature)));
+      const disabled = controls.find(control => !control.enabled);
+      if (disabled) {
+        return res.status(403).json({
+          error: disabled.reason || 'This feature has been disabled by the developer.',
+          feature: disabled.feature,
+          featureDisabled: true,
+          reason: disabled.reason,
+        });
+      }
+    } catch (error) {
+      console.error('[Global Feature Control] Could not verify ' + features.join(', ') + ' status.', error);
+      return res.status(503).json({ error: 'Could not verify feature availability. Please retry.' });
     }
     next();
   });
@@ -903,6 +943,24 @@ export function createApp() {
       res.json(await getDeveloperAnnouncement());
     } catch (e: any) {
       res.status(500).json({ error: e?.message || 'Failed to fetch developer announcement.' });
+    }
+  });
+
+  app.get('/api/menu-control', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await getGlobalMenuControl());
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load global menu settings.' });
+    }
+  });
+
+  app.get('/api/live-balance', async (_req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(await getLiveBalanceSnapshot());
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : 'Could not load live balance settings.' });
     }
   });
 
@@ -1864,6 +1922,12 @@ export function createApp() {
     res.set('Cache-Control', 'no-store');
     try { res.json(await armOrbFrenzyClaim()); }
     catch (e) { badRequest(res, e, 'Could not arm Orb Frenzy.'); }
+  });
+
+  app.post('/api/frenzy/offline-reward/ack', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { res.json({ state: await acknowledgeFrenzyOfflineReward() }); }
+    catch (e) { badRequest(res, e, 'Could not acknowledge offline Frenzy rewards.'); }
   });
 
   app.get('/api/frenzy/handoff', async (_req, res) => {

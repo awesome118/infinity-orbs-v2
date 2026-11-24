@@ -1,3 +1,4 @@
+import type { LiveBalanceConfig } from './live-balance.js';
 import { CODEX_STORAGE_VERSION, codexRarityBucket, nextCodexRarityBucket } from './collection-storage.js';
 
 export type UpgradeId =
@@ -572,6 +573,7 @@ export const GUILD_COMBO_TIMER_ACCELERATION_PER_TIER = 0.25;
 export const FRENZY_LOG_BASE = 1.004;
 export const FRENZY_MIN_ORBS = 1;
 export const FRENZY_OWNER_SHARD_REWARD = 100;
+export const FRENZY_CLAIMS_PER_DAY = 3;
 export const FRENZY_PROMPT_DELAY_MS = 3 * 60_000;
 export const FRENZY_POST_COOLDOWN_MS = 23 * 60 * 60 * 1000;
 export const FRENZY_CLAIM_COOLDOWN_MS = 23 * 60 * 60 * 1000;
@@ -617,6 +619,22 @@ export function frenzyCooldownRemaining(lastFrenzyAt?: number, now = Date.now())
   return Math.max(0, lastFrenzyAt + FRENZY_POST_COOLDOWN_MS - now);
 }
 
+export function frenzyClaimsUsedToday(lastClaimDate?: string, claimsToday?: number, now = Date.now()): number {
+  const today = new Date(now).toISOString().slice(0, 10);
+  if (String(lastClaimDate ?? '') !== today) return 0;
+  // Older saves only recorded the last claim timestamp, so count one proven claim.
+  if (claimsToday === undefined || claimsToday === null) return 1;
+  const count = Number(claimsToday);
+  return Number.isSafeInteger(count) && count >= 0
+    ? Math.min(FRENZY_CLAIMS_PER_DAY, count)
+    : 1;
+}
+
+export function frenzyClaimsRemainingToday(lastClaimDate?: string, claimsToday?: number, now = Date.now()): number {
+  return Math.max(0, FRENZY_CLAIMS_PER_DAY - frenzyClaimsUsedToday(lastClaimDate, claimsToday, now));
+}
+
+/** @deprecated Claim eligibility now uses the per-day counter. Retained for legacy readers and compatibility tests. */
 export function frenzyClaimCooldownRemaining(lastFrenzyClaimAt?: number, now = Date.now()): number {
   if (lastFrenzyClaimAt == null) return 0;
   if (
@@ -1106,6 +1124,8 @@ export interface QuestItem {
   rewardShards?: number;
   rewardTokens?: number;
   rewardXp?: number;
+  minRarity?: number;
+  unlockRarity?: number;
   claimed: boolean;
 }
 
@@ -1182,6 +1202,8 @@ export interface PlayerState {
   collectionStorageVersion?: number;
   collectionCount?: number;
   codexChain?: number;
+  codexChainStart?: number;
+  codexChainEnd?: number;
   codexDevotionLuckPercent?: number;
   /** Persistent charge for equipped Shard Constellation Rune effects. */
   runeConstellationCharge?: number;
@@ -1256,6 +1278,9 @@ export interface PlayerState {
   lastFrenzyAt?: number;
   lastFrenzyClaimDate?: string;
   lastFrenzyClaimAt?: number;
+  frenzyClaimsToday?: number;
+  pendingFrenzyOfflineClaimCount?: number;
+  pendingFrenzyOfflineShards?: number;
   communityRewardClaimedTier?: number;
   paymentReceipts?: Record<string, PaymentReceipt | 'fulfilled' | 'refunded'>;
   currentRunRolls?: number;
@@ -1335,7 +1360,16 @@ export type RarityTierName =
   | 'Unfathomable'
   | 'Axiom'
   | 'Omniscient'
-  | 'Omega';
+  | 'Omega'
+  | 'Hyperion'
+  | 'Ethereal'
+  | 'Aetherion'
+  | 'Nexus'
+  | 'Archetype'
+  | 'Apotheosis'
+  | 'Eschaton'
+  | 'Omniform'
+  | 'Eternity';
 
 export interface RarityTierInfo {
   rarity: number;
@@ -1348,6 +1382,15 @@ export interface RarityTierInfo {
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
+  if (rarity >= 1e62) return 'Eternity';
+  if (rarity >= 1e59) return 'Omniform';
+  if (rarity >= 1e56) return 'Eschaton';
+  if (rarity >= 1e53) return 'Apotheosis';
+  if (rarity >= 1e50) return 'Archetype';
+  if (rarity >= 1e47) return 'Nexus';
+  if (rarity >= 1e44) return 'Aetherion';
+  if (rarity >= 1e41) return 'Ethereal';
+  if (rarity >= 1e38) return 'Hyperion';
   if (rarity >= 1e35) return 'Omega';
   if (rarity >= 1e33) return 'Omniscient';
   if (rarity >= 1e31) return 'Axiom';
@@ -1405,116 +1448,161 @@ export const ORB_TIER_NAMES: Record<RarityTierName, string[]> = {
   Axiom: ['Axiom Orb', 'First Truth', 'Prime Axiom', 'Proof Eternal', 'The Necessary', 'Root Principle', 'Unbroken Theorem', 'Law of All', 'Axiom of Light', 'First Proof', 'The Prime Rule', 'Truth Unbroken', 'Essential Constant', 'Absolute Theorem'],
   Omniscient: ['Omniscient Orb', 'All-Knowing Star', 'Total Awareness', 'The Witness', 'All-Seen Core', 'Evermind', 'Infinite Archive', 'Knowledge Without End', 'Eye Beyond All', 'All-Knowing Crown', 'The Great Witness', 'Infinite Testament', 'Archive of Everything', 'Mind of Eternity'],
   Omega: ['Omega Orb', 'Last Beginning', 'Final Axiom', 'End of All Ends', 'Closure Engine', 'Last Truth', 'The Final Constant', 'Omega Horizon', 'Omega Singularity', 'The Last Horizon', 'Final Beginning', 'Closure of Creation', 'The Last Principle', 'Ultimate Continuum'],
+  Hyperion: ["Hyperion Orb","Crimson Singularity","Solar Apex Prime","Heart of the Flare","Redshift Crown","The Burning Constant","First Supergiant","Dawnfire Engine"],
+  Ethereal: ["Ethereal Orb","Veil of Creation","Spectral Horizon","Unseen Aether","Wisp of Forever","The Quiet Expanse","Pale Genesis","Shimmering Elsewhere"],
+  Aetherion: ["Aetherion Orb","Aether Crown","Astral Dominion","First Ether","The Violet Engine","Starless Throne","Aetherwake","Crown of the Unseen"],
+  Nexus: ["Nexus Orb","Convergence Core","Junction of Worlds","The Great Link","Crossroads Eternal","Nexus Bloom","Allpaths Engine","Confluence Star"],
+  Archetype: ["Archetype Orb","Prime Pattern","Form Eternal","Blueprint of All","The First Shape","Origin Template","Perfect Pattern","Universal Mold"],
+  Apotheosis: ["Apotheosis Orb","Ascension Absolute","Godform Engine","The Unbound Crown","Last Transfiguration","Radiant Apotheon","Beyond Divinity","Sovereign of Light"],
+  Eschaton: ["Eschaton Orb","Final Dawn","Terminus Star","Last Eventide","The Closing Sky","Endtime Core","Last Horizon Prime","The Final Bloom"],
+  Omniform: ["Omniform Orb","Shape of Everything","Allform Engine","Infinite Morph","The Total Pattern","Formless Crown","Omni-Genesis","Allshape Singularity"],
+  Eternity: ["Eternity Orb","Everlasting Core","The Timeless One","Eternal Horizon Prime","Endless Beginning","Forever Engine","Unending Constant","Age Without End"],
 };
 
 const TIER_COLORS: Record<RarityTierName, { color: string; bgGradient: string }> = {
   Common: {
-    color: '#94a3b8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #cbd5e1, #64748b 60%, #1e293b)',
+    color: '#8D99AE',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E2E8F0, #8D99AE 52%, #293241 100%)',
   },
   Uncommon: {
-    color: '#38bdf8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #7dd3fc, #0284c7 60%, #0c4a6e)',
+    color: '#43AA8B',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B7F7DD, #43AA8B 52%, #064E3B 100%)',
   },
   Rare: {
-    color: '#c084fc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #d8b4fe, #9333ea 60%, #581c87)',
+    color: '#4361EE',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #BFDBFE, #4361EE 52%, #1E3A8A 100%)',
   },
   Epic: {
-    color: '#fb923c',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fed7aa, #ea580c 60%, #7c2d12)',
+    color: '#F3722C',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FED7AA, #F3722C 52%, #7C2D12 100%)',
   },
   Legendary: {
-    color: '#4ade80',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #86efac, #16a34a 60%, #14532d)',
+    color: '#90BE6D',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #D9F99D, #90BE6D 52%, #365314 100%)',
   },
   Mythic: {
-    color: '#a855f7',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #d8b4fe, #7e22ce 60%, #3b0764)',
+    color: '#8338EC',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #DDD6FE, #8338EC 52%, #3B0764 100%)',
   },
   Relic: {
-    color: '#f59e0b',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fde68a, #d97706 60%, #451a03)',
+    color: '#FFD166',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFF1B8, #FFD166 52%, #854D0E 100%)',
   },
   Divine: {
-    color: '#38bdf8',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #e0f2fe, #0284c7 40%, #4f46e5 80%)',
+    color: '#118AB2',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #A5F3FC, #118AB2 52%, #164E63 100%)',
   },
   Transcendent: {
-    color: '#ffffff',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #a855f7 35%, #06b6d4 70%, #030712 100%)',
+    color: '#FF006E',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFC2DE, #FF006E 52%, #831843 100%)',
   },
   Ascendant: {
-    color: '#fb7185',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fecdd3, #e11d48 45%, #4c0519 100%)',
+    color: '#F94144',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FECACA, #F94144 52%, #7F1D1D 100%)',
   },
   Eternal: {
-    color: '#14b8a6',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #99f6e4, #0f766e 50%, #042f2e 100%)',
+    color: '#007F5F',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #99F6E4, #007F5F 52%, #134E4A 100%)',
   },
   Celestial: {
-    color: '#f97316',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fed7aa, #ea580c 45%, #431407 100%)',
+    color: '#F4A261',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFE0BD, #F4A261 52%, #7C2D12 100%)',
   },
   Infinite: {
-    color: '#22d3ee',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #cffafe, #0891b2 45%, #082f49 100%)',
+    color: '#4CC9F0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C4F1FF, #4CC9F0 52%, #1E40AF 100%)',
   },
   Absolute: {
-    color: '#e879f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fae8ff, #c026d3 45%, #4a044e 100%)',
+    color: '#B56576',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FBCFE8, #B56576 52%, #831843 100%)',
   },
   Omniversal: {
-    color: '#f8fafc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 30%, #22d3ee 58%, #030712 100%)',
+    color: '#A3E635',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #ECFCCB, #A3E635 52%, #365314 100%)',
   },
   Paradox: {
-    color: '#ef4444',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fecaca, #dc2626 45%, #450a0a 100%)',
+    color: '#264653',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #A8DADC, #264653 52%, #0B2530 100%)',
   },
   Beyond: {
-    color: '#8b5cf6',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ddd6fe, #7c3aed 45%, #2e1065 100%)',
+    color: '#6D597A',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E9D5FF, #6D597A 52%, #2E1A47 100%)',
   },
   Endless: {
-    color: '#f1f5f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #64748b 35%, #0f172a 80%, #020617 100%)',
+    color: '#F8FAFC',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFFFFF, #F8FAFC 52%, #64748B 100%)',
   },
   Empyrean: {
-    color: '#f0abfc',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fdf4ff, #c026d3 38%, #701a75 72%, #16051d 100%)',
+    color: '#C77DFF',
+    bgGradient: 'radial-gradient(circle at 29% 23%, #FFF7ED 0%, #FDBA74 18%, #C77DFF 43%, #6D28D9 70%, #1E1B4B 100%)',
   },
   Hyperversal: {
-    color: '#a78bfa',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ede9fe, #7c3aed 38%, #4c1d95 72%, #10051e 100%)',
+    color: '#355070',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #DBEAFE 0%, #60A5FA 19%, #355070 43%, #7C3AED 70%, #111827 100%)',
   },
   Transfinite: {
-    color: '#67e8f9',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ecfeff, #0891b2 38%, #164e63 72%, #020b14 100%)',
+    color: '#00F5D4',
+    bgGradient: 'radial-gradient(circle at 28% 24%, #CCFBF1 0%, #2DD4BF 18%, #00F5D4 42%, #3B82F6 70%, #082F49 100%)',
   },
   Metacosmic: {
-    color: '#fbbf24',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #fef3c7, #d97706 38%, #78350f 72%, #1c0c03 100%)',
+    color: '#B08968',
+    bgGradient: 'radial-gradient(circle at 29% 22%, #FEF3C7 0%, #D6A77A 20%, #B08968 42%, #A78BFA 70%, #422006 100%)',
   },
   Primordial: {
-    color: '#4ade80',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #dcfce7, #16a34a 38%, #14532d 72%, #02150a 100%)',
+    color: '#00BFA6',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #FFF7D6 0%, #F59E0B 18%, #00BFA6 44%, #047857 70%, #052E2B 100%)',
   },
   Unfathomable: {
-    color: '#fb7185',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffe4e6, #e11d48 38%, #881337 72%, #1f050e 100%)',
+    color: '#BE123C',
+    bgGradient: 'radial-gradient(circle at 28% 23%, #FDA4AF 0%, #BE123C 20%, #7C3AED 48%, #3B0764 72%, #1F0A1D 100%)',
   },
   Axiom: {
-    color: '#c4b5fd',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #f5f3ff, #8b5cf6 38%, #5b21b6 72%, #10051e 100%)',
+    color: '#F72585',
+    bgGradient: 'radial-gradient(circle at 29% 22%, #FBCFE8 0%, #F72585 20%, #8B5CF6 48%, #312E81 74%, #190B35 100%)',
   },
   Omniscient: {
-    color: '#e2e8f0',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #94a3b8 30%, #334155 68%, #020617 100%)',
+    color: '#577590',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #D4E6F1 0%, #577590 22%, #22D3EE 48%, #1D4ED8 72%, #10243A 100%)',
   },
   Omega: {
-    color: '#ffffff',
-    bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #f0abfc 23%, #22d3ee 48%, #4c1d95 72%, #020617 100%)',
+    color: '#FFFFFF',
+    bgGradient: 'radial-gradient(circle at 30% 22%, #FFFFFF 0%, #E9D5FF 19%, #A78BFA 42%, #7C3AED 68%, #2E1065 100%)',
+  },
+  Hyperion: {
+    color: '#FF6B6B',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD1D1, #FF6B6B 52%, #7F1D1D 100%)',
+  },
+  Ethereal: {
+    color: '#00C2A8',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #B8FFF4, #00C2A8 52%, #064E3B 100%)',
+  },
+  Aetherion: {
+    color: '#9B5DE5',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #E9D5FF, #9B5DE5 52%, #3B0764 100%)',
+  },
+  Nexus: {
+    color: '#F15BB5',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFD6EF, #F15BB5 52%, #831843 100%)',
+  },
+  Archetype: {
+    color: '#FEE440',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFF9B0, #FEE440 52%, #713F12 100%)',
+  },
+  Apotheosis: {
+    color: '#00BBF9',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C4F1FF, #00BBF9 52%, #0C4A6E 100%)',
+  },
+  Eschaton: {
+    color: '#00F5A0',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #C8FFE8, #00F5A0 52%, #064E3B 100%)',
+  },
+  Omniform: {
+    color: '#FF7F11',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #FFE0BD, #FF7F11 52%, #7C2D12 100%)',
+  },
+  Eternity: {
+    color: '#B8F2E6',
+    bgGradient: 'radial-gradient(circle at 35% 30%, #F0FFFB, #B8F2E6 52%, #134E4A 100%)',
   },
 };
 
@@ -1678,33 +1766,42 @@ export interface ContinuumTierMilestone {
 }
 
 export const CONTINUUM_TIERS: ContinuumTierMilestone[] = [
-  { tier: 'Common', minRarity: 2, label: rarityRangeLabel(2, 9), approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: '#94a3b8' },
-  { tier: 'Uncommon', minRarity: 10, label: rarityRangeLabel(10, 99), approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: '#38bdf8' },
-  { tier: 'Rare', minRarity: 100, label: rarityRangeLabel(100, 999), approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: '#c084fc' },
-  { tier: 'Epic', minRarity: 1000, label: rarityRangeLabel(1000, 9999), approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: '#fb923c' },
-  { tier: 'Legendary', minRarity: 10000, label: rarityRangeLabel(10000, 99999), approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: '#4ade80' },
-  { tier: 'Mythic', minRarity: 100000, label: rarityRangeLabel(100000, 999999), approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: '#a855f7' },
-  { tier: 'Relic', minRarity: 1000000, label: rarityRangeLabel(1000000, 9999999), approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: '#f59e0b' },
-  { tier: 'Divine', minRarity: 10000000, label: rarityRangeLabel(10000000, 99999999), approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: '#38bdf8' },
-  { tier: 'Transcendent', minRarity: 100000000, label: rarityRangeLabel(100000000, 999999999), approxChance: '~0.0000009%', coinsPerOrb: `${formatNumber(100000000)} - ${formatNumber(999999999)} Coins`, color: '#ffffff' },
-  { tier: 'Ascendant', minRarity: 1000000000, label: rarityRangeLabel(1000000000, 9999999999), approxChance: '~0.00000009%', coinsPerOrb: `${formatNumber(1000000000)} - ${formatNumber(9999999999)} Coins`, color: '#fb7185' },
-  { tier: 'Eternal', minRarity: 10000000000, label: rarityRangeLabel(10000000000, 99999999999), approxChance: '~0.000000009%', coinsPerOrb: `${formatNumber(10000000000)} - ${formatNumber(99999999999)} Coins`, color: '#14b8a6' },
-  { tier: 'Celestial', minRarity: 100000000000, label: rarityRangeLabel(100000000000, 999999999999), approxChance: '~0.0000000009%', coinsPerOrb: `${formatNumber(100000000000)} - ${formatNumber(999999999999)} Coins`, color: '#f97316' },
-  { tier: 'Infinite', minRarity: 1000000000000, label: rarityRangeLabel(1000000000000, 9999999999999), approxChance: '~0.00000000009%', coinsPerOrb: `${formatNumber(1000000000000)} - ${formatNumber(9999999999999)} Coins`, color: '#22d3ee' },
-  { tier: 'Absolute', minRarity: 10000000000000, label: rarityRangeLabel(10000000000000, 99999999999999), approxChance: '~0.000000000009%', coinsPerOrb: `${formatNumber(10000000000000)} - ${formatNumber(99999999999999)} Coins`, color: '#e879f9' },
-  { tier: 'Omniversal', minRarity: 100000000000000, label: `1 / ${formatRarity(100000000000000)}+`, approxChance: '~0.0000000000009%', coinsPerOrb: `${formatNumber(100000000000000)}+ Coins`, color: '#f8fafc' },
-  { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: '#ef4444' },
-  { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: '#8b5cf6' },
-  { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: '#f1f5f9' },
-  { tier: 'Empyrean', minRarity: 1e19, label: `1 / ${formatRarity(1e19)}+`, approxChance: '~9.9e-18%', coinsPerOrb: `${formatNumber(1e19)}+ Coins`, color: '#f0abfc' },
-  { tier: 'Hyperversal', minRarity: 1e21, label: `1 / ${formatRarity(1e21)}+`, approxChance: '~9.9e-20%', coinsPerOrb: `${formatNumber(1e21)}+ Coins`, color: '#a78bfa' },
-  { tier: 'Transfinite', minRarity: 1e23, label: `1 / ${formatRarity(1e23)}+`, approxChance: '~9.9e-22%', coinsPerOrb: `${formatNumber(1e23)}+ Coins`, color: '#67e8f9' },
-  { tier: 'Metacosmic', minRarity: 1e25, label: `1 / ${formatRarity(1e25)}+`, approxChance: '~9.9e-24%', coinsPerOrb: `${formatNumber(1e25)}+ Coins`, color: '#fbbf24' },
-  { tier: 'Primordial', minRarity: 1e27, label: `1 / ${formatRarity(1e27)}+`, approxChance: '~9.9e-26%', coinsPerOrb: `${formatNumber(1e27)}+ Coins`, color: '#4ade80' },
-  { tier: 'Unfathomable', minRarity: 1e29, label: `1 / ${formatRarity(1e29)}+`, approxChance: '~9.9e-28%', coinsPerOrb: `${formatNumber(1e29)}+ Coins`, color: '#fb7185' },
-  { tier: 'Axiom', minRarity: 1e31, label: `1 / ${formatRarity(1e31)}+`, approxChance: '~9.9e-30%', coinsPerOrb: `${formatNumber(1e31)}+ Coins`, color: '#c4b5fd' },
-  { tier: 'Omniscient', minRarity: 1e33, label: `1 / ${formatRarity(1e33)}+`, approxChance: '~9.9e-32%', coinsPerOrb: `${formatNumber(1e33)}+ Coins`, color: '#e2e8f0' },
-  { tier: 'Omega', minRarity: 1e35, label: `1 / ${formatRarity(1e35)}+`, approxChance: '~9.9e-34%', coinsPerOrb: `${formatNumber(1e35)}+ Coins`, color: '#ffffff' },
+  { tier: 'Common', minRarity: 2, label: rarityRangeLabel(2, 9), approxChance: '~90.0%', coinsPerOrb: '2 - 9 Coins', color: TIER_COLORS.Common.color },
+  { tier: 'Uncommon', minRarity: 10, label: rarityRangeLabel(10, 99), approxChance: '~9.0%', coinsPerOrb: '10 - 99 Coins', color: TIER_COLORS.Uncommon.color },
+  { tier: 'Rare', minRarity: 100, label: rarityRangeLabel(100, 999), approxChance: '~0.9%', coinsPerOrb: '100 - 999 Coins', color: TIER_COLORS.Rare.color },
+  { tier: 'Epic', minRarity: 1000, label: rarityRangeLabel(1000, 9999), approxChance: '~0.09%', coinsPerOrb: '1,000 - 9,999 Coins', color: TIER_COLORS.Epic.color },
+  { tier: 'Legendary', minRarity: 10000, label: rarityRangeLabel(10000, 99999), approxChance: '~0.009%', coinsPerOrb: '10,000 - 99,999 Coins', color: TIER_COLORS.Legendary.color },
+  { tier: 'Mythic', minRarity: 100000, label: rarityRangeLabel(100000, 999999), approxChance: '~0.0009%', coinsPerOrb: '100,000 - 999,999 Coins', color: TIER_COLORS.Mythic.color },
+  { tier: 'Relic', minRarity: 1000000, label: rarityRangeLabel(1000000, 9999999), approxChance: '~0.00009%', coinsPerOrb: '1,000,000 - 9,999,999 Coins', color: TIER_COLORS.Relic.color },
+  { tier: 'Divine', minRarity: 10000000, label: rarityRangeLabel(10000000, 99999999), approxChance: '~0.000009%', coinsPerOrb: '10,000,000 - 99,999,999 Coins', color: TIER_COLORS.Divine.color },
+  { tier: 'Transcendent', minRarity: 100000000, label: rarityRangeLabel(100000000, 999999999), approxChance: '~0.0000009%', coinsPerOrb: `${formatNumber(100000000)} - ${formatNumber(999999999)} Coins`, color: TIER_COLORS.Transcendent.color },
+  { tier: 'Ascendant', minRarity: 1000000000, label: rarityRangeLabel(1000000000, 9999999999), approxChance: '~0.00000009%', coinsPerOrb: `${formatNumber(1000000000)} - ${formatNumber(9999999999)} Coins`, color: TIER_COLORS.Ascendant.color },
+  { tier: 'Eternal', minRarity: 10000000000, label: rarityRangeLabel(10000000000, 99999999999), approxChance: '~0.000000009%', coinsPerOrb: `${formatNumber(10000000000)} - ${formatNumber(99999999999)} Coins`, color: TIER_COLORS.Eternal.color },
+  { tier: 'Celestial', minRarity: 100000000000, label: rarityRangeLabel(100000000000, 999999999999), approxChance: '~0.0000000009%', coinsPerOrb: `${formatNumber(100000000000)} - ${formatNumber(999999999999)} Coins`, color: TIER_COLORS.Celestial.color },
+  { tier: 'Infinite', minRarity: 1000000000000, label: rarityRangeLabel(1000000000000, 9999999999999), approxChance: '~0.00000000009%', coinsPerOrb: `${formatNumber(1000000000000)} - ${formatNumber(9999999999999)} Coins`, color: TIER_COLORS.Infinite.color },
+  { tier: 'Absolute', minRarity: 10000000000000, label: rarityRangeLabel(10000000000000, 99999999999999), approxChance: '~0.000000000009%', coinsPerOrb: `${formatNumber(10000000000000)} - ${formatNumber(99999999999999)} Coins`, color: TIER_COLORS.Absolute.color },
+  { tier: 'Omniversal', minRarity: 100000000000000, label: `1 / ${formatRarity(100000000000000)}+`, approxChance: '~0.0000000000009%', coinsPerOrb: `${formatNumber(100000000000000)}+ Coins`, color: TIER_COLORS.Omniversal.color },
+  { tier: 'Paradox', minRarity: 1000000000000000, label: rarityRangeLabel(1000000000000000, 9999999999999999), approxChance: '~0.00000000000009%', coinsPerOrb: `${formatNumber(1000000000000000)} - ${formatNumber(9999999999999999)} Coins`, color: TIER_COLORS.Paradox.color },
+  { tier: 'Beyond', minRarity: 10000000000000000, label: rarityRangeLabel(10000000000000000, 99999999999999999), approxChance: '~0.000000000000009%', coinsPerOrb: `${formatNumber(10000000000000000)} - ${formatNumber(99999999999999999)} Coins`, color: TIER_COLORS.Beyond.color },
+  { tier: 'Endless', minRarity: 100000000000000000, label: `1 / ${formatRarity(100000000000000000)}+`, approxChance: '~0.0000000000000009%', coinsPerOrb: `${formatNumber(100000000000000000)}+ Coins`, color: TIER_COLORS.Endless.color },
+  { tier: 'Empyrean', minRarity: 1e19, label: `1 / ${formatRarity(1e19)}+`, approxChance: '~9.9e-18%', coinsPerOrb: `${formatNumber(1e19)}+ Coins`, color: TIER_COLORS.Empyrean.color },
+  { tier: 'Hyperversal', minRarity: 1e21, label: `1 / ${formatRarity(1e21)}+`, approxChance: '~9.9e-20%', coinsPerOrb: `${formatNumber(1e21)}+ Coins`, color: TIER_COLORS.Hyperversal.color },
+  { tier: 'Transfinite', minRarity: 1e23, label: `1 / ${formatRarity(1e23)}+`, approxChance: '~9.9e-22%', coinsPerOrb: `${formatNumber(1e23)}+ Coins`, color: TIER_COLORS.Transfinite.color },
+  { tier: 'Metacosmic', minRarity: 1e25, label: `1 / ${formatRarity(1e25)}+`, approxChance: '~9.9e-24%', coinsPerOrb: `${formatNumber(1e25)}+ Coins`, color: TIER_COLORS.Metacosmic.color },
+  { tier: 'Primordial', minRarity: 1e27, label: `1 / ${formatRarity(1e27)}+`, approxChance: '~9.9e-26%', coinsPerOrb: `${formatNumber(1e27)}+ Coins`, color: TIER_COLORS.Primordial.color },
+  { tier: 'Unfathomable', minRarity: 1e29, label: `1 / ${formatRarity(1e29)}+`, approxChance: '~9.9e-28%', coinsPerOrb: `${formatNumber(1e29)}+ Coins`, color: TIER_COLORS.Unfathomable.color },
+  { tier: 'Axiom', minRarity: 1e31, label: `1 / ${formatRarity(1e31)}+`, approxChance: '~9.9e-30%', coinsPerOrb: `${formatNumber(1e31)}+ Coins`, color: TIER_COLORS.Axiom.color },
+  { tier: 'Omniscient', minRarity: 1e33, label: `1 / ${formatRarity(1e33)}+`, approxChance: '~9.9e-32%', coinsPerOrb: `${formatNumber(1e33)}+ Coins`, color: TIER_COLORS.Omniscient.color },
+  { tier: 'Omega', minRarity: 1e35, label: `1 / ${formatRarity(1e35)}+`, approxChance: '~9.9e-34%', coinsPerOrb: `${formatNumber(1e35)}+ Coins`, color: TIER_COLORS.Omega.color },
+  { tier: 'Hyperion', minRarity: 1e38, label: `1 / ${formatRarity(1e38)}+`, approxChance: '~9.9e-37%', coinsPerOrb: `${formatNumber(1e38)}+ Coins`, color: TIER_COLORS.Hyperion.color },
+  { tier: 'Ethereal', minRarity: 1e41, label: `1 / ${formatRarity(1e41)}+`, approxChance: '~9.9e-40%', coinsPerOrb: `${formatNumber(1e41)}+ Coins`, color: TIER_COLORS.Ethereal.color },
+  { tier: 'Aetherion', minRarity: 1e44, label: `1 / ${formatRarity(1e44)}+`, approxChance: '~9.9e-43%', coinsPerOrb: `${formatNumber(1e44)}+ Coins`, color: TIER_COLORS.Aetherion.color },
+  { tier: 'Nexus', minRarity: 1e47, label: `1 / ${formatRarity(1e47)}+`, approxChance: '~9.9e-46%', coinsPerOrb: `${formatNumber(1e47)}+ Coins`, color: TIER_COLORS.Nexus.color },
+  { tier: 'Archetype', minRarity: 1e50, label: `1 / ${formatRarity(1e50)}+`, approxChance: '~9.9e-49%', coinsPerOrb: `${formatNumber(1e50)}+ Coins`, color: TIER_COLORS.Archetype.color },
+  { tier: 'Apotheosis', minRarity: 1e53, label: `1 / ${formatRarity(1e53)}+`, approxChance: '~9.9e-52%', coinsPerOrb: `${formatNumber(1e53)}+ Coins`, color: TIER_COLORS.Apotheosis.color },
+  { tier: 'Eschaton', minRarity: 1e56, label: `1 / ${formatRarity(1e56)}+`, approxChance: '~9.9e-55%', coinsPerOrb: `${formatNumber(1e56)}+ Coins`, color: TIER_COLORS.Eschaton.color },
+  { tier: 'Omniform', minRarity: 1e59, label: `1 / ${formatRarity(1e59)}+`, approxChance: '~9.9e-58%', coinsPerOrb: `${formatNumber(1e59)}+ Coins`, color: TIER_COLORS.Omniform.color },
+  { tier: 'Eternity', minRarity: 1e62, label: `1 / ${formatRarity(1e62)}+`, approxChance: '~9.9e-61%', coinsPerOrb: `${formatNumber(1e62)}+ Coins`, color: TIER_COLORS.Eternity.color },
 ];
 
 export const CONTINUUM_DISCOVERY_UNLOCK_RARITY = 1_000_000;
@@ -1988,22 +2085,123 @@ export const PRESTIGE_UPGRADES: Record<PrestigeUpgradeId, PrestigeUpgradeInfo> =
   },
 };
 
-export function createInitialDailyQuests(): QuestItem[] {
+/**
+ * Quest objectives rise gently with the best Orb. Shards retain the small,
+ * capped rarity bonus. Coin rewards are tied to current earning rate: Daily
+ * quests together pay 30 minutes of Coins; Weekly quests together pay four
+ * hours. The pool is split by the original reward weights, avoiding an
+ * arbitrary 50% Coin-reward ceiling.
+ */
+export function questDifficultyMultiplier(highestRarity: unknown): number {
+  const raw = Number(highestRarity);
+  const rarity = Number.isFinite(raw) && raw > 0 ? raw : 2;
+  const decadesAboveRare = Math.max(0, Math.log10(rarity / 100));
+  return Math.min(1.20, 1 + decadesAboveRare * 0.025);
+}
+
+export function questShardRewardMultiplier(highestRarity: unknown): number {
+  const raw = Number(highestRarity);
+  const rarity = Number.isFinite(raw) && raw > 0 ? raw : 2;
+  const decadesAboveRare = Math.max(0, Math.log10(rarity / 100));
+  return Math.min(1.50, 1 + decadesAboveRare * 0.05);
+}
+
+/** Legacy name retained for callers that display the Shard rarity multiplier. */
+export function questRewardMultiplier(highestRarity: unknown): number {
+  return questShardRewardMultiplier(highestRarity);
+}
+
+/**
+ * Estimate ordinary Coin income using the same best-Orb value, Multiball payout,
+ * cooldown, and persistent Coin multipliers as a normal activation. This is a
+ * reward-budget estimate, not a guarantee of future RNG results.
+ */
+export function estimateQuestCoinsPerMinute(s: PlayerState): number {
+  const rarity = s.highestRarityIsInfinity === true
+    ? MAX_ORB_RARITY
+    : Math.max(2, Number(s.highestRarity) || 2);
+  const multiRolls = rollsPerActivation(s);
+  const activationCoins = coinsForRarity(rarity) * (1 + Math.max(0, multiRolls - 1) * 0.20);
+  const levelBenefits = getLevelBenefits(Math.max(1, Math.floor(Number(s.level) || 1)));
+  const goldenOrbitStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'goldenOrbit');
+  const expectedCriticalShare = Math.min(
+    0.40,
+    (s.upgrades.critChance ?? 0) * 0.03 +
+      (s.masterySkills?.critMastery ?? 0) * 0.03 +
+      (s.guildPerks?.critRank ?? 0) * 0.015,
+  );
+  const coinMultiplier =
+    Math.pow(1.5, goldenOrbitStacks) *
+    levelBenefits.coinsMultiplier *
+    (1 + (s.upgrades.coinBonus ?? 0) * 0.15) *
+    orbFingersMultiplier(s) *
+    criticalDividendMultiplier(s, expectedCriticalShare) *
+    (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
+    (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
+    (isPremiumBoosterActive(s, 'prosperity') ? 10 : 1);
+  const rate = activationCoins * coinMultiplier * (60_000 / cooldownMs(s, false));
+  return Number.isFinite(rate) && rate > 0 ? rate : Number.MAX_VALUE;
+}
+
+function scaledQuestTarget(base: number, multiplier: number): number {
+  const scaled = base * multiplier;
+  // Avoid turning exact integer thresholds (for example 100 × 1.1) into
+  // the next whole number because of binary floating-point representation.
+  const precisionGuard = Math.max(1, Math.abs(scaled)) * Number.EPSILON * 4;
+  return Math.max(base, Math.ceil(scaled - precisionGuard));
+}
+
+function scaledQuestReward(base: number, multiplier: number): number {
+  return Math.max(base, Math.round(base * multiplier));
+}
+
+function splitQuestCoinBudget(coinsPerMinute: number, minutes: number, weights: number[]): number[] {
+  const rate = Number(coinsPerMinute);
+  const rawBudget = (Number.isFinite(rate) && rate > 0 ? rate : 8) * minutes;
+  const budget = Number.isFinite(rawBudget)
+    ? Math.max(weights.length, Math.floor(rawBudget))
+    : Number.MAX_VALUE;
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let allocated = 0;
+  return weights.map((weight, index) => {
+    const amount = index === weights.length - 1
+      ? Math.max(1, budget - allocated)
+      : Math.max(1, Math.floor(budget * (weight / totalWeight)));
+    allocated = Math.min(Number.MAX_VALUE, allocated + amount);
+    return amount;
+  });
+}
+
+export function createInitialDailyQuests(highestRarity = 2, coinsPerMinute = 8): QuestItem[] {
+  const difficulty = questDifficultyMultiplier(highestRarity);
+  const shardReward = questShardRewardMultiplier(highestRarity);
+  const coinRewards = splitQuestCoinBudget(coinsPerMinute, 30, [100, 500, 300, 200, 150]);
+  const rareThreshold = scaledQuestTarget(100, difficulty);
+  const rolls25 = scaledQuestTarget(25, difficulty);
+  const rolls100 = scaledQuestTarget(100, difficulty);
+  const uniqueTarget = scaledQuestTarget(3, difficulty);
   return [
-    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: 'Perform 25 rolls', target: 25, progress: 0, rewardCoins: 100, rewardXp: 50, claimed: false },
-    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: 'Perform 100 rolls', target: 100, progress: 0, rewardCoins: 500, rewardShards: 1, rewardXp: 150, claimed: false },
-    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: 'Obtain an orb with 1/100+ rarity', target: 1, progress: 0, rewardCoins: 300, rewardXp: 100, claimed: false },
-    { id: 'daily-unique-3', title: 'Unique Orbs', desc: 'Obtain 3 unique orbs today', target: 3, progress: 0, rewardCoins: 200, rewardXp: 80, claimed: false },
-    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: 150, rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-25', title: 'Roll 25 Times', desc: `Perform ${rolls25} rolls`, target: rolls25, progress: 0, rewardCoins: coinRewards[0], rewardXp: 50, claimed: false },
+    { id: 'daily-rolls-100', title: 'Roll 100 Times', desc: `Perform ${rolls100} rolls`, target: rolls100, progress: 0, rewardCoins: coinRewards[1], rewardShards: scaledQuestReward(1, shardReward), rewardXp: 150, claimed: false },
+    { id: 'daily-rare-100', title: 'Find Rare Orb', desc: `Obtain an orb with 1/${rareThreshold}+ rarity`, target: 1, minRarity: rareThreshold, progress: 0, rewardCoins: coinRewards[2], rewardXp: 100, claimed: false },
+    { id: 'daily-unique-3', title: 'Unique Orbs', desc: `Obtain ${uniqueTarget} unique orbs today`, target: uniqueTarget, progress: 0, rewardCoins: coinRewards[3], rewardXp: 80, claimed: false },
+    { id: 'daily-social', title: 'Guild Activity', desc: 'View guild or leaderboard', target: 1, progress: 0, rewardCoins: coinRewards[4], rewardXp: 50, claimed: false },
   ];
 }
 
-export function createInitialWeeklyQuests(): QuestItem[] {
+export function createInitialWeeklyQuests(highestRarity = 2, coinsPerMinute = 8): QuestItem[] {
+  const difficulty = questDifficultyMultiplier(highestRarity);
+  const shardReward = questShardRewardMultiplier(highestRarity);
+  const coinRewards = splitQuestCoinBudget(coinsPerMinute, 240, [5_000, 3_000, 4_000, 1_500]);
+  const rareThreshold = scaledQuestTarget(100, difficulty);
+  const epicThreshold = scaledQuestTarget(1_000, difficulty);
+  const weeklyRollTarget = scaledQuestTarget(1_000, difficulty);
+  const collectionTarget = scaledQuestTarget(10_000, difficulty);
   return [
-    { id: 'weekly-grind', title: 'Weekly Rolls', desc: 'Perform 1,000 rolls this week', target: 1000, progress: 0, rewardCoins: 5000, rewardShards: 5, rewardXp: 600, claimed: false },
-    { id: 'weekly-epic', title: 'Find Epic Orb', desc: 'Obtain an Epic orb (1/1,000+)', target: 1, progress: 0, rewardCoins: 3000, rewardShards: 3, rewardXp: 400, claimed: false },
-    { id: 'weekly-guild', title: 'Collection Value', desc: 'Contribute 10,000 collection value', target: 10000, progress: 0, rewardCoins: 4000, rewardXp: 500, claimed: false },
-    { id: 'weekly-share', title: 'Share Post', desc: 'Share an orb to Reddit after discovering a Rare+ orb.', target: 1, progress: 0, rewardCoins: 1500, rewardShards: 2, rewardXp: 200, claimed: false, unlocked: false },
+    { id: 'weekly-grind', title: 'Weekly Rolls', desc: `Perform ${weeklyRollTarget.toLocaleString()} rolls this week`, target: weeklyRollTarget, progress: 0, rewardCoins: coinRewards[0], rewardShards: scaledQuestReward(5, shardReward), rewardXp: 600, claimed: false },
+    { id: 'weekly-epic', title: 'Find Epic Orb', desc: `Obtain an Epic orb (1/${epicThreshold.toLocaleString()}+)`, target: 1, minRarity: epicThreshold, progress: 0, rewardCoins: coinRewards[1], rewardShards: scaledQuestReward(3, shardReward), rewardXp: 400, claimed: false },
+    { id: 'weekly-guild', title: 'Collection Value', desc: `Contribute ${collectionTarget.toLocaleString()} collection value`, target: collectionTarget, progress: 0, rewardCoins: coinRewards[2], rewardXp: 500, claimed: false },
+    { id: 'weekly-share', title: 'Share Post', desc: `Share an orb to Reddit after discovering a Rare+ orb (1/${rareThreshold}+)`, target: 1, unlockRarity: rareThreshold, progress: 0, rewardCoins: coinRewards[3], rewardShards: scaledQuestReward(2, shardReward), rewardXp: 200, claimed: false, unlocked: false },
   ];
 }
 
@@ -2097,7 +2295,7 @@ export function createInitialState(now = Date.now()): PlayerState {
       cosmicReserve: 0,
       autoScrap: 0,
     },
-    streak: { count: 1, lastClaimDate: '', longestStreak: 1 },
+    streak: { count: 0, lastClaimDate: '', longestStreak: 0 },
     dailyStreakCommunity: createInitialDailyStreakCommunity(now),
     dailyQuests: createInitialDailyQuests(),
     weeklyQuests: createInitialWeeklyQuests(),
@@ -2132,6 +2330,9 @@ export function createInitialState(now = Date.now()): PlayerState {
     lastFrenzyAt: 0,
     lastFrenzyClaimDate: '',
     lastFrenzyClaimAt: 0,
+    frenzyClaimsToday: 0,
+    pendingFrenzyOfflineClaimCount: 0,
+    pendingFrenzyOfflineShards: 0,
     communityRewardClaimedTier: 0,
     currentRunRolls: 0,
     questsCompleted: 0,
@@ -2186,7 +2387,7 @@ export interface LevelMilestonePerk {
 
 export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 5, name: 'Novice Seeker', desc: '+15% XP from rolls, quests, and community rewards', bonusXpMultiplier: 1.15 },
-  { level: 10, name: 'Shard Sifter', desc: '+5% chance for bonus Shards', bonusShardChance: 0.05 },
+  { level: 10, name: 'Shard Sifter', desc: '+0.125 percentage points of Shard proc chance', bonusShardChance: 0.05 },
   { level: 15, name: 'Chrono Adept', desc: 'Cooldown floor reduced by 150ms', bonusCooldownReductionMs: 150 },
   { level: 20, name: 'Alchemical Affinity', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
   { level: 25, name: 'Twin Orb Conductor', desc: '+1 Extra Orb per activation!', bonusBalls: 1 },
@@ -2198,7 +2399,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 200, name: 'Void Fortune', desc: '+30% Luck!', bonusLuckMultiplier: 1.30 },
   { level: 300, name: 'Golden Age', desc: '1.50× Multiplicative Coin boost!', bonusCoinsMultiplier: 1.50 },
   { level: 400, name: 'Orb Battalion', desc: '+2 Extra Orbs per activation!', bonusBalls: 2 },
-  { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +10% Shard Chance!', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
+  { level: 500, name: 'Astral Zenith', desc: '+40% Luck and +0.25 percentage points of Shard proc chance', bonusLuckMultiplier: 1.40, bonusShardChance: 0.10 },
   { level: 750, name: 'Infinite Arsenal', desc: '+3 Extra Orbs per activation!', bonusBalls: 3 },
   { level: 1000, name: 'Infinity Master', desc: '+50% Luck and 2.00× Coins!', bonusLuckMultiplier: 1.50, bonusCoinsMultiplier: 2.00 },
   { level: 1250, name: 'Aether Cartographer', desc: 'Another +10% XP from all sources', bonusXpMultiplier: 1.10 },
@@ -2207,7 +2408,7 @@ export const LEVEL_MILESTONES: LevelMilestonePerk[] = [
   { level: 2500, name: 'Celestial Chorus', desc: '+1 Extra Orb per activation', bonusBalls: 1 },
   { level: 3000, name: 'Chrono Architect', desc: 'Cooldown floor reduced by another 100ms', bonusCooldownReductionMs: 100 },
   { level: 4000, name: 'Starlit Crucible', desc: 'Altar Sacrifices are 15% more potent', bonusAltarEffectMultiplier: 1.15 },
-  { level: 5000, name: 'Infinite Conductor', desc: '+1 Extra Orb and +2.5% Shard chance', bonusBalls: 1, bonusShardChance: 0.025 },
+  { level: 5000, name: 'Infinite Conductor', desc: '+1 Extra Orb and +0.0625 percentage points of Shard proc chance', bonusBalls: 1, bonusShardChance: 0.025 },
   { level: 7500, name: 'Paragon Fortune', desc: '+25% Luck', bonusLuckMultiplier: 1.25 },
   { level: 10000, name: 'Infinity Ascendant', desc: '+2 Extra Orbs, +25% Coins and +15% XP', bonusBalls: 2, bonusCoinsMultiplier: 1.25, bonusXpMultiplier: 1.15 },
 ];
@@ -2528,7 +2729,7 @@ export function effectiveRollCritChance(s: PlayerState): number {
  * This value is intentionally allowed below 300ms so Cooldown Reclaimer can
  * recover the overflow. Only cooldownMs() applies the live activation floor.
  */
-export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
+export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
   const permReduction = (s.prestigeUpgrades?.permSpeed ?? 0) * 300;
   const guildSpeedReduction = (s.guildPerks?.speedRank ?? 0) * 100;
   const chronoFlowLevel = Math.max(0, Math.min(20, Math.floor(Number(s.masterySkills?.chronoFlow ?? 0) || 0)));
@@ -2540,7 +2741,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
 
   // Roll speed: 20 levels × 150ms = 3.0s total maximum reduction.
   const speedLevel = Math.min(20, Math.max(0, s.upgrades.speed ?? 0));
-  const coinReduction = speedLevel * 150;
+  const coinReduction = speedLevel * (liveBalance?.['roll.speedPerLevelMs'] ?? 150);
 
   // Upgrades can remove the base floor entirely. No intermediate Speed layer
   // is clamped: all multipliers compound before the one final 300ms safety cap.
@@ -2599,6 +2800,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
     const clockworkStacks = celestialAlignmentStackCount(canonicalInstances, 'clockwork');
     if (clockworkStacks > 0) cd *= Math.pow(0.80, clockworkStacks);
   }
+  if (isAuto) cd *= liveBalance?.['roll.autoCooldownMultiplier'] ?? 1;
 
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
@@ -2607,19 +2809,20 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
-export function cooldownMs(s: PlayerState, isAuto = false): number {
-  return Math.max(300, theoreticalCooldownMs(s, isAuto));
+export function cooldownMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
+  const floor = Math.max(300, liveBalance?.['roll.minimumCooldownMs'] ?? 300);
+  return Math.max(floor, theoreticalCooldownMs(s, isAuto, liveBalance));
 }
 
 /**
  * Earn 1% of the current live roll cooldown per Cooldown Reclaimer level
  * for each eligible completed activation. This works at the 300ms floor too.
  */
-export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false): number {
+export function cooldownReclaimerEnergyPerActivationMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
   const level = Math.max(0, Math.min(10, Math.floor(Number(s.masterySkills?.cooldownReclaimer ?? 0) || 0)));
   if (level <= 0) return 0;
 
-  const currentCooldownMs = cooldownMs(s, isAuto);
+  const currentCooldownMs = cooldownMs(s, isAuto, liveBalance);
   return Math.min(TIME_ENERGY_MAX_MS, Math.floor(currentCooldownMs * level * 0.01));
 }
 

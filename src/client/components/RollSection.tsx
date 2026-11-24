@@ -18,6 +18,7 @@ import {
   Award,
 } from 'lucide-react';
 import type { PlayerState, Orb, UpgradeId } from '../../shared/game.js';
+import type { LiveBalanceConfig } from '../../shared/live-balance.js';
 import {
   cooldownMs,
   timeEnergyActivationsAvailable,
@@ -41,6 +42,7 @@ import { OrbOrbit } from './OrbOrbit.js';
 
 interface RollSectionProps {
   state: PlayerState;
+  liveBalance: LiveBalanceConfig;
   lastOrb: Orb | null;
   lastBatch: Orb[];
   batchSummary: { totalVal: number; coins: number; shards: number; xp: number; frenzyCount?: number } | null;
@@ -103,6 +105,7 @@ function formatAlignmentRemaining(ms: number): string {
 
 export const RollSection: React.FC<RollSectionProps> = ({
   state,
+  liveBalance,
   lastOrb,
   lastBatch,
   batchSummary,
@@ -325,7 +328,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
   const [isShaking, setIsShaking] = useState(false);
   // The main Roll button always uses the manual-roll cooldown; Auto Roll timing is tracked by the server response.
-  const cd = cooldownMs(state, false);
+  const cd = cooldownMs(state, false, liveBalance);
   const timeEnergyRollsAvailable = timeEnergyActivationsAvailable(timeEnergy, cd);
   const timeEnergySpendMs = timeEnergyRollsAvailable * cd;
   const timeEnergyProgressPct = cd > 0 ? Math.max(0, Math.min(100, (timeEnergy / cd) * 100)) : 0;

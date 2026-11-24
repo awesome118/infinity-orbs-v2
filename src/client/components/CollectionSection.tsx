@@ -267,7 +267,7 @@ export const CollectionSection: React.FC<CollectionSectionProps> = ({
               <Gem className="h-4 w-4" />
               {patcherCharged ? 'Paid' : patcherTarget == null ? '—' : fmt(patcherCost)}
             </div>
-            <div className="mt-1 text-[10px] text-slate-500">Cost scales with target rarity; 1/900 costs 10 Shards</div>
+            <div className="mt-1 text-[10px] text-slate-500">Cost scales with target rarity; 1/900 costs 100 Shards</div>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
             <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Purchase Cooldown</div>

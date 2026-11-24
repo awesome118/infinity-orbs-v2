@@ -69,3 +69,17 @@ test('normal player save stores Codex deltas outside the large player JSON', () 
   assert.match(load, /migrateLegacyCodex\(userId, generation, restoredCollection\)/);
   assert.match(game, /markCodexRarityWrite\(s, key\)/);
 });
+
+
+test('client snapshots preserve Codex Devotion projections after stripping the full collection', () => {
+  const app = readFileSync(resolve(process.cwd(), 'src/server/app.ts'), 'utf8');
+  const mastery = readFileSync(resolve(process.cwd(), 'src/client/components/MasterySection.tsx'), 'utf8');
+  const strip = app.slice(app.indexOf('const stripPlayerCollection'), app.indexOf('// Persistent player data'));
+  assert.match(strip, /copy\.codexChain = codexChain\.length/);
+  assert.match(strip, /copy\.codexChainStart = codexChain\.start/);
+  assert.match(strip, /copy\.codexChainEnd = codexChain\.end/);
+  assert.match(strip, /copy\.codexDevotionLuckPercent = codexDevotionLuckPercent\(/);
+  assert.match(strip, /copy\.collection = \{\}/);
+  assert.match(mastery, /Number\.isFinite\(Number\(state\.codexChain\)\)/);
+  assert.match(mastery, /codexDevotionLuckPercent\(currentLevel, codexChainLength\)/);
+});
