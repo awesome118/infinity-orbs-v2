@@ -201,7 +201,7 @@ export function riftModifierRewardPreview(
   const hourlyMultiplier = Math.pow(1.5, difficultyScore) * (1 + yieldLevel * 0.05);
   return {
     difficultyScore,
-    pointsPerClear: Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(clearMultiplier))),
+    pointsPerClear: Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.ceil(clearMultiplier))),
     rpPerHour: Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, hourlyMultiplier)),
   };
 }
