@@ -87,3 +87,5 @@ Deploy latest GitHub Pages test branch after integrating the current save-reset 
 Deploy regression fix: prevent read-only player migrations from racing saves and use main-game level requirements for later Rift challenges.
 
 Deploy full session log snapshot diagnostics: capture UI, API, state reconciliation, browser errors, and console failures with privacy redaction.
+
+Retry Pages deployment with per-attempt artifact names to prevent duplicate artifact lookup during workflow retries.
