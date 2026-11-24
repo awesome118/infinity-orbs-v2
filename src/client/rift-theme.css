@@ -22,6 +22,7 @@
   --io-line: rgba(190, 153, 255, .16);
   --io-line-bright: rgba(208, 180, 255, .27);
   color: var(--io-text);
+  position: relative;
   background:
     radial-gradient(ellipse at 12% 0%, rgba(139, 75, 221, .23), transparent 48%),
     radial-gradient(ellipse at 92% 48%, rgba(103, 52, 178, .16), transparent 48%),
@@ -34,14 +35,20 @@ body:has(.io-ui.io-rift-active) {
   background: #090511 !important;
 }
 
-.io-ui.io-rift-active > :not(.io-rift-atmosphere) {
-  z-index: 1;
+/* Preserve the normal GUI stacking order above the isolated Rift backdrop. */
+.io-ui.io-rift-active .app-header {
+  z-index: 60;
 }
 
-/* A dimensional portal lives behind the game. Every layer is input-transparent. */
+.io-ui.io-rift-active .app-nav {
+  z-index: 50;
+}
+
+/* The portal sits behind ordinary content without creating a stacking context
+   around every direct child of the app shell. */
 .io-rift-atmosphere {
   position: fixed;
-  z-index: 0;
+  z-index: -1;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
