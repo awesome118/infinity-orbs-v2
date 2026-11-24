@@ -61,6 +61,7 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist-pages
+          name: github-pages-${{ github.run_attempt }}
 
       - name: Deploy test site
         id: deployment
