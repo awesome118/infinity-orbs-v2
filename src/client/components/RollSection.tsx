@@ -338,6 +338,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
   const rawChainPatcherTarget = Number(state.chainPatcherNextRarity ?? 0);
   const chainPatcherPending = rawChainPatcherTarget !== 0;
   const chainPatcherCharged = Number.isSafeInteger(rawChainPatcherTarget) && rawChainPatcherTarget >= 2;
+  const adminGuaranteedRollQueued = state.adminGuaranteedRollQueued === true;
   const canRoll = !busy && (chainPatcherPending
     ? chainPatcherCharged && remain <= 0
     : remain <= 0 || (freeRolls > 0 && !frenzyArmedForRoll));
@@ -569,7 +570,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
     : frenzyArmedForRoll
       ? frenzyReady ? 'Release Frenzy' : `Ready in ${(remain / 1000).toFixed(1)}s`
       : chainPatcherPending
-        ? chainPatcherCharged ? 'Use Chain Patcher' : 'Repair Chain Patcher'
+        ? chainPatcherCharged
+          ? adminGuaranteedRollQueued ? 'Use Guaranteed Roll' : 'Use Chain Patcher'
+          : 'Repair Chain Patcher'
         : freeRolls > 0
           ? `Roll ${freeRolls} free ${freeRolls === 1 ? 'Orb' : 'Orbs'}`
           : remain > 0
@@ -583,10 +586,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
       ? frenzyReady ? 'Frenzy is armed and ready to release.' : 'Frenzy is armed; wait for the cooldown before releasing it.'
       : chainPatcherPending
         ? chainPatcherCharged
-          ? canRoll
-            ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
-            : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
-          : 'The saved Chain Patcher target is invalid. Refresh your save before rolling; stored Free Rolls remain untouched.'
+          ? adminGuaranteedRollQueued
+            ? canRoll
+              ? `An admin-guaranteed 1/${formatRarity(rawChainPatcherTarget)} roll is queued. This manual roll will process normal rewards and challenge completion.`
+              : `An admin-guaranteed 1/${formatRarity(rawChainPatcherTarget)} roll is queued. Wait ${(remain / 1000).toFixed(1)}s; stored Free Rolls will remain untouched.`
+            : canRoll
+              ? `Chain Patcher is charged for 1/${formatRarity(rawChainPatcherTarget)}. One manual roll consumes it and preserves ${freeRolls} stored Free Rolls.`
+              : `Chain Patcher is charged; wait ${(remain / 1000).toFixed(1)}s. Stored Free Rolls will remain untouched.`
+          : 'The saved Chain Patcher target is invalid. Refresh your save before rolling; stored Free Rolls will remain untouched.'
         : freeRolls > 0
           ? `One press uses all ${freeRolls} Free Rolls.`
           : canRoll
