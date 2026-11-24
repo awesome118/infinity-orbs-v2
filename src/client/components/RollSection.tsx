@@ -426,9 +426,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     // The long record fanfare takes precedence over the short near-best ping.
     // Both special alerts intentionally bypass Silent Sonar mode.
     if (isRiftSave && isNewBest) {
-      // Keep the roll's ordinary sound; the Rift's smaller particle burst is the
-      // entire record acknowledgement, not a main-game-style fanfare.
-      sound.playRollNormal();
+      // The ordinary roll cue already played. Rift records get no additional fanfare.
     } else if (hasSonarUpgrade && isNewBest) {
       lastFanfareTimeRef.current = nowTs;
       sound.playNewBestFanfare();
