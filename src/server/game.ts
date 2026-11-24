@@ -5916,7 +5916,7 @@ export async function applyRolls(
   onProgress?: (processedCount: number) => Promise<void> | void,
   rarityRandomOverride?: () => number,
   previewOnly = false,
-): Promise<{ bestOrb: Orb; secondBestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
+): Promise<{ bestOrb: Orb; secondBestOrb: Orb | null; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
   let bestIsNew = false;
