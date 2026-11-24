@@ -12,6 +12,7 @@ test('Frenzy and notification popups render with dedicated styling and admin pre
   const main = read('src/client/main.tsx');
   const styles = read('src/client/styles.css');
   const admin = read('src/client/components/DevDebugModal.tsx');
+  const shared = read('src/shared/game.ts');
 
   assert.match(main, /showFrenzyPrompt && \(/);
   assert.match(main, /className="io-modal-card io-frenzy-prompt/);
@@ -19,7 +20,7 @@ test('Frenzy and notification popups render with dedicated styling and admin pre
   assert.match(main, /frenzyShardPopupPending/);
   assert.match(main, /className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400\/35/);
   assert.match(admin, /Preview Frenzy Shard Popup/);
-  assert.match(admin, /frenzyShard: true/);
+  assert.match(shared, /frenzyShard: true/);
   assert.match(admin, /no Shards and records no metrics/);
 
   assert.match(main, /showNotificationPrompt && \(notificationPromptPreview \|\| !notificationsEnabled\) && \(/);
