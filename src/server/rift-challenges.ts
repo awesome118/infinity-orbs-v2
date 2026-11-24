@@ -9,11 +9,8 @@ import {
 import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
-  DEFAULT_RIFT_MODIFIERS,
-  DEFAULT_RIFT_CHALLENGES,
   normalizeRiftModifierSettings,
   normalizeRiftChallengeToggles,
-  riftModifierRewardPreview,
   RIFT_ASCENT,
   getRiftChallengeDefinition,
   normalizeRiftMainProgress,
