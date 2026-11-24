@@ -35,8 +35,11 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /async function saveActiveRiftPlayerState/);
   assert.match(game, /if \(s\.riftSession\) \{/);
   assert.match(game, /run\.gameState = storedState/);
-  assert.match(server, /const mainProgress = storedRun\?\.gameState/);
-  assert.match(server, /const mainProgress = archive\.activeRun\?\.gameState/);
+  assert.match(server, /const mainProgress = await readMainProgress\(\)/);
+  assert.match(server, /riftChallengeUnlockStatus\(challenge, mainProgress, archive\.completedChallengeIds\)/);
+  assert.match(server, /Reach Level .* in the main game to unlock/);
+  assert.match(shared, /requiredMainLevel: 10/);
+  assert.match(shared, /requiredMainLevel: 15/);
   assert.match(game, /state\.riftRunComplete = true/);
   assert.match(game, /riftCodexOwnerId\(userId, session\.runId\)/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
@@ -66,5 +69,5 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /fractured-tempo/);
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
-  assert.match(server, /progressFromGameState\(archive\.activeRun\.gameState\)/);
+  assert.match(server, /progressFromGameState\(activeRun\.gameState\)/);
 });
