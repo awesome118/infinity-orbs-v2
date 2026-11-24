@@ -677,6 +677,30 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
           await game.save(state);
           return { ok: true, state };
         }));
+      case '/queue-force-roll': {
+        return response(await withPlayerMutationLock(async () => {
+          const state = await game.loadRaw();
+          const forcedRarity = Number(body.rarity);
+          if (!Number.isSafeInteger(forcedRarity) || forcedRarity < 2 || forcedRarity > rules.MAX_ORB_RARITY) {
+            throw new Error('Choose a whole-number rarity target between 2 and the maximum Orb rarity.');
+          }
+          const pending = Math.floor(Number(state.chainPatcherNextRarity ?? 0) || 0);
+          if (state.adminGuaranteedRollQueued === true) {
+            throw new Error('A guaranteed admin roll is already queued. Use it before queueing another.');
+          }
+          if (pending >= 2 && pending <= rules.MAX_ORB_RARITY) {
+            throw new Error('Chain Patcher is already charged. Use it before queueing an admin guaranteed roll.');
+          }
+          if (pending !== 0) {
+            throw new Error('Chain Patcher save data is invalid; repair it before queueing a guaranteed roll.');
+          }
+          state.chainPatcherNextRarity = forcedRarity;
+          state.adminGuaranteedRollQueued = true;
+          state.autoRollEnabled = false;
+          await saveCurrentState(state);
+          return { ok: true, queued: true, targetRarity: forcedRarity, state };
+        }));
+      }
       case '/force-roll': {
         return response(await withPlayerMutationLock(async () => {
           const state = await game.loadRaw();

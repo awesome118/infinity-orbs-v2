@@ -214,3 +214,13 @@ test('admin guaranteed rolls queue into the next manual roll and use normal Rift
   assert.match(roll, /s\.adminGuaranteedRollQueued = false/);
   assert.match(game, /Use the queued guaranteed manual roll before re-enabling Auto Roll/);
 });
+
+
+test('Pages Admin API exposes the same queued guaranteed-roll action as Devvit', () => {
+  const pages = source('src/pages/admin-api.ts');
+  assert.match(pages, /case '\/queue-force-roll'/);
+  assert.match(pages, /rules\.MAX_ORB_RARITY/);
+  assert.match(pages, /state\.adminGuaranteedRollQueued = true/);
+  assert.match(pages, /state\.autoRollEnabled = false/);
+  assert.match(pages, /saveCurrentState\(state\)/);
+});

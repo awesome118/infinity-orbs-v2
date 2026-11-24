@@ -7364,6 +7364,9 @@ export async function roll(
       throw new Error('Chain Patcher save data is invalid; no roll was processed.');
     }
     const usingChainPatcher = rawPatcherRarity >= 2;
+    if (s.adminGuaranteedRollQueued === true && !usingChainPatcher) {
+      throw new Error('Guaranteed admin roll state is missing its exact rarity target; no roll was processed.');
+    }
     if (isAuto && usingChainPatcher) {
       throw new Error('Chain Patcher charge must be used by a manual roll. Auto Roll remains paused.');
     }

@@ -34,3 +34,13 @@ test('Rift mode disables Frenzy, keeps New Best non-blocking, and stages complet
   assert.match(admin, /Guaranteed Next Roll/);
   assert.match(adminServer, /debugRouter\.post\('\/queue-force-roll'/);
 });
+
+
+test('high-rarity Orb color cycling is reduced-motion aware', () => {
+  const shared = source('src/shared/game.ts');
+  const styles = source('src/client/styles.css');
+  assert.match(shared, /animated\?: boolean/);
+  assert.match(shared, /animated: rarity >= 1e38/);
+  assert.match(styles, /\.io-rarity-color-cycle/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
