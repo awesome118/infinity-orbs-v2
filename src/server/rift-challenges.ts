@@ -145,6 +145,9 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     riftRatePerHour: 1,
     riftLastAccruedAt: Math.min(now, lastAccrued),
     totalRiftPointsEarned: safeInteger(value.totalRiftPointsEarned, safeInteger(value.riftPoints)),
+    riftPlayerProgress: isRecord(value.riftPlayerProgress)
+      ? normalizeRiftMainProgress(value.riftPlayerProgress as Partial<RiftChallengeMainProgress>)
+      : null,
     riftPerkLevels,
   };
   archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
@@ -241,7 +244,7 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
   if (activeRun) syncRunSummaryFromGameState(activeRun);
   const mainProgress = storedRun?.gameState
     ? progressFromGameState(storedRun.gameState)
-    : currentMainProgress;
+    : archive.riftPlayerProgress ?? currentMainProgress;
   return {
     challenge: RIFT_FIRST_SPARK,
     challenges: RIFT_CHALLENGES,
@@ -288,7 +291,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
     accrueRiftProgress(archive);
     const mainProgress = archive.activeRun?.gameState
       ? progressFromGameState(archive.activeRun.gameState)
-      : await readMainProgress();
+      : archive.riftPlayerProgress ?? await readMainProgress();
     if (mainProgress.level < challenge.requiredMainLevel) {
       throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in ' + (challenge.prerequisiteId ? 'the previous Rift run' : 'the main game') + ' to unlock ' + challenge.name + '.');
     }
