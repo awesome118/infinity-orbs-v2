@@ -4012,13 +4012,14 @@ async function saveActiveRiftPlayerState(
       run.gameState = storedState;
       run.coins = storedState.coins;
       run.totalRolls = storedState.totalRolls;
-      run.bestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      const riftBestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      run.bestRarity = riftBestRarity;
       run.updatedAt = now;
       archive.version = 3;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
-      if (run.bestRarity >= challenge.targetRarity) {
+      if (riftBestRarity >= challenge.targetRarity) {
         completed = true;
         run.status = 'completed';
         run.completedAt = now;
@@ -4040,7 +4041,7 @@ async function saveActiveRiftPlayerState(
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
-        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, run.bestRarity);
+        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, riftBestRarity);
         archive.bestRarityByChallenge = bestByChallenge;
         archive.riftRatePerHour = riftRatePerHour(completedIds, (isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {}) as never);
       }
@@ -4394,19 +4395,18 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
     throw new Error('Daily Streak count reached its supported limit; no reward was granted.');
   }
 
-  // Prepare/validate the shared event before touching player rewards. If this
-  // separate shared record is corrupt or out of range, the attempt must leave
-  // the local streak, Shards, Coins and free rolls untouched.
-  const communityUpdate = s.riftSession
-    ? { event: s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity! }
-    : await prepareDailyStreakCommunityProgress(nextStreakCount);
+  // Prepare/validate shared community progress only for the main account.
+  // The Rift carries its own player streak but never writes to the shared event.
+  let communityEvent = s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity!;
   if (!s.riftSession) {
+    const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
     stageSaveExtraWrite(s, {
       key: communityUpdate.key,
       expectedValue: communityUpdate.expectedValue,
       nextValue: communityUpdate.nextValue,
       conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
     });
+    communityEvent = communityUpdate.event;
   }
 
   const day = ((nextStreakCount - 1) % 7) + 1;
@@ -4419,7 +4419,7 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   s.streak.lastClaimDate = today;
   s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  s.dailyStreakCommunity = communityUpdate.event;
+  s.dailyStreakCommunity = communityEvent;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
