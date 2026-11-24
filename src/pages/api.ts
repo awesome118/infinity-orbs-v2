@@ -169,6 +169,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
     }
 
     switch (path) {
+      case '/api/frenzy/shard-popup/ack':
+        return jsonResponse({ state: await game.acknowledgeFrenzyShardPopup() });
       case '/api/rift-challenges/mark-opened':
         return jsonResponse(await riftChallenges.markRiftGameOpened());
       case '/api/rift-challenges/start':
