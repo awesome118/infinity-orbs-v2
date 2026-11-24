@@ -89,3 +89,5 @@ Deploy regression fix: prevent read-only player migrations from racing saves and
 Deploy full session log snapshot diagnostics: capture UI, API, state reconciliation, browser errors, and console failures with privacy redaction.
 
 Retry Pages deployment with per-attempt artifact names to prevent duplicate artifact lookup during workflow retries.
+
+Deploy using the matching per-attempt artifact upload and deploy configuration.
