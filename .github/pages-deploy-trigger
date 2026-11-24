@@ -79,3 +79,5 @@ Pages GUI layering fix: keep the Rift portal behind content without flattening c
 Pages update: fix Rift GUI stacking; queue admin guaranteed rarities for the next ordinary manual roll so the server processes full roll rewards and Rift challenge completion normally.
 
 Pages validation retry: include the queued guaranteed-roll callback in the DevDebugModal prop destructuring.
+
+Pages admin fix: raise the Admin Console overlay above the Rift header and every game dialog so its controls remain clickable.
