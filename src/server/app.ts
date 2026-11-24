@@ -125,7 +125,7 @@ import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromX
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge, updateRiftModifiers } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1154,6 +1154,19 @@ export function createApp() {
       const message = error?.message || 'Could not load Rift Challenges.';
       res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : transientContentionError(error) ? 503 : 500)
         .json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/modifiers', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await updateRiftModifiers(req.body?.modifierSettings, req.body?.challengeToggles));
+    } catch (error: any) {
+      const message = error?.message || 'Could not update Rift modifiers.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message.includes('Finish or abandon the active Rift run') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
     }
   });
 
