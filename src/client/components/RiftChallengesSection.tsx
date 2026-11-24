@@ -3,6 +3,7 @@ import {
   RIFT_CHALLENGES,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
+  riftChallengeCooldownMs,
   riftChallengeUpgradeCost,
   riftPerkCost,
   type RiftChallengeId,
@@ -11,7 +12,7 @@ import {
   type RiftPerkId,
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
-import { Activity, ArrowLeft, ArrowUpRight, Clock3, Coins, Gauge, LockKeyhole, Sparkles, Zap } from 'lucide-react';
+import { Activity, ArrowUpRight, Zap } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -42,7 +43,7 @@ function formatDuration(milliseconds: number): string {
   return seconds + 's';
 }
 
-export const RiftChallengesSection: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const RiftChallengesSection: React.FC = () => {
   const [snapshot, setSnapshot] = useState<RiftChallengeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -449,7 +450,7 @@ export const RiftChallengesSection: React.FC<{ onBack?: () => void }> = ({ onBac
                   {busyAction === 'roll' ? 'Rolling…' : remainingCooldown > 0 ? 'Ready in ' + formatCooldown(remainingCooldown) : 'ROLL ORB'}
                 </button>
                 <div className="text-center text-[10px] text-slate-500 sm:max-w-48 sm:text-left">
-                  Server-timed roll interval: {formatCooldown(Math.max(0, challenge.baseCooldownMs * Math.max(0.65, 1 - archive.riftPerkLevels.riftSpeed * 0.03)))}
+                  Server-timed roll interval: {formatCooldown(Math.max(450, riftChallengeCooldownMs(run.upgradeLevels.speed, challenge.baseCooldownMs) * Math.max(0.65, 1 - archive.riftPerkLevels.riftSpeed * 0.03)))}
                 </div>
               </div>
 
@@ -493,7 +494,7 @@ export const RiftChallengesSection: React.FC<{ onBack?: () => void }> = ({ onBac
               <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Objective achieved</div>
               <h3 className="mt-1 text-xl font-black text-white">{challenge.name} cleared.</h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                The clear reward was credited to your Rift wallet. {archive.completedChallengeIds.includes(challenge.id) ? 'Your first-clear rate bonus is now permanent.' : 'Replay rewards are smaller, but repeatable.'}
+                The clear reward was credited to your Rift wallet. First clears permanently increase your hourly generation rate; replays award smaller repeatable point payouts.
               </p>
               <button
                 type="button"
