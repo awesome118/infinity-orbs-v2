@@ -527,6 +527,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onClose,
   onRefresh,
   onForceRollResult,
+  onForceRollQueued,
   onForceFrenzyPopup,
   onForceNotificationPopup,
   onForceJoinSubredditPopup,
