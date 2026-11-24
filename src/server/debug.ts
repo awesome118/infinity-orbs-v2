@@ -111,6 +111,7 @@ import {
   guildComboCritLuckBonus,
   isPremiumBoosterActive,
   TIME_ENERGY_MAX_MS,
+  MAX_ORB_RARITY,
   type PlayerState,
 } from '../shared/game.js';
 import { recordLeaderboard } from './social.js';
@@ -2860,6 +2861,36 @@ debugRouter.post('/force-roll', async (req, res) => {
     });
         });} catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+debugRouter.post('/queue-force-roll', async (req, res) => {
+  try {
+    await withPlayerMutationLock(async () => {
+      const s = await loadRaw();
+      const forcedRarity = Number(req.body?.rarity);
+      if (!Number.isSafeInteger(forcedRarity) || forcedRarity < 2 || forcedRarity > MAX_ORB_RARITY) {
+        throw new Error('Choose a whole-number rarity target between 2 and the maximum Orb rarity.');
+      }
+      const pending = Math.floor(Number(s.chainPatcherNextRarity ?? 0) || 0);
+      if (s.adminGuaranteedRollQueued === true) {
+        throw new Error('A guaranteed admin roll is already queued. Use it before queueing another.');
+      }
+      if (pending >= 2 && pending <= MAX_ORB_RARITY) {
+        throw new Error('Chain Patcher is already charged. Use it before queueing an admin guaranteed roll.');
+      }
+      if (pending !== 0) {
+        throw new Error('Chain Patcher save data is invalid; repair it before queueing a guaranteed roll.');
+      }
+
+      s.chainPatcherNextRarity = forcedRarity;
+      s.adminGuaranteedRollQueued = true;
+      s.autoRollEnabled = false;
+      await save(s);
+      res.json({ ok: true, queued: true, targetRarity: forcedRarity, state: s });
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Could not queue the guaranteed roll.' });
   }
 });
 
