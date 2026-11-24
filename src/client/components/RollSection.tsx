@@ -739,14 +739,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
           </div>
 
           {/* Critical Roll Badge */}
-          {displayOrb?.isCrit && (
+          {!busy && displayOrb?.isCrit && (
             <div className="absolute -top-6 bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg border border-amber-300">
               ⚡ Critical · 2×
             </div>
           )}
 
           {/* New Discovery Badge */}
-          {displayOrb?.isNew && (
+          {!busy && displayOrb?.isNew && (
             <div className="absolute -top-2 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-lg">
               ★ New find
             </div>
@@ -1323,7 +1323,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         <section className="field-card">
           <div className="field-card-header">
             <span className="field-label">Latest discovery</span>
-            {displayOrb?.isNew && <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-300">New</span>}
+            {!busy && displayOrb?.isNew && <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-300">New</span>}
           </div>
           {displayOrb ? (
             <div className="latest-orb">
