@@ -4325,7 +4325,7 @@ async function saveActiveRiftPlayerState(
 ): Promise<void> {
   const session = state.riftSession;
   if (!session) throw new Error('RIFT_SESSION_MISSING');
-  if (session.challengeId === 'first-spark') {
+  if (session.challengeId === 'first-spark' || session.noShards === true) {
     state.shards = 0;
     state.lifetimeShards = 0;
     state.freeShardsEarnedToday = 0;
@@ -5885,6 +5885,26 @@ async function readRiftMainGameMultipliers(userId: string): Promise<{ luckMultip
   }
 }
 
+function sampleSecondOrderUniform(countValue: number, random: () => number): number {
+  const count = Math.max(2, Math.floor(Number(countValue) || 2));
+  const raw = Number(random());
+  const target = Number.isFinite(raw) ? Math.max(0, Math.min(1 - Number.EPSILON, raw)) : 0.5;
+  // The second-smallest of n uniform samples has CDF
+  // 1 - (1-x)^n - n*x*(1-x)^(n-1). Since rarity is inverse-uniform,
+  // this produces the second-highest rarity represented by a compressed group.
+  let low = 0;
+  let high = 1;
+  for (let iteration = 0; iteration < 56; iteration += 1) {
+    const middle = (low + high) / 2;
+    const failure = Math.pow(1 - middle, count);
+    const exactlyOne = count * middle * Math.pow(1 - middle, count - 1);
+    const cdf = Math.max(0, Math.min(1, 1 - failure - exactlyOne));
+    if (cdf < target) low = middle;
+    else high = middle;
+  }
+  return Math.max(Number.MIN_VALUE, (low + high) / 2);
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -6619,8 +6639,31 @@ export async function applyRolls(
       isNew,
       isCrit,
     };
-    for (let candidateIndex = 0; candidateIndex < Math.min(2, sampleWeight); candidateIndex += 1) {
-      considerRiftOrb(candidateOrb);
+    considerRiftOrb(candidateOrb);
+    if (sampleWeight > 1 && s.riftSession?.secondBest === true) {
+      const secondUniform = sampleSecondOrderUniform(sampleWeight, rng);
+      const secondRawRarity = rollContinuum(
+        effectiveLuck,
+        () => secondUniform,
+        runeLuckMultiplier * averageGroupMultiplier,
+        runeRarityFloor,
+        Math.max(1, Math.floor(Number(s.level) || 1)),
+      );
+      const secondIsInfinity = !Number.isFinite(secondRawRarity) || secondRawRarity > MAX_ORB_RARITY;
+      const secondRarity = Math.max(
+        runeRarityFloor,
+        Math.min(MAX_ORB_RARITY, Number.isFinite(secondRawRarity) ? secondRawRarity : MAX_ORB_RARITY),
+      );
+      const secondOrbInfo = getOrbInfo(secondRarity, secondIsInfinity);
+      considerRiftOrb({
+        rarity: secondRarity,
+        rolledAt: now,
+        tier: secondOrbInfo.tier,
+        name: secondOrbInfo.name,
+        isInfinity: secondIsInfinity,
+        isNew: false,
+        isCrit: false,
+      });
     }
     if (batch.length < 50) batch.push(candidateOrb);
 
@@ -6835,7 +6878,7 @@ export async function applyRolls(
     });
   }
 
-  return { bestOrb, secondBestOrb: topRiftOrbs[1] ?? bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
+  return { bestOrb, secondBestOrb: topRiftOrbs[1] ?? null, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
 
 async function commitOfflineNotificationMarkerIfUnchanged(
@@ -7719,7 +7762,7 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
   if (enabled && (s.riftSession?.challengeId === 'first-spark' || s.riftSession?.noAutomation === true)) {
-    throw new Error('Auto Roll is disabled in The First Spark.');
+    throw new Error('Auto Roll is disabled by this Rift challenge.');
   }
   if ((s.upgrades.auto ?? 0) <= 0) {
     s.autoRollEnabled = false;
@@ -7918,7 +7961,7 @@ export async function roll(
         ticketRandom ? ticketRandom.nextRarity : undefined,
       );
       considerSelectedOrb(result.bestOrb);
-      considerSelectedOrb(result.secondBestOrb);
+      if (result.secondBestOrb) considerSelectedOrb(result.secondBestOrb);
       batch.push(...result.batch.slice(-200));
       if (batch.length > 200) batch.splice(0, batch.length - 200);
       totalVal = addCollectionValue(totalVal, result.totalVal);
