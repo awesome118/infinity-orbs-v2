@@ -839,8 +839,8 @@ function App() {
     const nextServerRevision = Number(nextState.stateRevision);
     const nextServerGeneration = Number(nextState.saveGeneration);
     const currentState = stateRef.current;
-    const currentRiftRunId = currentState?.riftSession?.runId ?? null;
-    const nextRiftRunId = nextState.riftSession?.runId ?? null;
+    const currentRiftRunId = currentState?.riftSaveContext ?? (currentState?.riftSession?.runId ? 'rift:' + currentState.riftSession.runId : 'main');
+    const nextRiftRunId = nextState.riftSaveContext ?? (nextState.riftSession?.runId ? 'rift:' + nextState.riftSession.runId : 'main');
     if (currentState && currentRiftRunId !== nextRiftRunId) {
       // Main and Rift saves have independent revision counters.
       appliedServerGenerationRef.current = nextServerGeneration;
@@ -1054,7 +1054,7 @@ function App() {
     if (combatMode && !targetIsCombatMode) window.dispatchEvent(new CustomEvent('io-combat-leaving'));
     // Update synchronously so stale interval callbacks cannot roll during a tab transition.
     combatModeRef.current = targetIsStandalonePageMode;
-    if (targetIsStandalonePageMode) {
+    if (targetIsCombatMode) {
       setAutoRoll(false);
       if (stateRef.current?.autoRollEnabled === true) {
         beginOptimisticState(current => ({ ...current, autoRollEnabled: false }));
