@@ -10,6 +10,7 @@ import {
   getRiftChallengeDefinition,
   riftChallengeUpgradeCost,
   riftModifierRewardPreview,
+  riftRatePerHour,
   riftPerkCost,
   type RiftChallengeSnapshot,
   type RiftChallengeUpgradeId,
@@ -137,6 +138,12 @@ export const RiftChallengesSection: React.FC<{
   const rewardPreview = useMemo(
     () => riftModifierRewardPreview(modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield ?? 0),
     [modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield],
+  );
+  const projectedRate = useMemo(
+    () => archive
+      ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, modifierSettings, challengeToggles)
+      : rewardPreview.rpPerHour,
+    [archive?.completedChallengeIds, archive?.riftPerkLevels, modifierSettings, challengeToggles, rewardPreview.rpPerHour],
   );
 
   const runTarget = Math.max(2, run?.targetRarity ?? challenge?.targetRarity ?? RIFT_ASCENT.targetRarity);
@@ -284,7 +291,7 @@ export const RiftChallengesSection: React.FC<{
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
             <span>Passive generation scales with your saved modifier setup.</span>
-            <span>Current configuration: {rewardPreview.rpPerHour.toFixed(2)} RP/h baseline preview.</span>
+            <span>Current configuration: {projectedRate.toFixed(2)} RP/h projected.</span>
           </div>
         </div>
 
@@ -310,7 +317,7 @@ export const RiftChallengesSection: React.FC<{
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{error}</div>}
 
-      {!isActive && !runIsLegacyChallenge && (
+      {!isActive && (
         <section className="rounded-3xl border border-violet-400/25 bg-slate-900/75 p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -493,7 +500,7 @@ export const RiftChallengesSection: React.FC<{
               <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-300">
                 {isCompleted ? 'Rift run completed' : runIsLegacyChallenge ? 'Legacy trial in progress' : 'Active Rift save'}
               </div>
-              <h2 className="mt-1 text-2xl font-black text-white">{runIsLegacyChallenge ? (RIFT_ASCENT.name + ' · legacy save') : RIFT_ASCENT.name}</h2>
+              <h2 className="mt-1 text-2xl font-black text-white">{runIsLegacyChallenge ? ((challenge?.name ?? 'Legacy trial') + ' · legacy save') : RIFT_ASCENT.name}</h2>
               <p className="mt-1 text-xs text-slate-500">Started {new Date(run.startedAt).toLocaleString()} · Isolated Rift player save</p>
             </div>
             {isActive && (
@@ -618,7 +625,7 @@ export const RiftChallengesSection: React.FC<{
           {isCompleted && (
             <div className="mt-5 rounded-2xl border border-emerald-400/25 bg-emerald-400/5 p-4">
               <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Objective achieved</div>
-              <h3 className="mt-1 text-xl font-black text-white">Rift Ascent cleared.</h3>
+              <h3 className="mt-1 text-xl font-black text-white">{runIsLegacyChallenge ? (challenge?.name ?? 'Legacy trial') + ' cleared.' : 'Rift Ascent cleared.'}</h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-400">
                 The completion reward was credited using the difficulty settings captured when this run began. Adjust the configuration above and start another ascent.
               </p>
