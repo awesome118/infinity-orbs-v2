@@ -734,7 +734,7 @@ function App() {
   const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
-  const frenzyShardPopupShownAtRef = useRef(0);
+  const frenzyShardPopupShownAtRef = useRef('');
   const riftGameOpenedRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
@@ -799,12 +799,12 @@ function App() {
       !popupConfig.frenzyShard ||
       !pending ||
       state?.riftSession ||
-      frenzyShardPopupShownAtRef.current === pending.lastRewardAt ||
+      frenzyShardPopupShownAtRef.current === String(pending.lastRewardAt) + ':' + String(pending.eventCount) + ':' + String(pending.amount) ||
       showFrenzyPrompt ||
       showJoinSubredditPrompt ||
       showNotificationPrompt
     ) return;
-    frenzyShardPopupShownAtRef.current = pending.lastRewardAt;
+    frenzyShardPopupShownAtRef.current = String(pending.lastRewardAt) + ':' + String(pending.eventCount) + ':' + String(pending.amount);
     setFrenzyShardPopup({
       amount: Math.max(0, Number(pending.amount) || 0),
       eventCount: Math.max(1, Math.floor(Number(pending.eventCount) || 1)),
@@ -3858,7 +3858,7 @@ function App() {
           <DevDebugModal
             onClose={() => setShowDevModal(false)}
             onRefresh={refreshAll}
-            onForceFrenzyShardPopup={() => setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true })}
+            onForceFrenzyShardPopup={() => { setShowDevModal(false); setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true }); }}
           />
         )}
       </main>
