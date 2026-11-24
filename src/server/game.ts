@@ -5092,6 +5092,32 @@ function effectiveRollCritChance(
   );
 }
 
+async function readRiftMainGameMultipliers(userId: string): Promise<{ luckMultiplier: number; coinMultiplier: number; xpMultiplier: number }> {
+  const fallback = { luckMultiplier: 1, coinMultiplier: 1, xpMultiplier: 1 };
+  if (!userId) return fallback;
+  try {
+    const raw = await redis.get('io:rift-challenge:v1:' + userId);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as { riftPerkLevels?: Record<string, unknown> };
+    const levels = parsed?.riftPerkLevels && typeof parsed.riftPerkLevels === 'object'
+      ? parsed.riftPerkLevels
+      : {};
+    const level = (id: string) => {
+      const value = Number(levels[id]);
+      return Number.isFinite(value) ? Math.max(0, Math.min(10, Math.floor(value))) : 0;
+    };
+    return {
+      luckMultiplier: 1 + level('mainLuck') * 0.02,
+      coinMultiplier: 1 + level('mainCoins') * 0.05,
+      xpMultiplier: 1 + level('mainXp') * 0.05,
+    };
+  } catch (error) {
+    // Rift progression is an optional bonus. A damaged side record must never block a normal roll.
+    console.error('[Rift Perks] Could not read main-game bonuses; rolling without them.', error);
+    return fallback;
+  }
+}
+
 export async function applyRolls(
   s: PlayerState,
   activationCount = 1,
@@ -5122,6 +5148,7 @@ export async function applyRolls(
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const spyUserId = currentUserId();
+  const riftMultipliers = await readRiftMainGameMultipliers(spyUserId);
   const spyBefore = {
     totalRolls: s.totalRolls,
     totalCrits: s.totalCrits ?? 0,
@@ -5227,7 +5254,7 @@ export async function applyRolls(
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
-  const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) * riftMultipliers.luckMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
@@ -5697,7 +5724,8 @@ export async function applyRolls(
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
-      (1 + runeBonuses.xpGainPct / 100);
+      (1 + runeBonuses.xpGainPct / 100) *
+      riftMultipliers.xpMultiplier;
     const xpForBaseOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rewardRarity + 1) * 12)) * xpBonusMul);
     const xpForCriticalOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(criticalRewardRarity + 1) * 12)) * xpBonusMul);
     const xpForSupernovaOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(supernovaRewardRarity + 1) * 12)) * xpBonusMul);
@@ -5859,6 +5887,8 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
+  // Persistent Rift perks multiply the complete Coin payout, including filtered and transmuted bonuses.
+  coinsGained = normalizeCoinAmount(Math.round(coinsGained * riftMultipliers.coinMultiplier));
   coinsGained = normalizeCoinAmount(coinsGained);
   if (!previewOnly) {
     const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
