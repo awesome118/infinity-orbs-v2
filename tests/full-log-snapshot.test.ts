@@ -4,6 +4,7 @@ import {
   clearFullLogEvents,
   getFullLogSnapshot,
   getFullLogStatus,
+  getRecentFullLogEvents,
   recordFullLogEvent,
   sanitizeFullLogValue,
 } from '../src/client/diagnostics/full-log-snapshot.js';
@@ -35,6 +36,7 @@ test('full log snapshots preserve ordered events and redact sensitive fields', (
   assert.equal(snapshot.events[0]?.detail.text, '[REDACTED: user-entered content]');
   assert.equal(snapshot.events[0]?.detail.message, 'Player state changed while saving');
   assert.equal(snapshot.events[0]?.detail.attempt, 2);
+  assert.equal(getRecentFullLogEvents(0).length, 0);
 });
 
 test('full log data is bounded and circular values are safe to serialize', () => {
