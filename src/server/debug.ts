@@ -1202,12 +1202,15 @@ export async function resetPlayerGenerationAndSave(
   const generationKey = `player-generation:${userId}`;
   const playerKey = `player:${userId}`;
   const combatStateKey = `infinity-orbs:combat:${userId}`;
+  const riftArchiveKey = `io:rift-challenge:v1:${userId}`;
 
   // Reset the main save and its independent Combat save in one transaction.
   // Watching the combat key prevents a concurrent combat write from being silently overwritten.
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const txn = await redis.watch(generationKey, playerKey, combatStateKey);
+    const txn = await redis.watch(generationKey, playerKey, combatStateKey, riftArchiveKey);
     const rawGeneration = await redis.get(generationKey);
+    const previousPlayerSaveRaw = await redis.get(playerKey);
+    const previousCombatStateRaw = await redis.get(combatStateKey);
     const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
     const currentGeneration =
       Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
@@ -1229,8 +1232,17 @@ export async function resetPlayerGenerationAndSave(
     await txn.set(generationKey, String(generation));
     await txn.set(playerKey, JSON.stringify(fresh));
     await txn.del(combatStateKey);
+    await txn.del(riftArchiveKey);
     const committed = await txn.exec();
-    if (committed !== null) return { state: fresh, generation };
+    if (committed !== null) {
+      await cleanupPreviousPlayerSave(userId, previousPlayerSaveRaw).catch(error => {
+        console.warn('[Wipe] Previous player-save chunks could not be retired:', error);
+      });
+      await retireRedisLargeValue(combatStateKey, previousCombatStateRaw).catch(error => {
+        console.warn('[Wipe] Previous Combat chunks could not be retired:', error);
+      });
+      return { state: fresh, generation };
+    }
   }
 
   throw new Error('Player data changed repeatedly while resetting. Please retry.');
