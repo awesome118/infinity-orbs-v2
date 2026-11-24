@@ -176,3 +176,51 @@ test('read-only Redis storage audit runs from the production AppUpgrade trigger'
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.doesNotMatch(app, /clearAllDiagnosticLogs/);
 });
+
+
+test('combat saves use shared chunk manifests while preserving compressed payloads', () => {
+  const combat = source('src/server/combat.ts');
+  assert.match(combat, /createRedisLargeValueWritePlan\(key,compressStorageString\(JSON\.stringify\(s\)\)\)/);
+  assert.match(combat, /readRedisLargeValue\(key,previousRaw\)/);
+  assert.match(combat, /retireRedisLargeValue\(key,previousRaw\)/);
+  assert.match(combat, /discardRedisLargeValueWritePlan\(writePlan\)/);
+  assert.doesNotMatch(combat, /txn\.set\(key,compressStorageString\(JSON\.stringify\(s\)\)\)/);
+  assert.match(combat, /saveExists: storedRaw != null/);
+  assert.match(combat, /JSON\.parse\(decompressStorageString\(raw\)\)/);
+});
+
+
+test('admin guaranteed rolls queue into the next manual roll and use normal Rift completion handling', () => {
+  const shared = source('src/shared/game.ts');
+  const game = source('src/server/game.ts');
+  const debug = source('src/server/debug.ts');
+  const adminUi = source('src/client/components/DevDebugModal.tsx');
+  const rollUi = source('src/client/components/RollSection.tsx');
+
+  assert.match(shared, /adminGuaranteedRollQueued\?: boolean/);
+  assert.match(shared, /adminGuaranteedRollQueued: false/);
+  assert.match(debug, /debugRouter\.post\('\/queue-force-roll'/);
+  assert.match(debug, /s\.chainPatcherNextRarity = forcedRarity/);
+  assert.match(debug, /s\.adminGuaranteedRollQueued = true/);
+  assert.match(debug, /s\.autoRollEnabled = false/);
+  assert.match(adminUi, /\/api\/dev\/queue-force-roll/);
+  assert.match(adminUi, /Queue Next/);
+  assert.match(rollUi, /state\.adminGuaranteedRollQueued === true/);
+
+  const roll = game.slice(game.indexOf('export async function roll('));
+  assert.match(roll, /const usingChainPatcher = rawPatcherRarity >= 2/);
+  assert.match(roll, /usingChainPatcher \? rawPatcherRarity : undefined/);
+  assert.match(roll, /usingChainPatcher \? 1 : undefined/);
+  assert.match(roll, /s\.adminGuaranteedRollQueued = false/);
+  assert.match(game, /Use the queued guaranteed manual roll before re-enabling Auto Roll/);
+});
+
+
+test('Pages Admin API exposes the same queued guaranteed-roll action as Devvit', () => {
+  const pages = source('src/pages/admin-api.ts');
+  assert.match(pages, /case '\/queue-force-roll'/);
+  assert.match(pages, /rules\.MAX_ORB_RARITY/);
+  assert.match(pages, /state\.adminGuaranteedRollQueued = true/);
+  assert.match(pages, /state\.autoRollEnabled = false/);
+  assert.match(pages, /saveCurrentState\(state\)/);
+});

@@ -85,6 +85,7 @@ import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
 import { RiftChallengesSection } from './components/RiftChallengesSection.js';
+import { RIFT_CHALLENGES } from '../shared/rift-challenges.js';
 import { RedditPostSimulator } from './components/RedditPostSimulator.js';
 import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
@@ -110,6 +111,7 @@ import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
+import './rift-theme.css';
 
 function optimisticShardSpend(
   state: PlayerState,
@@ -377,6 +379,17 @@ function App() {
   const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
+  const [riftCompletionReveal, setRiftCompletionReveal] = useState<{ id: string; orb: Orb } | null>(null);
+  const [riftChallengeCompletedPopup, setRiftChallengeCompletedPopup] = useState<{
+    challengeName: string;
+    rarity: number;
+    isInfinity: boolean;
+  } | null>(null);
+  const pendingRiftChallengeCompletionRef = useRef<{
+    state: PlayerState;
+    response: RollResponse;
+    challengeName: string;
+  } | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
     totalVal: number;
     coins: number;
@@ -397,6 +410,7 @@ function App() {
   } | null>(null);
   const [alignmentPromptVisible, setAlignmentPromptVisible] = useState(false);
   const [alignmentPromptNow, setAlignmentPromptNow] = useState(() => Date.now());
+  const [alignmentChoiceDeadlineAt, setAlignmentChoiceDeadlineAt] = useState(0);
   const [alignmentChoiceBusy, setAlignmentChoiceBusy] = useState(false);
   const [alignmentChoiceError, setAlignmentChoiceError] = useState<string | null>(null);
   const alignmentDismissedPendingAtRef = useRef(0);
@@ -494,7 +508,13 @@ function App() {
       setCombatTutorialStep(1);
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
+  const riftActive = Boolean(state?.riftSession || state?.riftSaveContext?.startsWith('rift:'));
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
+  useEffect(() => {
+    if (!riftActive) return;
+    setFrenzyArmed(false);
+    setNewBestModalData(null);
+  }, [riftActive]);
   const riftChallengesMode = tab === 'challenges' && !state?.riftSession;
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
   const standalonePageMode = combatMode || riftChallengesMode;
@@ -1554,6 +1574,7 @@ function App() {
       setAlignmentPromptVisible(false);
       alignmentDismissedPendingAtRef.current = 0;
       alignmentPendingSeenRef.current = 0;
+      setAlignmentChoiceDeadlineAt(0);
       return;
     }
     let cancelled = false;
@@ -1581,6 +1602,7 @@ function App() {
         setAlignmentStatus(status);
         if (status.pending) {
           setAlignmentPromptVisible(true);
+          setAlignmentChoiceDeadlineAt(status.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS);
           const pendingKey = status.pendingAt || -1;
           if (alignmentPendingSeenRef.current !== pendingKey) {
             alignmentPendingSeenRef.current = pendingKey;
@@ -1592,6 +1614,7 @@ function App() {
           // Never hide the chooser until the choice has actually committed.
           if (!alignmentChoiceBusy && !alignmentChoiceError) {
             setAlignmentPromptVisible(false);
+            setAlignmentChoiceDeadlineAt(0);
           }
         }
       } catch {
@@ -1613,28 +1636,28 @@ function App() {
     };
   }, [splashEntered, state?.masterySkills?.celestialAlignment, isAdmin, alignmentChoiceBusy, alignmentChoiceError]);
 
-  // The chooser is a 60-second offer. Its expiry is enforced by the server;
-  // this local clock only keeps the modal responsive between status polls.
+  // Keep the visible 60-second deadline independent from server polling. A choice
+  // already submitted before expiry may finish during the server's short grace period.
   useEffect(() => {
-    const pendingAt = Number(alignmentStatus?.pendingAt ?? 0);
-    if (!alignmentPromptVisible || !alignmentStatus?.pending || pendingAt <= 0) return;
+    if (!alignmentPromptVisible || alignmentChoiceDeadlineAt <= 0) return;
+    const pendingAt = alignmentChoiceDeadlineAt - CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS;
     const tick = () => {
       const now = Date.now();
       setAlignmentPromptNow(now);
-      if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
-        alignmentDismissedPendingAtRef.current = Math.max(
-          alignmentDismissedPendingAtRef.current,
-          pendingAt,
-        );
+      if (now >= alignmentChoiceDeadlineAt) {
+        alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, pendingAt);
         alignmentPendingSeenRef.current = 0;
-        setAlignmentChoiceError(null);
-        setAlignmentPromptVisible(false);
+        if (!alignmentChoiceBusy) {
+          setAlignmentChoiceError(null);
+          setAlignmentPromptVisible(false);
+          setAlignmentChoiceDeadlineAt(0);
+        }
       }
     };
     tick();
     const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [alignmentPromptVisible, alignmentStatus?.pending, alignmentStatus?.pendingAt, alignmentChoiceBusy]);
+  }, [alignmentPromptVisible, alignmentChoiceDeadlineAt, alignmentChoiceBusy]);
 
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
@@ -2061,6 +2084,30 @@ function App() {
       });
   }, [applyPlayerState, beginOptimisticState, tab, splashEntered]);
 
+  const finishRiftCompletionReveal = useCallback(() => {
+    const pending = pendingRiftChallengeCompletionRef.current;
+    if (!pending) return;
+    pendingRiftChallengeCompletionRef.current = null;
+
+    const { response } = pending;
+    applyPlayerState(pending.state);
+    setLastOrb(response.orb);
+    setLastBatch(response.batch ?? [response.orb]);
+    setBatchSummary({
+      totalVal: response.totalRollValue,
+      coins: response.coinsGained,
+      shards: response.shardsGained,
+      xp: response.xpGained,
+    });
+    setReadyAt(Date.now() + response.rollsRemainingUntilNext);
+    setRiftChallengeCompletedPopup({
+      challengeName: pending.challengeName,
+      rarity: response.orb.rarity,
+      isInfinity: response.orb.isInfinity === true,
+    });
+    setRiftCompletionReveal(null);
+  }, [applyPlayerState]);
+
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false, useTimeEnergy = false) => {
     if (combatModeRef.current || (useTimeEnergy && (isAutoRoll || frenzyArmed))) return;
@@ -2291,19 +2338,38 @@ function App() {
         completedTimeEnergyRollCount = Math.max(0, Math.floor(Number(res.rollsProcessed) || 0));
       }
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
-      if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
+      const isRiftSave = Boolean(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'));
+      if (!isAutoRoll && !isRiftSave && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
         setNewBestModalData({ orb: res.orb, prevBest: previousBest });
       }
-      applyPlayerState(res.state);
-      setLastOrb(res.orb);
-      setLastBatch(res.batch ?? [res.orb]);
-      setBatchSummary({
-        totalVal: res.totalRollValue,
-        coins: res.coinsGained,
-        shards: res.shardsGained,
-        xp: res.xpGained,
-      });
-      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      const isRiftCompletion = res.state.riftRunComplete === true && isRiftSave;
+      if (isRiftCompletion) {
+        const challengeName = RIFT_CHALLENGES.find(challenge =>
+          challenge.id === currentState.riftSession?.challengeId,
+        )?.name ?? 'Rift Challenge';
+        const runId = currentState.riftSession?.runId ?? currentState.riftSaveContext ?? 'rift-complete';
+        pendingRiftChallengeCompletionRef.current = {
+          state: res.state,
+          response: res,
+          challengeName,
+        };
+        setRiftCompletionReveal({
+          id: `${runId}-${res.state.stateRevision ?? Date.now()}`,
+          orb: res.orb,
+        });
+      } else {
+        applyPlayerState(res.state);
+        setLastOrb(res.orb);
+        setLastBatch(res.batch ?? [res.orb]);
+        setBatchSummary({
+          totalVal: res.totalRollValue,
+          coins: res.coinsGained,
+          shards: res.shardsGained,
+          xp: res.xpGained,
+        });
+        setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      }
+
       mutationResyncNeededRef.current = false;
       const activeTicket = rollTicketRef.current;
       if (
@@ -2768,9 +2834,13 @@ function App() {
 
   // Daily Orb Frenzy
   const handleStartOrbFrenzy = async () => {
-    if (frenzyArmed) return;
-
     const current = stateRef.current;
+    if (current?.riftSession || current?.riftSaveContext?.startsWith('rift:')) {
+      setFrenzyArmed(false);
+      showToast('Orb Frenzy cannot be charged during a Rift run.', 'warn');
+      return;
+    }
+    if (frenzyArmed) return;
     if (!current) return;
     const remaining = frenzyCooldownRemaining(current.lastFrenzyAt);
     if (remaining > 0) {
@@ -3003,11 +3073,14 @@ function App() {
 
   const handleChooseCelestialAlignment = async (choice: CelestialAlignmentChoice) => {
     if (alignmentChoiceBusy) return;
-    const currentPendingAt = Number(alignmentStatus?.pendingAt ?? 0);
+    const currentPendingAt = alignmentChoiceDeadlineAt > 0
+      ? alignmentChoiceDeadlineAt - CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS
+      : Number(alignmentStatus?.pendingAt ?? 0);
     if (currentPendingAt > 0 && Date.now() >= currentPendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
       setAlignmentPromptVisible(false);
       setAlignmentChoiceError(null);
+      setAlignmentChoiceDeadlineAt(0);
       return;
     }
     // The chooser can be visible before the first status poll has populated its timestamp.
@@ -3048,6 +3121,7 @@ function App() {
       alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, chosenPendingAt);
       alignmentPendingSeenRef.current = 0;
       setAlignmentPromptVisible(false);
+      setAlignmentChoiceDeadlineAt(0);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not activate this Alignment.';
       const expired = currentPendingAt > 0 &&
@@ -3056,6 +3130,7 @@ function App() {
         alignmentDismissedPendingAtRef.current = Math.max(alignmentDismissedPendingAtRef.current, currentPendingAt);
         setAlignmentChoiceError(null);
         setAlignmentPromptVisible(false);
+        setAlignmentChoiceDeadlineAt(0);
       } else {
         setAlignmentChoiceError(message);
         setAlignmentPromptVisible(true);
@@ -3066,10 +3141,8 @@ function App() {
     }
   };
 
-  const alignmentPromptSecondsLeft = alignmentStatus?.pendingAt
-    ? Math.max(0, Math.ceil((
-      alignmentStatus.pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS - alignmentPromptNow
-    ) / 1_000))
+  const alignmentPromptSecondsLeft = alignmentChoiceDeadlineAt > 0
+    ? Math.max(0, Math.ceil((alignmentChoiceDeadlineAt - alignmentPromptNow) / 1_000))
     : 0;
   const alignmentPromptCountdown = `${alignmentPromptSecondsLeft}s`;
 
@@ -3858,6 +3931,10 @@ function App() {
           <DevDebugModal
             onClose={() => setShowDevModal(false)}
             onRefresh={refreshAll}
+            onForceRollQueued={(queuedState) => {
+              changeTab('roll');
+              applyPlayerState(queuedState);
+            }}
             onForceFrenzyShardPopup={() => { setShowDevModal(false); setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true }); }}
           />
         )}
@@ -3891,7 +3968,25 @@ function App() {
   }
 
   return (
-    <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
+    <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} ${riftActive ? 'io-rift-active' : ''} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
+      {riftActive && <div className="io-rift-atmosphere" aria-hidden="true">
+        <div className="io-rift-deepfield" />
+        <div className="io-rift-nebula io-rift-nebula--violet" />
+        <div className="io-rift-nebula io-rift-nebula--blue" />
+        <div className="io-rift-nebula io-rift-nebula--core" />
+        <div className="io-rift-starfield io-rift-starfield--far" />
+        <div className="io-rift-starfield io-rift-starfield--near" />
+        <div className="io-rift-spiral-arms" />
+        <div className="io-rift-energy-stream io-rift-energy-stream--one" />
+        <div className="io-rift-energy-stream io-rift-energy-stream--two" />
+        <div className="io-rift-vortex">
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--outer" />
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--middle" />
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--inner" />
+          <div className="io-rift-vortex__core" />
+        </div>
+        <div className="io-rift-particles" />
+      </div>}
       {/* Sticky Top Header */}
       <Header
         state={state}
@@ -4356,7 +4451,7 @@ function App() {
             lastBatch={lastBatch}
             batchSummary={batchSummary}
             readyAt={readyAt}
-            busy={isRolling}
+            busy={isRolling || Boolean(riftCompletionReveal)}
             autoRoll={autoRoll}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
@@ -4367,7 +4462,9 @@ function App() {
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
             onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
-            onNewBest={(orb, prevBest) => setNewBestModalData({ orb, prevBest })}
+            onNewBest={(orb, prevBest) => { if (!riftActive) setNewBestModalData({ orb, prevBest }); }}
+            riftCompletionReveal={riftCompletionReveal}
+            onRiftCompletionRevealComplete={finishRiftCompletionReveal}
           />
         )}
 
@@ -4595,8 +4692,36 @@ function App() {
         </div>
       )}
 
+      {riftChallengeCompletedPopup && (
+        <div className="io-rift-completion-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="io-rift-completion-title"
+            className="io-rift-completion-card w-full max-w-md"
+          >
+            <div className="io-rift-completion-kicker">RIFT OBJECTIVE ACHIEVED</div>
+            <h2 id="io-rift-completion-title">Challenge completed</h2>
+            <p className="io-rift-completion-description">
+              {riftChallengeCompletedPopup.challengeName} has been cleared. Your completion reward has been added to the Rift archive.
+            </p>
+            <div className="io-rift-completion-orb-result">
+              <span>Clearing orb</span>
+              <strong>1 / {formatRarity(riftChallengeCompletedPopup.rarity, riftChallengeCompletedPopup.isInfinity)}</strong>
+            </div>
+            <button
+              type="button"
+              className="io-rift-completion-continue"
+              onClick={() => setRiftChallengeCompletedPopup(null)}
+            >
+              Continue
+            </button>
+          </section>
+        </div>
+      )}
+
       {/* New Best Ball Celebration Modal */}
-      {newBestModalData && (
+      {newBestModalData && !riftActive && (
         <NewBestModal
           orb={newBestModalData.orb}
           prevBest={newBestModalData.prevBest}
@@ -4821,6 +4946,10 @@ function App() {
             setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true });
           }}
           onPopupConfigChanged={setPopupConfig}
+            onForceRollQueued={(queuedState) => {
+              changeTab('roll');
+              applyPlayerState(queuedState);
+            }}
           onForceRollResult={res => {
             changeTab('roll');
             applyPlayerState(res.state);

@@ -49,6 +49,7 @@ import {
   CELESTIAL_ALIGNMENT_MAX_INTERVAL_MS,
   CELESTIAL_ALIGNMENT_DURATION_MS,
   CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
+  CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS,
   type CelestialAlignmentChoice,
   type CelestialAlignmentInstance,
   normalizeCelestialAlignmentInstances,
@@ -7203,6 +7204,9 @@ export async function buyChainPatcher(): Promise<{
       throw new Error('Chain Patcher is on cooldown for ' + Math.ceil(remaining / 3_600_000) + ' more hour(s).');
     }
     const pending = Math.floor(Number(s.chainPatcherNextRarity ?? 0) || 0);
+    if (s.adminGuaranteedRollQueued === true) {
+      throw new Error('A guaranteed admin roll is already queued. Use it before buying another Chain Patcher charge.');
+    }
     if (pending >= 2 && pending <= MAX_ORB_RARITY) {
       throw new Error('Your Chain Patcher is already charged. Roll once to use it before buying another.');
     }
@@ -7276,6 +7280,9 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
   }
 
   if (enabled) {
+    if (s.adminGuaranteedRollQueued === true) {
+      throw new Error('Use the queued guaranteed manual roll before re-enabling Auto Roll.');
+    }
     const pendingPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
     if (pendingPatcherRarity !== 0) {
       throw new Error(Number.isSafeInteger(pendingPatcherRarity) &&
@@ -7357,6 +7364,9 @@ export async function roll(
       throw new Error('Chain Patcher save data is invalid; no roll was processed.');
     }
     const usingChainPatcher = rawPatcherRarity >= 2;
+    if (s.adminGuaranteedRollQueued === true && !usingChainPatcher) {
+      throw new Error('Guaranteed admin roll state is missing its exact rarity target; no roll was processed.');
+    }
     if (isAuto && usingChainPatcher) {
       throw new Error('Chain Patcher charge must be used by a manual roll. Auto Roll remains paused.');
     }
@@ -7472,7 +7482,10 @@ export async function roll(
     }
     if (!bestOrb) throw new Error('No rolls were processed.');
 
-    if (usingChainPatcher) s.chainPatcherNextRarity = 0;
+    if (usingChainPatcher) {
+      s.chainPatcherNextRarity = 0;
+      s.adminGuaranteedRollQueued = false;
+    }
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + freeRollActivations);
@@ -8477,7 +8490,7 @@ export async function getCelestialAlignmentStatus(): Promise<{
     // Pending choices are short-lived offers, not persistent windows. Expire
     // them on the server as well as in the client so stale tabs cannot claim one.
     const pendingAt = Math.max(0, Math.floor(Number(s.alignmentPendingAt ?? 0) || 0));
-    if (pendingAt > 0 && now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+    if (pendingAt > 0 && now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS + CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS) {
       s.alignmentPendingAt = 0;
       s.alignmentPendingForced = false;
       s.alignmentNextAt = hasMastery ? nextCelestialAlignmentAt(now) : 0;
@@ -8518,8 +8531,11 @@ export async function getCelestialAlignmentStatus(): Promise<{
     if (changed) await save(s);
     return {
       unlocked: true,
-      pending: (s.alignmentPendingAt ?? 0) > 0,
-      pendingAt: s.alignmentPendingAt ?? 0,
+      pending: (s.alignmentPendingAt ?? 0) > 0 &&
+        now < Number(s.alignmentPendingAt) + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS,
+      pendingAt: (s.alignmentPendingAt ?? 0) > 0 &&
+        now < Number(s.alignmentPendingAt) + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS
+        ? Number(s.alignmentPendingAt) : 0,
       activeChoice: latest?.choice ?? null,
       activeUntil: latest?.expiresAt ?? 0,
       activeInstances,
@@ -8534,6 +8550,7 @@ export async function chooseCelestialAlignment(
   state: PlayerState; activeChoice: CelestialAlignmentChoice; activeUntil: number;
   activeInstances: CelestialAlignmentInstance[]; nextAt: number;
 }> {
+  const choiceQueuedAt = Date.now();
   return withPlayerMutationLock(async () => {
     if (!['starseeker', 'goldenOrbit', 'clockwork'].includes(choice)) throw new Error('Choose a valid Celestial Alignment effect.');
     const s = await loadRaw();
@@ -8543,7 +8560,10 @@ export async function chooseCelestialAlignment(
     const pendingAt = Number(s.alignmentPendingAt ?? 0);
     if (!(pendingAt > 0)) throw new Error('There is no Alignment choice waiting.');
     const now = Date.now();
-    if (now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS) {
+    if (
+      choiceQueuedAt >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS ||
+      now >= pendingAt + CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS + CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS
+    ) {
       throw new Error('The Alignment choice window expired. The next event will arrive later.');
     }
 

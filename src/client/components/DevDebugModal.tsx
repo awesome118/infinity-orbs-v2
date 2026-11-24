@@ -6,7 +6,7 @@ import {
   Database, Wand2, Trash2, Gauge, ListRestart, Save, Power, Copy, ClipboardCheck, Gift, Eye, Search,
 } from 'lucide-react';
 import { PRESTIGE_UPGRADES, PREMIUM_BOOSTERS, AUTOMATIONS, CONTINUUM_TIERS, getOrbInfo, visibleContinuumTiers, formatRarity, formatNumber, frenzyOrbCountForRarity, DEFAULT_POPUP_CONFIG } from '../../shared/game.js';
-import type { RollResponse, PopupConfig, PopupStats, GamePopupId } from '../../shared/game.js';
+import type { RollResponse, PlayerState, PopupConfig, PopupStats, GamePopupId } from '../../shared/game.js';
 import { APP_VERSION } from '../../shared/version.js';
 import { sound } from '../sound.js';
 import { CombatAdminTools } from './CombatAdminTools.js';
@@ -48,6 +48,7 @@ interface DevDebugModalProps {
   onClose: () => void;
   onRefresh: () => Promise<void>;
   onForceRollResult?: (res: RollResponse) => void;
+  onForceRollQueued?: (state: PlayerState, targetRarity: number) => void;
   onForceFrenzyPopup?: () => void;
   onForceFrenzyShardPopup?: () => void;
   onForceNotificationPopup?: () => void;
@@ -530,6 +531,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onClose,
   onRefresh,
   onForceRollResult,
+  onForceRollQueued,
   onForceFrenzyPopup,
   onForceFrenzyShardPopup,
   onForceNotificationPopup,
@@ -1828,6 +1830,14 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     const data = await sendAdminAction('/api/dev/force-roll', { rarity: rarityNum });
     if (data && onForceRollResult) {
       onForceRollResult(data as RollResponse);
+      onClose();
+    }
+  };
+
+  const handleQueueGuaranteedRoll = async (rarityNum: number) => {
+    const data = await sendAdminAction('/api/dev/queue-force-roll', { rarity: rarityNum });
+    if (data?.state && onForceRollQueued) {
+      onForceRollQueued(data.state as PlayerState, Number(data.targetRarity) || rarityNum);
       onClose();
     }
   };
@@ -5697,24 +5707,26 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
           <div className="mt-3 space-y-3">
         <section className={panelBase}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-300">
-            <Play className="w-4 h-4" /> Force Exact Roll
+            <Play className="w-4 h-4" /> Guaranteed Next Roll
           </div>
           <div className="flex gap-2">
             <input
-              title="Exact rarity denominator for the forced roll. For example, 100000 means 1/100,000."
+              title="Exact rarity denominator for your next manual roll. For example, 100000 means 1/100,000."
               type="number"
+              min="2"
+              step="1"
               value={customRarity}
               onChange={e => setCustomRarity(e.target.value)}
               className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
               placeholder="Rarity denominator"
             />
-            <button type="button" title="Perform one roll at the exact rarity entered in the field." onClick={() => void handleForceRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
-              Roll Exact
+            <button type="button" title="Queue this exact rarity for the next manual Roll. It will process rewards and challenge completion normally." onClick={() => void handleQueueGuaranteedRoll(Number(customRarity))} disabled={loading} className={`${buttonBase} bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white px-4`}>
+              Queue Next
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {[100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map(v => (
-              <button type="button" title={`Force one roll at exact rarity 1/${formatRarity(v)}.`} key={v} onClick={() => void handleForceRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
+              <button type="button" title={`Queue the next manual roll at exact rarity 1/${formatRarity(v)}.`} key={v} onClick={() => void handleQueueGuaranteedRoll(v)} disabled={loading} className={`${buttonBase} bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 px-2.5 py-1.5 font-mono`}>
                 1/{v.toLocaleString()}
               </button>
             ))}

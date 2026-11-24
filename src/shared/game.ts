@@ -188,6 +188,8 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
+/** Allows a selection admitted before expiry to finish in the server action queue. */
+export const CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS = 30 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
 const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];
@@ -1187,6 +1189,8 @@ export interface PlayerState {
   runeTemporalMomentum?: number;
   /** If positive, the next accepted roll is exactly one orb of this rarity. */
   chainPatcherNextRarity?: number;
+  /** True when the pending exact-rarity charge came from the admin's Queue Next command. */
+  adminGuaranteedRollQueued?: boolean;
   /** Server-calculated Codex target shown before purchase; null means no extension exists. */
   chainPatcherSuggestedRarity?: number | null;
   /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
@@ -1340,6 +1344,7 @@ export interface RarityTierInfo {
   approxChance: string;
   color: string;
   bgGradient: string;
+  animated?: boolean;
 }
 
 export function getOrbTier(rarity: number): RarityTierName {
@@ -1586,7 +1591,7 @@ function orbNameIndex(rarityValue: number, nameCount: number): number {
 export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
   if (isInfinity) {
     const { color, bgGradient } = { color: '#ffffff', bgGradient: 'radial-gradient(circle at 35% 30%, #ffffff, #c084fc 25%, #22d3ee 55%, #020617 100%)' };
-    return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient };
+    return { rarity, name: 'Infinity Orb', tier: 'Infinity', approxChance: '1 / Infinity', color, bgGradient, animated: false };
   }
   const tier = getOrbTier(rarity);
   const names = ORB_TIER_NAMES[tier];
@@ -1600,6 +1605,7 @@ export function getOrbInfo(rarity: number, isInfinity = false): RarityTierInfo {
     approxChance: `1 / ${formatRarity(rarity)}`,
     color,
     bgGradient,
+    animated: rarity >= 1e38,
   };
 }
 
@@ -2027,6 +2033,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     runeConstellationCharge: 0,
     runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,
+    adminGuaranteedRollQueued: false,
     chainPatcherCooldownUntil: 0,
     lastRollAt: null,
     timeEnergy: 0,
