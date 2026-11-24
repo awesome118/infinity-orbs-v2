@@ -120,7 +120,7 @@ import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, abandonRiftChallenge } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1099,14 +1099,15 @@ export function createApp() {
     }
   });
 
-  app.post('/api/rift-challenges/start', async (_req, res) => {
+  app.post('/api/rift-challenges/start', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      res.json(await startRiftChallenge());
+      res.json(await startRiftChallenge(req.body?.challengeId));
     } catch (error: any) {
       const message = error?.message || 'Could not start this challenge.';
       const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
-        : message.includes('Reach Level 5') || message.includes('already have an active challenge') ? 400
+        : message.includes('Reach Level') || message.includes('Complete ') ||
+          message.includes('already have an active challenge') || message.includes('valid Rift Challenge') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message });
     }
@@ -1155,6 +1156,24 @@ export function createApp() {
           message.includes('There is no active Rift Challenge') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
+    }
+  });
+
+  app.post('/api/rift-challenges/perk', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const perkId = req.body?.perkId;
+      if (typeof perkId !== 'string' || perkId.length > 40) {
+        return res.status(400).json({ error: 'Choose a valid Rift perk.' });
+      }
+      res.json(await buyRiftPerk(perkId));
+    } catch (error: any) {
+      const message = error?.message || 'Rift perk purchase failed.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message.startsWith('Need ') || message.includes('already at maximum') ||
+          message.includes('valid Rift perk') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
     }
   });
 
