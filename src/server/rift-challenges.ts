@@ -360,7 +360,7 @@ export async function getRiftChallengeAdminStatus(userIdValue: unknown): Promise
       archive,
       kudosStats: {
         last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= now - RIFT_KUDOS_WINDOW_MS).length,
-        sinceLastOpen: archive.kudosSinceLastOpen,
+        sinceLastOpen: archive.kudosDisplaySinceLastOpen + archive.kudosSinceLastOpen,
       },
       generatedAt: now,
     };
