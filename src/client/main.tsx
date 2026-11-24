@@ -80,6 +80,7 @@ import {
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
+import { RIFT_CHALLENGES } from '../shared/rift-challenges.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
 import {
   DEFAULT_LIVE_BALANCE_CONFIG,
@@ -429,6 +430,17 @@ function App() {
   const [splashEntered, setSplashEntered] = useState(false);
   const [lastOrb, setLastOrb] = useState<Orb | null>(null);
   const [lastBatch, setLastBatch] = useState<Orb[]>([]);
+  const [riftCompletionReveal, setRiftCompletionReveal] = useState<{ id: string; orb: Orb } | null>(null);
+  const [riftChallengeCompletedPopup, setRiftChallengeCompletedPopup] = useState<{
+    challengeName: string;
+    rarity: number;
+    isInfinity: boolean;
+  } | null>(null);
+  const pendingRiftChallengeCompletionRef = useRef<{
+    state: PlayerState;
+    response: RollResponse;
+    challengeName: string;
+  } | null>(null);
   const [batchSummary, setBatchSummary] = useState<{
     totalVal: number;
     coins: number;
@@ -2119,6 +2131,30 @@ function App() {
       });
   }, [applyPlayerState, beginOptimisticState, tab, splashEntered]);
 
+  const finishRiftCompletionReveal = useCallback(() => {
+    const pending = pendingRiftChallengeCompletionRef.current;
+    if (!pending) return;
+    pendingRiftChallengeCompletionRef.current = null;
+
+    const { response } = pending;
+    applyPlayerState(pending.state);
+    setLastOrb(response.orb);
+    setLastBatch(response.batch ?? [response.orb]);
+    setBatchSummary({
+      totalVal: response.totalRollValue,
+      coins: response.coinsGained,
+      shards: response.shardsGained,
+      xp: response.xpGained,
+    });
+    setReadyAt(Date.now() + response.rollsRemainingUntilNext);
+    setRiftChallengeCompletedPopup({
+      challengeName: pending.challengeName,
+      rarity: response.orb.rarity,
+      isInfinity: response.orb.isInfinity === true,
+    });
+    setRiftCompletionReveal(null);
+  }, [applyPlayerState]);
+
   // Roll action
   const handleRoll = useCallback(async (isAutoRoll = false, useTimeEnergy = false) => {
     if (combatModeRef.current || (useTimeEnergy && (isAutoRoll || frenzyArmed))) return;
@@ -2310,11 +2346,13 @@ function App() {
       const expectedPredictionRevision = ticket.predictionBaseRevision +
         Math.max(0, ticketIndex - ticket.predictionStartIndex);
       const prediction = ticket.predictions.find(item => item.index === ticketIndex);
+      const isRiftSaveForRoll = Boolean(stateForRoll.riftSession || stateForRoll.riftSaveContext?.startsWith('rift:'));
       const canShowPrediction = Boolean(
         prediction &&
         stateForRoll.stateRevision === expectedPredictionRevision &&
         (isAutoRoll || (stateForRoll.freeRolls ?? 0) <= 0) &&
-        !useTimeEnergy,
+        !useTimeEnergy &&
+        !isRiftSaveForRoll,
       );
       if (canShowPrediction && prediction) {
         setLastOrb(prediction.orb);
@@ -2356,16 +2394,34 @@ function App() {
             setNewBestModalData({ orb: res.orb, prevBest: previousBest });
           }
       }
-      applyPlayerState(res.state);
-      setLastOrb(res.orb);
-      setLastBatch(res.batch ?? [res.orb]);
-      setBatchSummary({
-        totalVal: res.totalRollValue,
-        coins: res.coinsGained,
-        shards: res.shardsGained,
-        xp: res.xpGained,
-      });
-      setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      const isRiftCompletion = res.state.riftRunComplete === true &&
+        Boolean(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'));
+      if (isRiftCompletion) {
+        const challengeName = RIFT_CHALLENGES.find(challenge =>
+          challenge.id === currentState.riftSession?.challengeId,
+        )?.name ?? 'Rift Challenge';
+        const runId = currentState.riftSession?.runId ?? currentState.riftSaveContext ?? 'rift-complete';
+        pendingRiftChallengeCompletionRef.current = {
+          state: res.state,
+          response: res,
+          challengeName,
+        };
+        setRiftCompletionReveal({
+          id: `${runId}-${res.state.stateRevision ?? Date.now()}`,
+          orb: res.orb,
+        });
+      } else {
+        applyPlayerState(res.state);
+        setLastOrb(res.orb);
+        setLastBatch(res.batch ?? [res.orb]);
+        setBatchSummary({
+          totalVal: res.totalRollValue,
+          coins: res.coinsGained,
+          shards: res.shardsGained,
+          xp: res.xpGained,
+        });
+        setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+      }
       mutationResyncNeededRef.current = false;
       const activeTicket = rollTicketRef.current;
       if (
@@ -3964,6 +4020,13 @@ function App() {
   return (
     <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} ${riftActive ? 'io-rift-active' : ''} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
       {riftActive && <div className="io-rift-atmosphere" aria-hidden="true">
+        <div className="io-rift-deepfield" />
+        <div className="io-rift-nebula io-rift-nebula--violet" />
+        <div className="io-rift-nebula io-rift-nebula--blue" />
+        <div className="io-rift-nebula io-rift-nebula--core" />
+        <div className="io-rift-starfield io-rift-starfield--far" />
+        <div className="io-rift-starfield io-rift-starfield--near" />
+        <div className="io-rift-spiral-arms" />
         <div className="io-rift-energy-stream io-rift-energy-stream--one" />
         <div className="io-rift-energy-stream io-rift-energy-stream--two" />
         <div className="io-rift-vortex">
@@ -4453,8 +4516,10 @@ function App() {
             lastBatch={lastBatch}
             batchSummary={batchSummary}
             readyAt={readyAt}
-            busy={isRolling}
+            busy={isRolling || Boolean(riftCompletionReveal)}
             autoRoll={autoRoll}
+            riftCompletionReveal={riftCompletionReveal}
+            onRiftCompletionRevealComplete={finishRiftCompletionReveal}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onOpenUpgrades={() => changeTab('upgrades')}
@@ -4696,6 +4761,34 @@ function App() {
               <button type="button" onClick={dismissJoinSubredditPrompt} disabled={claimingFollowReward} className="io-public-button io-public-button-secondary" data-testid="join-subreddit-dismiss">Not now</button>
             </div>
             <button type="button" onClick={dismissJoinSubredditPrompt} className="io-modal-close" aria-label="Close join subreddit prompt" disabled={claimingFollowReward}><X className="w-4 h-4" /></button>
+          </section>
+        </div>
+      )}
+
+      {riftChallengeCompletedPopup && (
+        <div className="io-rift-completion-backdrop fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="io-rift-completion-title"
+            className="io-rift-completion-card w-full max-w-md"
+          >
+            <div className="io-rift-completion-kicker">RIFT OBJECTIVE ACHIEVED</div>
+            <h2 id="io-rift-completion-title">Challenge completed</h2>
+            <p className="io-rift-completion-description">
+              {riftChallengeCompletedPopup.challengeName} has been cleared. Your completion reward has been added to the Rift archive.
+            </p>
+            <div className="io-rift-completion-orb-result">
+              <span>Clearing orb</span>
+              <strong>1 / {formatRarity(riftChallengeCompletedPopup.rarity, riftChallengeCompletedPopup.isInfinity)}</strong>
+            </div>
+            <button
+              type="button"
+              className="io-rift-completion-continue"
+              onClick={() => setRiftChallengeCompletedPopup(null)}
+            >
+              Continue
+            </button>
           </section>
         </div>
       )}

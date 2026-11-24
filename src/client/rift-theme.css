@@ -48,9 +48,11 @@ body:has(.io-ui.io-rift-active) {
   opacity: .98;
   contain: strict;
   background:
-    radial-gradient(ellipse at 50% 43%, rgba(105, 55, 174, .15), transparent 43%),
-    radial-gradient(ellipse at 4% 84%, rgba(95, 43, 158, .13), transparent 42%),
-    radial-gradient(ellipse at 96% 10%, rgba(151, 89, 226, .12), transparent 40%);
+    radial-gradient(ellipse at 50% 48%, rgba(117, 69, 194, .22), transparent 56%),
+    radial-gradient(ellipse at 4% 84%, rgba(95, 43, 158, .19), transparent 43%),
+    radial-gradient(ellipse at 96% 10%, rgba(151, 89, 226, .18), transparent 42%),
+    radial-gradient(ellipse at 72% 78%, rgba(51, 91, 173, .11), transparent 47%),
+    linear-gradient(160deg, #080410 0%, #10091e 48%, #070510 100%);
 }
 
 .io-rift-atmosphere::before,
@@ -502,3 +504,391 @@ body:has(.io-ui.io-rift-active) {
   }
 }
 
+
+
+/* Deeper Rift scenery: distant star layers, slow nebulae, and broad spiral arms. */
+.io-rift-deepfield {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 46%, rgba(25, 12, 43, .08), rgba(4, 3, 10, .82) 76%),
+    radial-gradient(ellipse at 14% 22%, rgba(64, 35, 109, .18), transparent 48%),
+    radial-gradient(ellipse at 84% 73%, rgba(35, 65, 125, .14), transparent 50%);
+}
+
+.io-rift-nebula {
+  position: absolute;
+  z-index: 1;
+  width: 78vmax;
+  height: 54vmax;
+  min-width: 480px;
+  min-height: 360px;
+  border-radius: 50%;
+  filter: blur(52px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.io-rift-nebula--violet {
+  top: -20%;
+  left: -28%;
+  opacity: .46;
+  background:
+    radial-gradient(ellipse at 40% 48%, rgba(142, 75, 221, .34) 0%, rgba(104, 54, 169, .16) 37%, transparent 72%),
+    radial-gradient(ellipse at 72% 55%, rgba(198, 139, 255, .13) 0%, transparent 56%);
+  animation: io-rift-nebula-drift 38s ease-in-out infinite alternate;
+}
+
+.io-rift-nebula--blue {
+  right: -30%;
+  bottom: -28%;
+  width: 70vmax;
+  height: 56vmax;
+  opacity: .36;
+  background:
+    radial-gradient(ellipse at 48% 43%, rgba(76, 92, 190, .25) 0%, rgba(87, 47, 148, .16) 42%, transparent 72%),
+    radial-gradient(ellipse at 32% 62%, rgba(176, 105, 232, .16) 0%, transparent 56%);
+  animation: io-rift-nebula-drift 49s ease-in-out infinite alternate-reverse;
+}
+
+.io-rift-nebula--core {
+  top: 27%;
+  left: 34%;
+  width: 42vmax;
+  height: 35vmax;
+  opacity: .24;
+  background: radial-gradient(ellipse at center, rgba(177, 125, 243, .28), rgba(91, 48, 151, .10) 43%, transparent 74%);
+  animation: io-rift-nebula-breathe 17s ease-in-out infinite;
+}
+
+.io-rift-starfield {
+  position: absolute;
+  z-index: 2;
+  inset: -12%;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, #000 20%, #000 68%, transparent 94%);
+  will-change: background-position, opacity;
+}
+
+.io-rift-starfield--far {
+  opacity: .48;
+  background-image:
+    radial-gradient(circle, rgba(238, 223, 255, .78) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(170, 142, 235, .55) 0 .8px, transparent 1.4px),
+    radial-gradient(circle, rgba(134, 166, 255, .48) 0 1px, transparent 1.7px);
+  background-size: 137px 151px, 211px 197px, 269px 251px;
+  background-position: 11px 19px, 71px 93px, 159px 43px;
+  animation: io-rift-star-drift 118s linear infinite;
+}
+
+.io-rift-starfield--near {
+  opacity: .28;
+  background-image:
+    radial-gradient(circle, rgba(255, 244, 255, .9) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle, rgba(204, 174, 255, .7) 0 1.1px, transparent 2px);
+  background-size: 317px 293px, 401px 359px;
+  background-position: 37px 58px, 192px 121px;
+  animation: io-rift-star-drift 76s linear infinite reverse;
+}
+
+.io-rift-spiral-arms {
+  position: absolute;
+  z-index: 3;
+  inset: -26vmax;
+  pointer-events: none;
+  opacity: .48;
+  background:
+    repeating-conic-gradient(
+      from 8deg at 50% 50%,
+      transparent 0deg 18deg,
+      rgba(165, 113, 239, .10) 22deg,
+      rgba(211, 171, 255, .16) 25deg,
+      transparent 31deg 58deg
+    ),
+    conic-gradient(
+      from 172deg at 50% 50%,
+      transparent 0deg 52deg,
+      rgba(135, 95, 224, .13) 78deg,
+      transparent 108deg 220deg,
+      rgba(199, 157, 255, .12) 247deg,
+      transparent 281deg
+    );
+  filter: blur(24px);
+  mask-image: radial-gradient(ellipse at center, transparent 12%, #000 29%, #000 67%, transparent 88%);
+  transform-origin: center;
+  animation: io-rift-spiral-turn 164s linear infinite;
+}
+
+@keyframes io-rift-nebula-drift {
+  from { transform: translate3d(-3.5vw, -2vh, 0) scale(.98); }
+  to { transform: translate3d(4vw, 2.8vh, 0) scale(1.05); }
+}
+
+@keyframes io-rift-nebula-breathe {
+  0%, 100% { transform: scale(.96); opacity: .17; }
+  50% { transform: scale(1.07); opacity: .32; }
+}
+
+@keyframes io-rift-star-drift {
+  from { background-position: 11px 19px, 71px 93px, 159px 43px; }
+  to { background-position: 311px 319px, -241px 293px, 429px -257px; }
+}
+
+@keyframes io-rift-spiral-turn {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(360deg) scale(1); }
+}
+
+/* The challenge clear is a staged reveal, not another rarity popup. */
+.io-rift-completion-charge .io-main-orb {
+  animation:
+    io-rift-challenge-shake 115ms linear infinite,
+    io-rift-challenge-charge-glow 1.55s ease-in-out infinite;
+  box-shadow:
+    0 0 24px 4px rgba(197, 153, 255, .46),
+    0 0 68px 18px rgba(155, 97, 235, .25),
+    inset 0 0 34px rgba(231, 212, 255, .24) !important;
+}
+
+.io-rift-completion-charge .io-main-orb > .relative.z-10 {
+  opacity: 0;
+}
+
+.io-rift-completion-orb-charge {
+  border-color: rgba(238, 221, 255, .95) !important;
+}
+
+.io-rift-completion-emissions {
+  position: absolute;
+  z-index: 15;
+  top: 50%;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.io-rift-completion-emissions span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f2e5ff;
+  box-shadow: 0 0 8px 3px rgba(231, 204, 255, .9), 0 0 24px 8px rgba(169, 111, 244, .66);
+  opacity: 0;
+  animation: io-rift-light-emission 1.35s cubic-bezier(.14, .62, .22, 1) infinite;
+  animation-delay: var(--io-rift-light-delay, 0ms);
+}
+
+@keyframes io-rift-challenge-shake {
+  0% { transform: translate3d(-2px, 1px, 0) rotate(-1deg) scale(1); }
+  25% { transform: translate3d(2px, -1px, 0) rotate(1deg) scale(1.015); }
+  50% { transform: translate3d(-3px, -1px, 0) rotate(-1.3deg) scale(.99); }
+  75% { transform: translate3d(2px, 2px, 0) rotate(.8deg) scale(1.012); }
+  100% { transform: translate3d(-2px, 1px, 0) rotate(-1deg) scale(1); }
+}
+
+@keyframes io-rift-challenge-charge-glow {
+  0%, 100% { filter: brightness(.88) saturate(.9); }
+  50% { filter: brightness(1.45) saturate(1.3); }
+}
+
+@keyframes io-rift-light-emission {
+  0% { opacity: 0; transform: rotate(var(--io-rift-light-angle)) translateY(-18px) scale(.25); }
+  13% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--io-rift-light-angle)) translateY(-154px) scale(.55); }
+}
+
+.io-rift-completion-rush {
+  position: absolute;
+  z-index: 18;
+  inset: -18%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at center, rgba(255, 249, 255, .86) 0%, rgba(214, 182, 255, .5) 7%, rgba(158, 103, 238, .21) 23%, transparent 59%),
+    repeating-conic-gradient(from 5deg at 50% 50%, transparent 0deg 7deg, rgba(235, 216, 255, .15) 8deg 8.5deg, transparent 10deg 18deg);
+  mask-image: radial-gradient(circle at center, #000 0 8%, transparent 70%);
+  animation: io-rift-completion-rush 760ms cubic-bezier(.12, .75, .18, 1) both;
+}
+
+.io-rift-completion-rush::after {
+  position: absolute;
+  inset: 42%;
+  border: 1px solid rgba(244, 228, 255, .85);
+  border-radius: 50%;
+  content: "";
+  box-shadow: 0 0 35px 12px rgba(183, 129, 255, .62);
+  animation: io-rift-completion-ring 760ms ease-out both;
+}
+
+.io-rift-completion-orb-reveal {
+  animation: io-rift-completion-orb-pop 760ms cubic-bezier(.12, .82, .22, 1) both;
+  box-shadow:
+    0 0 22px 5px rgba(239, 221, 255, .72),
+    0 0 80px 24px rgba(169, 112, 243, .48),
+    inset 0 0 28px rgba(255, 255, 255, .32) !important;
+}
+
+@keyframes io-rift-completion-rush {
+  0% { opacity: 0; transform: scale(.12) rotate(-12deg); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.55) rotate(12deg); }
+}
+
+@keyframes io-rift-completion-ring {
+  0% { inset: 42%; opacity: 1; border-width: 3px; }
+  100% { inset: -12%; opacity: 0; border-width: 0; }
+}
+
+@keyframes io-rift-completion-orb-pop {
+  0% { transform: scale(.45); filter: brightness(2.2) saturate(1.4); }
+  38% { transform: scale(1.16); filter: brightness(1.45); }
+  68% { transform: scale(.96); filter: brightness(1.08); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Completion dialog styling remains available after the Rift save closes. */
+.io-rift-completion-backdrop {
+  background: rgba(5, 2, 12, .84);
+  backdrop-filter: blur(12px);
+  animation: io-rift-completion-backdrop-in 220ms ease-out both;
+}
+
+.io-rift-completion-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(205, 169, 255, .45);
+  border-radius: 28px;
+  padding: 30px;
+  color: #f5edff;
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(164, 105, 239, .27), transparent 62%),
+    linear-gradient(150deg, rgba(31, 17, 50, .98), rgba(9, 5, 17, .99));
+  box-shadow: 0 28px 100px rgba(0, 0, 0, .72), 0 0 56px rgba(141, 86, 218, .22), inset 0 1px rgba(255, 255, 255, .08);
+  animation: io-rift-completion-card-in 420ms cubic-bezier(.16, .82, .24, 1) both;
+}
+
+.io-rift-completion-card::before {
+  position: absolute;
+  top: -65%;
+  left: -25%;
+  width: 150%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(197, 158, 255, .12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 18px rgba(177, 124, 246, .035), 0 0 0 48px rgba(177, 124, 246, .025);
+  content: "";
+  pointer-events: none;
+}
+
+.io-rift-completion-kicker {
+  position: relative;
+  color: #d4b5ff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+
+.io-rift-completion-card h2 {
+  position: relative;
+  margin-top: 10px;
+  font-size: clamp(28px, 6vw, 38px);
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: -.04em;
+}
+
+.io-rift-completion-description {
+  position: relative;
+  margin-top: 12px;
+  color: #c0b2d1;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.io-rift-completion-orb-result {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 22px;
+  border: 1px solid rgba(200, 166, 255, .18);
+  border-radius: 14px;
+  padding: 13px 15px;
+  background: rgba(6, 3, 12, .46);
+}
+
+.io-rift-completion-orb-result span {
+  color: #aa99be;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.io-rift-completion-orb-result strong {
+  color: #f0deff;
+  font: 800 17px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.io-rift-completion-continue {
+  position: relative;
+  width: 100%;
+  margin-top: 22px;
+  border: 1px solid rgba(231, 211, 255, .5);
+  border-radius: 13px;
+  padding: 12px 16px;
+  color: #190c2a;
+  background: linear-gradient(100deg, #e4cfff, #bb91f5 58%, #9f72e3);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 26px rgba(154, 103, 224, .24), inset 0 1px rgba(255, 255, 255, .64);
+}
+
+.io-rift-completion-continue:hover {
+  filter: brightness(1.08);
+}
+
+@keyframes io-rift-completion-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes io-rift-completion-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 680px) {
+  .io-rift-nebula { filter: blur(36px); }
+  .io-rift-nebula--violet { left: -52%; }
+  .io-rift-nebula--blue { right: -50%; }
+  .io-rift-nebula--core { left: 22%; width: 58vmax; }
+  .io-rift-starfield--near { opacity: .22; }
+  .io-rift-spiral-arms { opacity: .34; }
+  .io-rift-completion-card { padding: 25px 22px; border-radius: 23px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-rift-nebula,
+  .io-rift-starfield,
+  .io-rift-spiral-arms,
+  .io-rift-completion-charge .io-main-orb,
+  .io-rift-completion-emissions span,
+  .io-rift-completion-rush,
+  .io-rift-completion-rush::after,
+  .io-rift-completion-orb-reveal,
+  .io-rift-completion-backdrop,
+  .io-rift-completion-card {
+    animation: none !important;
+  }
+}
