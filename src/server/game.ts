@@ -9,6 +9,10 @@ import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutation
 import * as notificationsModule from '@devvit/notifications';
 import {
   getRiftChallengeDefinition,
+  RIFT_ASCENT,
+  normalizeRiftModifierSettings,
+  normalizeRiftChallengeToggles,
+  riftModifierRewardPreview,
   riftRatePerHour,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
@@ -4173,6 +4177,11 @@ interface ActiveRiftRunContext {
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  luckSuppressionMultiplier: number;
+  secondBest: boolean;
+  noAutomation: boolean;
+  noCriticals: boolean;
+  noShards: boolean;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   gameState: PlayerState;
 }
@@ -4191,6 +4200,11 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     const challenge = getRiftChallengeDefinition(run.challengeId);
     if (!challenge) return null;
     const levels = isPlainRecord(run.upgradeLevels) ? run.upgradeLevels : {};
+    const modifierSettings = normalizeRiftModifierSettings(run.modifierSettings ?? archive.modifierSettings);
+    const challengeToggles = normalizeRiftChallengeToggles(run.challengeToggles ?? archive.challengeToggles);
+    const isModifierRun = challenge.id === RIFT_ASCENT.id;
+    const storedTargetRarity = safeNonNegativeInteger(run.targetRarity);
+    const storedBaseCooldownMs = safeNonNegativeInteger(run.baseCooldownMs);
     let gameState: PlayerState;
     if (isPlainRecord(run.gameState)) {
       gameState = run.gameState as unknown as PlayerState;
@@ -4222,11 +4236,16 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     return {
       runId,
       challengeId: challenge.id,
-      targetRarity: challenge.targetRarity,
-      baseCooldownMs: challenge.baseCooldownMs,
+      targetRarity: isModifierRun ? Math.max(1, storedTargetRarity || Math.ceil(RIFT_ASCENT.targetRarity * modifierSettings.instability)) : challenge.targetRarity,
+      baseCooldownMs: isModifierRun ? Math.max(500, storedBaseCooldownMs || Math.ceil(RIFT_ASCENT.baseCooldownMs * modifierSettings.temporalDrag)) : challenge.baseCooldownMs,
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
-      challengeCoinMultiplier: challenge.coinMultiplier,
+      challengeCoinMultiplier: isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier,
+      luckSuppressionMultiplier: isModifierRun ? 1 / modifierSettings.fortuneSuppression : 1,
+      secondBest: isModifierRun && challengeToggles.secondBest,
+      noAutomation: isModifierRun && challengeToggles.noAutomation,
+      noCriticals: isModifierRun && challengeToggles.noCriticals,
+      noShards: isModifierRun && challengeToggles.noShards,
       upgradeLevels: {
         fortune: safeNonNegativeInteger(levels.fortune),
         speed: safeNonNegativeInteger(levels.speed),
@@ -4259,7 +4278,9 @@ function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number
     ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
     : [];
   const levels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
-  const rate = riftRatePerHour(completed, levels as never);
+  const modifierSettings = normalizeRiftModifierSettings(archive.modifierSettings);
+  const challengeToggles = normalizeRiftChallengeToggles(archive.challengeToggles);
+  const rate = riftRatePerHour(completed, levels as never, modifierSettings, challengeToggles);
   const last = archive.riftLastAccruedAt == null ? now : safeNonNegativeInteger(archive.riftLastAccruedAt);
   const progress = Number(archive.riftProgress);
   const accrued = Math.max(0, Number.isFinite(progress) ? progress : 0) + Math.max(0, now - last) / 3_600_000 * rate;
@@ -4279,6 +4300,7 @@ function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerS
   delete stored.riftSession;
   delete stored.riftRunComplete;
   delete stored.riftSaveContext;
+  delete stored.riftSelectedBestRarity;
   delete stored.gameBan;
   delete stored.onlinePlayers;
   delete stored.guildPerks;
@@ -4388,14 +4410,19 @@ async function saveActiveRiftPlayerState(
       run.gameState = storedState;
       run.coins = storedState.coins;
       run.totalRolls = storedState.totalRolls;
-      const riftBestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      const selectedRarity = safeNonNegativeInteger(state.riftSelectedBestRarity);
+      const previousRunBest = safeNonNegativeInteger(run.bestRarity, 2);
+      const riftBestRarity = challenge.id === RIFT_ASCENT.id
+        ? Math.max(2, previousRunBest, selectedRarity || 2)
+        : Math.max(2, Number(storedState.highestRarity) || 2);
       run.bestRarity = riftBestRarity;
       run.updatedAt = now;
       archive.version = 3;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
-      if (riftBestRarity >= challenge.targetRarity) {
+      const targetRarity = safeNonNegativeInteger(run.targetRarity) || challenge.targetRarity;
+      if (riftBestRarity >= targetRarity) {
         completed = true;
         run.status = 'completed';
         run.completedAt = now;
@@ -4413,13 +4440,20 @@ async function saveActiveRiftPlayerState(
           highestRarity: Math.max(2, Number(storedState.highestRarity) || 2),
           masteryPoints: safeNonNegativeInteger(storedState.masteryPoints),
         } satisfies RiftChallengeMainProgress;
-        const reward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        const riftPerkLevels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+        const reward = challenge.id === RIFT_ASCENT.id
+          ? riftModifierRewardPreview(
+              run.modifierSettings ?? archive.modifierSettings,
+              run.challengeToggles ?? archive.challengeToggles,
+              safeNonNegativeInteger(riftPerkLevels.riftYield),
+            ).pointsPerClear
+          : firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
         bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, riftBestRarity);
         archive.bestRarityByChallenge = bestByChallenge;
-        archive.riftRatePerHour = riftRatePerHour(completedIds, (isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {}) as never);
+        archive.riftRatePerHour = riftRatePerHour(completedIds, riftPerkLevels as never, archive.modifierSettings, archive.challengeToggles);
       }
 
       await txn.multi();
@@ -4436,6 +4470,7 @@ async function saveActiveRiftPlayerState(
       if (committed !== null) {
         state.stateRevision = nextRevision;
         state.saveGeneration = 0;
+        delete state.riftSelectedBestRarity;
         pendingSaveExtraWrites.delete(state);
         pendingCodexRarityWrites.delete(state);
         pendingSavePostCommitActions.delete(state);
@@ -4726,6 +4761,11 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
       riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
+      luckSuppressionMultiplier: activeRiftRun.luckSuppressionMultiplier,
+      secondBest: activeRiftRun.secondBest,
+      noAutomation: activeRiftRun.noAutomation,
+      noCriticals: activeRiftRun.noCriticals,
+      noShards: activeRiftRun.noShards,
       upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
   }
@@ -5805,6 +5845,7 @@ function effectiveRollCritChance(
   s: PlayerState,
   globalBoosters: GlobalBoosterSnapshot | null | undefined = s.globalBoosters,
 ): number {
+  if (s.riftSession?.noCriticals === true) return 0;
   return Math.min(
     0.40,
     (s.upgrades.critChance ?? 0) * 0.03 +
@@ -5990,8 +6031,10 @@ export async function applyRolls(
   const challengeLuckMultiplier =
     (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
     (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05);
-  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
+  const unsuppressedLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
     riftMultipliers.luckMultiplier * challengeLuckMultiplier;
+  const luckSuppression = Math.max(0, Math.min(1, Number(s.riftSession?.luckSuppressionMultiplier ?? 1) || 0));
+  const baseLuckCandidate = 1 + Math.max(0, unsuppressedLuckCandidate - 1) * luckSuppression;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
@@ -6485,7 +6528,7 @@ export async function applyRolls(
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
-    const shardDropsDisabled = s.riftSession?.challengeId === 'first-spark';
+    const shardDropsDisabled = s.riftSession?.challengeId === 'first-spark' || s.riftSession?.noShards === true;
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
     const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, dryStreakForBatchProcs) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
@@ -7328,7 +7371,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
 
   // First Spark explicitly disables offline progression and every automation.
   // Resetting the local vault also clears any legacy migrated backlog.
-  if (s.riftSession?.challengeId === 'first-spark') {
+  if (s.riftSession?.challengeId === 'first-spark' || s.riftSession?.noAutomation === true) {
     s.offlineRolls = 0;
     s.autoRollEnabled = false;
     s.lastSeenAt = now;
@@ -7662,7 +7705,7 @@ export async function checkOffline(): Promise<PlayerState> {
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  if (enabled && s.riftSession?.challengeId === 'first-spark') {
+  if (enabled && (s.riftSession?.challengeId === 'first-spark' || s.riftSession?.noAutomation === true)) {
     throw new Error('Auto Roll is disabled in The First Spark.');
   }
   if ((s.upgrades.auto ?? 0) <= 0) {
@@ -7731,7 +7774,7 @@ export async function roll(
       : null;
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
-    if (isAuto && s.riftSession?.challengeId === 'first-spark') {
+    if (isAuto && (s.riftSession?.challengeId === 'first-spark' || s.riftSession?.noAutomation === true)) {
       throw new Error('Auto Roll is disabled in The First Spark.');
     }
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
