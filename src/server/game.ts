@@ -3898,6 +3898,7 @@ function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerS
   delete stored.collection;
   delete stored.riftSession;
   delete stored.riftRunComplete;
+  delete stored.riftSaveContext;
   delete stored.gameBan;
   delete stored.onlinePlayers;
   delete stored.guildPerks;
@@ -3922,7 +3923,9 @@ async function saveActiveRiftPlayerState(
 ): Promise<void> {
   const session = state.riftSession;
   if (!session) throw new Error('RIFT_SESSION_MISSING');
-  const ticketWrites = allExtraWrites.filter(write => write.key === rollTicketKey());
+  const userId = currentUserId();
+  const expectedTicketKey = rollTicketKey(userId, session.runId);
+  const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
   if (ticketWrites.length > 1 || allExtraWrites.some(write => write.key !== rollTicketKey())) {
     throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
   }
@@ -3932,7 +3935,6 @@ async function saveActiveRiftPlayerState(
     state.masterySkills?.celestialSurge ?? 0,
     state.codexChain,
   );
-  const userId = currentUserId();
   const keyName = RIFT_ARCHIVE_KEY_PREFIX + userId;
   const codexOwnerId = riftCodexOwnerId(userId, session.runId);
   const dirtyCodexKeys = pendingCodexRarityWrites.get(state) ?? new Set<string>();
@@ -4042,6 +4044,7 @@ async function saveActiveRiftPlayerState(
         pendingSaveExtraWrites.delete(state);
         pendingCodexRarityWrites.delete(state);
         pendingSavePostCommitActions.delete(state);
+        state.riftSaveContext = 'rift:' + session.runId;
         if (completed) {
           state.riftRunComplete = true;
           delete state.riftSession;
@@ -4306,6 +4309,10 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
   // enforces the safe-integer storage boundary for the Number-based save.
   playerGuildScopes.set(restored, guildId);
   if (activeRiftRun) {
+    const isolatedDefaults = createInitialState();
+    restored.guildPerks = isolatedDefaults.guildPerks;
+    restored.guildCombo = isolatedDefaults.guildCombo;
+    restored.riftSaveContext = 'rift:' + activeRiftRun.runId;
     restored.riftSession = {
       runId: activeRiftRun.runId,
       challengeId: activeRiftRun.challengeId,
@@ -4656,8 +4663,10 @@ interface RollTicket {
 
 const ROLL_PREDICTION_COUNT = 5;
 
-function rollTicketKey(userId = currentUserId()): string {
-  return ROLL_TICKET_KEY_PREFIX + userId;
+function rollTicketKey(userId = currentUserId(), riftRunId?: string): string {
+  return riftRunId
+    ? ROLL_TICKET_KEY_PREFIX + userId + ':rift:' + riftRunId
+    : ROLL_TICKET_KEY_PREFIX + userId;
 }
 
 function randomUint32(): number {
@@ -4737,7 +4746,8 @@ export async function getRollTicket(): Promise<{
   // snapshot. Preview simulation is presentation-only and must never hold up
   // real rolls, upgrades, or other player mutations.
   const prepared = await withPlayerMutationLock(async () => {
-    const ticketKey = rollTicketKey();
+    const state = await loadRaw();
+    const ticketKey = rollTicketKey(currentUserId(), state.riftSession?.runId);
     const now = Date.now();
 
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -4793,7 +4803,6 @@ export async function getRollTicket(): Promise<{
           if (committed === null) continue;
         }
 
-        const state = await loadRaw();
         return { ticket, state };
       } finally {
         if (!transactionClosed) await txn.unwatch().catch(() => undefined);
@@ -4828,8 +4837,9 @@ async function loadRollTicketForUse(
   ticketId: string,
   ticketIndex: number,
   requestedSeed?: string,
+  riftRunId?: string,
 ): Promise<{ ticket: RollTicket; raw: string }> {
-  const raw = await redis.get(rollTicketKey());
+  const raw = await redis.get(rollTicketKey(currentUserId(), riftRunId));
   const ticket = parseStoredJson<RollTicket>(raw);
 
   if (!raw || !ticket) throw new Error('Roll prediction ticket is unavailable. Refresh the game.');
@@ -7217,12 +7227,13 @@ export async function roll(
       | { ticket: RollTicket; raw: string; index: number; nextValue: string }
       | undefined;
 
+    const loadedState = await loadRaw();
     if (ticketId != null || ticketIndex != null) {
       const requestedTicketIndex = Number(ticketIndex);
       if (!ticketId || !Number.isSafeInteger(requestedTicketIndex)) {
         throw new Error('Invalid roll prediction ticket.');
       }
-      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex, ticketSeed);
+      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex, ticketSeed, loadedState.riftSession?.runId);
       const nextTicket: RollTicket = {
         ...loaded.ticket,
         nextIndex: loaded.ticket.nextIndex + 1,
@@ -7238,7 +7249,6 @@ export async function roll(
     const ticketRandom = ticketUse
       ? createRollRandomSource(ticketUse.ticket.seeds[ticketUse.index])
       : null;
-    const loadedState = await loadRaw();
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
@@ -7395,7 +7405,7 @@ export async function roll(
       s,
       ticketUse
         ? {
-            key: rollTicketKey(),
+            key: rollTicketKey(currentUserId(), s.riftSession?.runId),
             expectedValue: ticketUse.raw,
             nextValue: ticketUse.nextValue,
           }
