@@ -7,6 +7,11 @@ import { compressStorageString, decompressStorageString } from './storage-compre
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey, groupCodexFields, normalizeCodexCollection } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
+import {
+  getRiftChallengeDefinition,
+  riftRatePerHour,
+  type RiftChallengeArchive,
+} from '../shared/rift-challenges.js';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
@@ -3781,14 +3786,233 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
-export async function loadRaw(options: { registerActivity?: boolean; persistMigrations?: boolean } = {}): Promise<PlayerState> {
+const RIFT_ARCHIVE_KEY_PREFIX = 'io:rift-challenge:v1:';
+
+interface ActiveRiftRunContext {
+  runId: string;
+  challengeId: string;
+  targetRarity: number;
+  baseCooldownMs: number;
+  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+  gameState: PlayerState;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext | null> {
+  const raw = await redis.get(RIFT_ARCHIVE_KEY_PREFIX + userId);
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const archive = JSON.parse(raw) as Record<string, unknown>;
+    const run = isPlainRecord(archive.activeRun) ? archive.activeRun : null;
+    if (!run || run.status !== 'active' || typeof run.runId !== 'string') return null;
+    const challenge = getRiftChallengeDefinition(run.challengeId);
+    if (!challenge) return null;
+    const levels = isPlainRecord(run.upgradeLevels) ? run.upgradeLevels : {};
+    let gameState: PlayerState;
+    if (isPlainRecord(run.gameState)) {
+      gameState = run.gameState as unknown as PlayerState;
+    } else {
+      // Migrate an in-progress legacy challenge without importing any main-save variables.
+      gameState = createInitialState(safeNonNegativeTimestamp(run.startedAt) || Date.now());
+      gameState.username = String(context.username ?? '').slice(0, 100) || undefined;
+      gameState.coins = Math.max(50, Number(run.coins) || 0);
+      gameState.lifetimeCoins = gameState.coins;
+      gameState.totalRolls = safeNonNegativeInteger(run.totalRolls);
+      gameState.highestRarity = Math.max(0, Number(run.bestRarity) || 0);
+      gameState.saveGeneration = 0;
+      gameState.stateRevision = 0;
+    }
+    return {
+      runId: run.runId.slice(0, 120),
+      challengeId: challenge.id,
+      targetRarity: challenge.targetRarity,
+      baseCooldownMs: challenge.baseCooldownMs,
+      upgradeLevels: {
+        fortune: safeNonNegativeInteger(levels.fortune),
+        speed: safeNonNegativeInteger(levels.speed),
+        prosperity: safeNonNegativeInteger(levels.prosperity),
+        critical: safeNonNegativeInteger(levels.critical),
+      },
+      gameState,
+    };
+  } catch (error) {
+    console.error('[Rift Save] Could not read the active Rift archive.', error);
+    throw new Error('Your active Rift save could not be read safely. Your main save has not been changed.');
+  }
+}
+
+function safeNonNegativeInteger(value: unknown): number {
+  const number = Number(value);
+  return Number.isSafeInteger(number) ? Math.max(0, number) : 0;
+}
+
+function safeNonNegativeTimestamp(value: unknown): number {
+  return safeNonNegativeInteger(value);
+}
+
+function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number): void {
+  const completed = Array.isArray(archive.completedChallengeIds)
+    ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const levels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+  const rate = riftRatePerHour(completed, levels as never);
+  const last = safeNonNegativeInteger(archive.riftLastAccruedAt);
+  const progress = Number(archive.riftProgress);
+  const accrued = Math.max(0, Number.isFinite(progress) ? progress : 0) + Math.max(0, now - last) / 3_600_000 * rate;
+  const whole = Math.floor(accrued);
+  const points = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + whole);
+  const earned = Math.max(0, points - safeNonNegativeInteger(archive.riftPoints));
+  archive.riftPoints = points;
+  archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + earned);
+  archive.riftProgress = points >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accrued - whole);
+  archive.riftRatePerHour = rate;
+  archive.riftLastAccruedAt = now;
+}
+
+function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerState {
+  const stored = { ...state, stateRevision: revision, saveGeneration: 0 };
+  delete stored.riftSession;
+  delete stored.riftRunComplete;
+  delete stored.gameBan;
+  delete stored.onlinePlayers;
+  delete stored.guildPerks;
+  delete stored.guildCombo;
+  delete stored.globalBoosters;
+  delete stored.dailyStreakCommunity;
+  delete stored.codexChain;
+  delete stored.codexDevotionLuckPercent;
+  return JSON.parse(JSON.stringify(stored)) as PlayerState;
+}
+
+async function saveActiveRiftPlayerState(
+  state: PlayerState,
+  allExtraWrites: SaveExtraWrite[],
+): Promise<void> {
+  const session = state.riftSession;
+  if (!session) throw new Error('RIFT_SESSION_MISSING');
+  if (allExtraWrites.some(write => !write.optional)) {
+    throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
+  }
+
+  state.codexChain = highestCodexChain(state.collection);
+  state.codexDevotionLuckPercent = codexDevotionLuckPercent(
+    state.masterySkills?.celestialSurge ?? 0,
+    state.codexChain,
+  );
   const userId = currentUserId();
+  const keyName = RIFT_ARCHIVE_KEY_PREFIX + userId;
+  const now = Date.now();
+  await touchPlayerActivity(userId, String(state.username ?? context.username ?? userId));
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(keyName);
+    let transactionClosed = false;
+    try {
+      const raw = await redis.get(keyName);
+      if (typeof raw !== 'string' || !raw) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_ENDED');
+      }
+      const archive = JSON.parse(raw) as Record<string, unknown>;
+      const run = isPlainRecord(archive.activeRun) ? archive.activeRun : null;
+      if (!run || run.status !== 'active' || run.runId !== session.runId) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_ENDED');
+      }
+      const challenge = getRiftChallengeDefinition(run.challengeId);
+      if (!challenge || challenge.id !== session.challengeId) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_MISMATCH');
+      }
+
+      const latestGameState = isPlainRecord(run.gameState)
+        ? run.gameState as unknown as PlayerState
+        : null;
+      const latestRevision = safeNonNegativeInteger(latestGameState?.stateRevision);
+      const expectedRevision = safeNonNegativeInteger(state.stateRevision);
+      if (latestGameState && latestRevision !== expectedRevision) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('Rift player state changed in another tab. Refresh before continuing.');
+      }
+      const nextRevision = latestRevision + 1;
+      if (!Number.isSafeInteger(nextRevision)) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('Rift player save reached its revision limit.');
+      }
+
+      const storedState = serializeRiftPlayerState(state, nextRevision);
+      run.gameState = storedState;
+      run.coins = storedState.coins;
+      run.totalRolls = storedState.totalRolls;
+      run.bestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      run.updatedAt = now;
+      archive.version = 3;
+      advanceStoredRiftProgress(archive, now);
+
+      let completed = false;
+      if (run.bestRarity >= challenge.targetRarity) {
+        completed = true;
+        run.status = 'completed';
+        run.completedAt = now;
+        archive.totalCompletedRuns = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalCompletedRuns) + 1);
+        const completedIds = Array.isArray(archive.completedChallengeIds)
+          ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
+          : [];
+        const firstClear = !completedIds.includes(challenge.id);
+        if (firstClear) completedIds.push(challenge.id);
+        archive.completedChallengeIds = completedIds;
+        const reward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
+        archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
+        const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
+        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, run.bestRarity);
+        archive.bestRarityByChallenge = bestByChallenge;
+        archive.riftRatePerHour = riftRatePerHour(completedIds, (isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {}) as never);
+      }
+
+      await txn.multi();
+      await txn.set(keyName, JSON.stringify(archive));
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        state.stateRevision = nextRevision;
+        state.saveGeneration = 0;
+        pendingSaveExtraWrites.delete(state);
+        pendingCodexRarityWrites.delete(state);
+        pendingSavePostCommitActions.delete(state);
+        if (completed) {
+          state.riftRunComplete = true;
+          delete state.riftSession;
+        }
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Rift save changed too frequently. Please retry.');
+}
+
+export async function loadRaw(options: { registerActivity?: boolean; persistMigrations?: boolean; source?: 'active' | 'main' } = {}): Promise<PlayerState> {
+  const userId = currentUserId();
+  const activeRiftRun = options.source === 'main' ? null : await readActiveRiftRun(userId);
+  const isRiftSave = activeRiftRun !== null;
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
-  const generationRaw = await redis.get(generationKey);
-  const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-  const storedRaw = await redis.get(playerKey);
-  const raw = await readStoredPlayerSave(userId, storedRaw);
+  const generationRaw = isRiftSave ? '0' : await redis.get(generationKey);
+  const generation = isRiftSave
+    ? safeNonNegativeInteger(activeRiftRun.gameState.saveGeneration)
+    : Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+  const storedRaw = isRiftSave ? null : await redis.get(playerKey);
+  const raw = isRiftSave ? activeRiftRun.gameState : await readStoredPlayerSave(userId, storedRaw);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   // Passive post previews may read player-specific eligibility without registering
   // an activity visit. Normal gameplay reads preserve the default registration.
@@ -3857,9 +4081,13 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
 
   const base = createInitialState();
   const storedCodexVersion = Number(parsed.collectionStorageVersion ?? 0);
-  const needsCodexMigration = storedCodexVersion !== CODEX_STORAGE_VERSION;
+  const needsCodexMigration = !isRiftSave && storedCodexVersion !== CODEX_STORAGE_VERSION;
   let restoredCollection: Record<string, number>;
-  if (storedCodexVersion === CODEX_STORAGE_VERSION) {
+  if (isRiftSave) {
+    // Rift collections are stored inline in the challenge save, not in the
+    // user's main Codex shard namespace.
+    restoredCollection = normalizeCodexCollection(isValidCollection(parsed.collection) ? parsed.collection : {});
+  } else if (storedCodexVersion === CODEX_STORAGE_VERSION) {
     restoredCollection = await readCodexShards(userId, generation);
     await deleteLegacyCodexShards(userId, generation);
   } else if (storedCodexVersion === 1) {
@@ -4020,6 +4248,15 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
   // enforces the safe-integer storage boundary for the Number-based save.
   playerGuildScopes.set(restored, guildId);
+  if (activeRiftRun) {
+    restored.riftSession = {
+      runId: activeRiftRun.runId,
+      challengeId: activeRiftRun.challengeId,
+      targetRarity: activeRiftRun.targetRarity,
+      baseCooldownMs: activeRiftRun.baseCooldownMs,
+      upgradeLevels: { ...activeRiftRun.upgradeLevels },
+    };
+  }
   // Persist one-time migrations rather than only changing the read view.
   const levelExpansionMigration = restoredLevel > parsedLevel;
   if (options.persistMigrations !== false && (levelExpansionMigration || needsCodexMigration)) {
@@ -4640,6 +4877,10 @@ export async function save(
     ...(pendingSaveExtraWrites.get(s) ?? []),
     ...explicitWrites,
   ];
+  if (s.riftSession) {
+    await saveActiveRiftPlayerState(s, allExtraWrites);
+    return;
+  }
   // Optional side projections (for example shared World Event progress) are
   // best-effort. Keeping them out of the player transaction prevents unrelated
   // players from invalidating a critical balance/progression save.
