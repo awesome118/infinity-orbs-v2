@@ -78,7 +78,7 @@ test('the Rift Bar increases its hourly rate on first clears, not on replays', (
   assert.equal(riftRatePerHour([], emptyRiftPerkLevels()), 1);
   assert.equal(riftRatePerHour(cleared, emptyRiftPerkLevels()), 2.25);
   assert.equal(riftRatePerHour([...cleared, 'hollow-economy'], emptyRiftPerkLevels()), 3.25);
-  assert.equal(riftRatePerHour(cleared, { ...emptyRiftPerkLevels(), riftYield: 1 }), 2.3625);
+  assert.ok(Math.abs(riftRatePerHour(cleared, { ...emptyRiftPerkLevels(), riftYield: 1 }) - 2.3625) < 1e-12);
   assert.equal(riftRatePerHour([...cleared, 'first-spark'], emptyRiftPerkLevels()), 2.25);
 });
 
