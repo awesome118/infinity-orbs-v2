@@ -247,6 +247,8 @@ export interface RiftChallengeArchive {
   kudosReceivedAt: number[];
   /** Most recent full-game open, used as the baseline for the session kudos counter. */
   lastGameOpenedAt: number;
+  /** Kudos received since lastGameOpenedAt; retained even when the player is away for months. */
+  kudosSinceLastOpen: number;
   riftPerkLevels: RiftPerkLevels;
 }
 
@@ -370,6 +372,7 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftPlayerProgress: null,
     kudosReceivedAt: [],
     lastGameOpenedAt: Math.max(0, Math.floor(now)),
+    kudosSinceLastOpen: 0,
     riftPerkLevels,
   };
 }
