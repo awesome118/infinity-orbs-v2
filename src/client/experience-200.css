@@ -990,7 +990,7 @@ html:fullscreen .io-rarity-modal .io-rarity-orb-icon--compact {
 }
 
 
-/* Reddit Simulator is a standalone Pages mode, separate from the More menu. */
+/* Reddit Simulator is embedded in the main game and opened from More. */
 .io-ui .io-reddit-simulator-screen { min-width: 0; color: #e6f0ff; }
 .io-ui .io-reddit-simulator-page-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
