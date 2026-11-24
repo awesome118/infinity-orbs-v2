@@ -17,7 +17,7 @@ export const RIFT_CHALLENGES = [
     repeatClearPoints: 1,
     rateBonusPerHour: 0.5,
     debuffs: [
-      { name: 'Fresh Save', description: 'Start with 0 challenge Coins and no challenge upgrades.' },
+      { name: 'Fresh Save', description: 'Main-game Coins and upgrades do not carry over. Only the permanent Emergency Stipend perk can seed this separate wallet.' },
       { name: 'Dimensional Tax', description: 'Challenge-upgrade prices rise by 5% every 10 rolls, up to 50%.' },
       { name: 'Shards Disabled', description: 'Shards cannot drop or be spent during a Rift run.' },
       { name: 'No Automation', description: 'Auto Roll and offline rolls are unavailable.' },
