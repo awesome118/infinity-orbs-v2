@@ -5896,7 +5896,7 @@ export async function applyRolls(
   onProgress?: (processedCount: number) => Promise<void> | void,
   rarityRandomOverride?: () => number,
   previewOnly = false,
-): Promise<{ bestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
+): Promise<{ bestOrb: Orb; secondBestOrb: Orb; batch: Orb[]; totalVal: number; coinsGained: number; shardsGained: number; xpGained: number; rollCount: number }> {
   let bestRarity = 0;
   let bestIsCrit = false;
   let bestIsNew = false;
@@ -5908,6 +5908,17 @@ export async function applyRolls(
   let xpGained = 0;
   let uniqueGained = 0;
   const batch: Orb[] = [];
+  const topRiftOrbs: Orb[] = [];
+  const compareRiftOrbs = (a: Orb, b: Orb) =>
+    a.isInfinity !== b.isInfinity ? (a.isInfinity ? 1 : -1) : a.rarity - b.rarity;
+  const considerRiftOrb = (orb: Orb) => {
+    if (!topRiftOrbs[0] || compareRiftOrbs(orb, topRiftOrbs[0]) > 0) {
+      topRiftOrbs.splice(0, 0, orb);
+    } else if (!topRiftOrbs[1] || compareRiftOrbs(orb, topRiftOrbs[1]) > 0) {
+      topRiftOrbs.splice(1, 0, orb);
+    }
+    if (topRiftOrbs.length > 2) topRiftOrbs.length = 2;
+  };
   const rarities: number[] = [];
   const rarityWeights: number[] = [];
   let extraCoinsEstimate = 0;
@@ -6599,17 +6610,19 @@ export async function applyRolls(
     }
 
     const orbInfo = getOrbInfo(rarity, isInfinityOrb);
-    if (batch.length < 50) {
-      batch.push({
-        rarity,
-        rolledAt: now,
-        tier: orbInfo.tier,
-        name: orbInfo.name,
-        isInfinity: isInfinityOrb,
-        isNew,
-        isCrit,
-      });
+    const candidateOrb: Orb = {
+      rarity,
+      rolledAt: now,
+      tier: orbInfo.tier,
+      name: orbInfo.name,
+      isInfinity: isInfinityOrb,
+      isNew,
+      isCrit,
+    };
+    for (let candidateIndex = 0; candidateIndex < Math.min(2, sampleWeight); candidateIndex += 1) {
+      considerRiftOrb(candidateOrb);
     }
+    if (batch.length < 50) batch.push(candidateOrb);
 
     processedEffectiveRolls += sampleWeight;
     if (onProgress && ((i + 1) % 100 === 0 || i + 1 === simulationLoopCount)) {
@@ -6822,7 +6835,7 @@ export async function applyRolls(
     });
   }
 
-  return { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
+  return { bestOrb, secondBestOrb: topRiftOrbs[1] ?? bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount };
 }
 
 async function commitOfflineNotificationMarkerIfUnchanged(
@@ -7841,6 +7854,17 @@ export async function roll(
     // activations. All chunks mutate the same in-memory state and are committed
     // together, so a failure cannot spend Free Rolls without saving their rolls.
     let bestOrb: Orb | null = null;
+    let secondBestOrb: Orb | null = null;
+    const compareSelectedOrbs = (a: Orb, b: Orb) =>
+      a.isInfinity !== b.isInfinity ? (a.isInfinity ? 1 : -1) : a.rarity - b.rarity;
+    const considerSelectedOrb = (candidate: Orb) => {
+      if (!bestOrb || compareSelectedOrbs(candidate, bestOrb) > 0) {
+        secondBestOrb = bestOrb;
+        bestOrb = candidate;
+      } else if (!secondBestOrb || compareSelectedOrbs(candidate, secondBestOrb) > 0) {
+        secondBestOrb = candidate;
+      }
+    };
     const batch: Orb[] = [];
     let totalVal = 0;
     let coinsGained = 0;
@@ -7893,7 +7917,8 @@ export async function roll(
         onTimeEnergyProgress,
         ticketRandom ? ticketRandom.nextRarity : undefined,
       );
-      if (!bestOrb || result.bestOrb.rarity > bestOrb.rarity) bestOrb = result.bestOrb;
+      considerSelectedOrb(result.bestOrb);
+      considerSelectedOrb(result.secondBestOrb);
       batch.push(...result.batch.slice(-200));
       if (batch.length > 200) batch.splice(0, batch.length - 200);
       totalVal = addCollectionValue(totalVal, result.totalVal);
@@ -7913,6 +7938,12 @@ export async function roll(
       remainingActivations -= chunkActivations;
     }
     if (!bestOrb) throw new Error('No rolls were processed.');
+    const selectedOrb = s.riftSession?.secondBest === true
+      ? secondBestOrb ?? bestOrb
+      : bestOrb;
+    if (s.riftSession?.challengeId === RIFT_ASCENT.id) {
+      s.riftSelectedBestRarity = Math.max(2, Number(selectedOrb.rarity) || 2);
+    }
 
     if (usingChainPatcher) {
       s.chainPatcherNextRarity = 0;
@@ -7960,7 +7991,7 @@ export async function roll(
     void appendPlayerSpyLog('roll-activation', {
       mode: isAuto ? 'auto' : 'manual',
       processedRolls: rollCount,
-      bestRarity: bestOrb.rarity,
+      bestRarity: selectedOrb.rarity,
       coinsGained,
       shardsGained,
       xpGained,
@@ -7969,7 +8000,7 @@ export async function roll(
     });
 
     return {
-      orb: bestOrb,
+      orb: selectedOrb,
       batch,
       totalValueGained: totalVal,
       totalRollValue: totalVal,
@@ -7979,7 +8010,7 @@ export async function roll(
       state: s,
       rollsRemainingUntilNext: cd,
       rollsProcessed: rollCount,
-      dramaticReveal: bestOrb.rarity >= 100,
+      dramaticReveal: selectedOrb.rarity >= 100,
     };
       };
       return playerGuildScopes.get(loadedState)
