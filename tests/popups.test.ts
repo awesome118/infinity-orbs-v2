@@ -44,6 +44,9 @@ test('Frenzy and notification popups render with dedicated styling and admin pre
   assert.match(pagesApi, /case '\/api\/frenzy\/shard-popup\/ack'/);
   assert.match(main, /className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400\/35/);
   assert.match(admin, /Preview Frenzy Shard Popup/);
+  const activeAdminModal = main.slice(main.lastIndexOf('<DevDebugModal'));
+  assert.match(activeAdminModal, /onForceFrenzyShardPopup=\{\(\) => \{/);
+  assert.match(activeAdminModal, /setFrenzyShardPopup\(\{ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true \}\)/);
   assert.match(shared, /frenzyShard: true/);
   assert.match(admin, /no Shards and records no metrics/);
 
