@@ -7251,6 +7251,17 @@ export async function checkOffline(): Promise<PlayerState> {
   return settleOffline(s);
 }
 
+/** Acknowledge the persisted Frenzy owner reward notice without changing its already-committed Shard reward. */
+export async function acknowledgeFrenzyShardPopup(): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
+    const state = await loadRaw({ source: 'main' });
+    if (!state.frenzyShardPopupPending) return state;
+    delete state.frenzyShardPopupPending;
+    await save(state);
+    return state;
+  });
+}
+
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
