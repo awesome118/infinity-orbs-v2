@@ -4,9 +4,31 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { context, redis } from '../src/server/devvit-mock.js';
-import { getPopupStats, recordPopupEvent } from '../src/server/game.js';
+import { getPopupConfig, getPopupStats, recordPopupEvent, setPopupConfig } from '../src/server/game.js';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+
+test('Frenzy Shard popup settings default on for older installs and persist admin toggles', async () => {
+  const original = await getPopupConfig();
+  try {
+    await redis.set('io:popup-config:v1', JSON.stringify({
+      notification: true,
+      frenzy: true,
+      joinSubreddit: true,
+    }));
+    const migrated = await getPopupConfig();
+    assert.equal(migrated.frenzyShard, true);
+
+    const disabled = await setPopupConfig({ frenzyShard: false });
+    assert.equal(disabled.frenzyShard, false);
+    assert.equal((await getPopupConfig()).frenzyShard, false);
+
+    const enabled = await setPopupConfig({ frenzyShard: true });
+    assert.equal(enabled.frenzyShard, true);
+  } finally {
+    await setPopupConfig(original);
+  }
+});
 
 test('Frenzy and notification popups render with dedicated styling and admin previews', () => {
   const main = read('src/client/main.tsx');
