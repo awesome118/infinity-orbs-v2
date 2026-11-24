@@ -247,9 +247,9 @@ export interface RiftChallengeArchive {
   kudosReceivedAt: number[];
   /** Most recent full-game open, used as the baseline for the session kudos counter. */
   lastGameOpenedAt: number;
-  /** Kudos received since lastGameOpenedAt; retained even when the player is away for months. */
+  /** Number of Kudos received after the most recent game entry; snapshotted on the next entry. */
   kudosSinceLastOpen: number;
-  /** Snapshot of Kudos received during the previous interval, displayed in the current game session. */
+  /** Kudos received during the previous interval, displayed in the current game session. */
   kudosDisplaySinceLastOpen: number;
   riftPerkLevels: RiftPerkLevels;
 }
