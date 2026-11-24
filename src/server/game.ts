@@ -5550,8 +5550,8 @@ export async function applyRolls(
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
-    getGlobalBoosters(),
-    getCommunityEvent().catch(error => {
+    s.riftSession ? Promise.resolve(createInitialState().globalBoosters!) : getGlobalBoosters(),
+    (s.riftSession ? Promise.resolve(null) : getCommunityEvent()).catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
       // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
       // but don't brick a player's roll because an admin-maintained side record
@@ -5559,7 +5559,7 @@ export async function applyRolls(
       console.error('[Community Event] Read failed; rolling without the event bonus.', error);
       return null;
     }),
-    getFakeCcuBonus(),
+    s.riftSession ? Promise.resolve(0) : getFakeCcuBonus(),
     (s.riftSession ? Promise.resolve(null) : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
@@ -5587,8 +5587,12 @@ export async function applyRolls(
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
-  const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
-  const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
+  const luckCcu = s.riftSession
+    ? 1
+    : Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
+  const luckState = s.riftSession
+    ? { ...s, onlinePlayers: 1 }
+    : luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
