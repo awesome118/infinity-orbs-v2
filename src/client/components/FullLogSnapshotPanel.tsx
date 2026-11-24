@@ -21,7 +21,7 @@ function eventLine(event: FullLogEvent): string {
 
 export const FullLogSnapshotPanel: React.FC = () => {
   const [status, setStatus] = useState<FullLogStatus>(() => getFullLogStatus());
-  const [feed, setFeed] = useState<FullLogEvent[]>(() => getRecentFullLogEvents(24));
+  const [feed, setFeed] = useState<FullLogEvent[]>(() => getRecentFullLogEvents(24).slice().reverse());
   const [snapshotText, setSnapshotText] = useState('');
   const [snapshotGeneratedAt, setSnapshotGeneratedAt] = useState('');
   const [message, setMessage] = useState('');
@@ -65,7 +65,7 @@ export const FullLogSnapshotPanel: React.FC = () => {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     setMessage('Snapshot downloaded as a JSON file.');
   };
 
