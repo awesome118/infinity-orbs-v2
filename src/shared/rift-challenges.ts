@@ -69,12 +69,141 @@ export const RIFT_CHALLENGES = [
   },
 ] as const;
 
-export type RiftChallengeId = typeof RIFT_CHALLENGES[number]['id'];
-export type RiftChallengeDefinition = typeof RIFT_CHALLENGES[number];
+export const RIFT_ASCENT = {
+  id: 'rift-ascent',
+  number: 0,
+  name: 'Rift Ascent',
+  subtitle: 'Set the rules. Take the reward.',
+  description: 'Configure the Rift with continuous modifiers and optional restrictions. Higher intensity increases both completion rewards and passive Rift Point generation.',
+  targetRarity: 1_000,
+  requiredMainLevel: 5,
+  prerequisiteId: null,
+  baseCooldownMs: 1_500,
+  coinMultiplier: 1,
+  firstClearPoints: 1,
+  repeatClearPoints: 1,
+  rateBonusPerHour: 0,
+  debuffs: [],
+} as const;
+
+export type RiftChallengeId = typeof RIFT_CHALLENGES[number]['id'] | typeof RIFT_ASCENT.id;
+export type RiftChallengeDefinition = typeof RIFT_CHALLENGES[number] | typeof RIFT_ASCENT;
 export const RIFT_FIRST_SPARK = RIFT_CHALLENGES[0];
 
 export function getRiftChallengeDefinition(id: unknown): RiftChallengeDefinition | undefined {
-  return RIFT_CHALLENGES.find(challenge => challenge.id === id);
+  return id === RIFT_ASCENT.id ? RIFT_ASCENT : RIFT_CHALLENGES.find(challenge => challenge.id === id);
+}
+
+export const RIFT_MODIFIER_MAX = 1_000_000_000_000;
+
+export interface RiftModifierSettings {
+  instability: number;
+  temporalDrag: number;
+  fortuneSuppression: number;
+  coinScarcity: number;
+  upgradeInflation: number;
+}
+
+export type RiftModifierId = keyof RiftModifierSettings;
+
+export interface RiftChallengeToggles {
+  secondBest: boolean;
+  noAutomation: boolean;
+  noCriticals: boolean;
+  noShards: boolean;
+}
+
+export const DEFAULT_RIFT_MODIFIERS: RiftModifierSettings = {
+  instability: 1,
+  temporalDrag: 1,
+  fortuneSuppression: 1,
+  coinScarcity: 1,
+  upgradeInflation: 1,
+};
+
+export const DEFAULT_RIFT_CHALLENGES: RiftChallengeToggles = {
+  secondBest: false,
+  noAutomation: false,
+  noCriticals: false,
+  noShards: false,
+};
+
+export function normalizeRiftModifierSettings(value: unknown): RiftModifierSettings {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const normalize = (id: RiftModifierId) => {
+    const number = Number(raw[id]);
+    return Number.isFinite(number)
+      ? Math.min(RIFT_MODIFIER_MAX, Math.max(1, number))
+      : DEFAULT_RIFT_MODIFIERS[id];
+  };
+  return {
+    instability: normalize('instability'),
+    temporalDrag: normalize('temporalDrag'),
+    fortuneSuppression: normalize('fortuneSuppression'),
+    coinScarcity: normalize('coinScarcity'),
+    upgradeInflation: normalize('upgradeInflation'),
+  };
+}
+
+export function normalizeRiftChallengeToggles(value: unknown): RiftChallengeToggles {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    secondBest: raw.secondBest === true,
+    noAutomation: raw.noAutomation === true,
+    noCriticals: raw.noCriticals === true,
+    noShards: raw.noShards === true,
+  };
+}
+
+export interface RiftModifierRewardPreview {
+  difficultyScore: number;
+  pointsPerClear: number;
+  rpPerHour: number;
+}
+
+export function riftModifierDifficultyScore(
+  settingsValue: unknown,
+  togglesValue: unknown,
+): number {
+  const settings = normalizeRiftModifierSettings(settingsValue);
+  const toggles = normalizeRiftChallengeToggles(togglesValue);
+  const weights: Record<RiftModifierId, number> = {
+    instability: 1.25,
+    temporalDrag: 1,
+    fortuneSuppression: 1.25,
+    coinScarcity: 1,
+    upgradeInflation: 0.75,
+  };
+  const continuous = (Object.keys(weights) as RiftModifierId[]).reduce(
+    (sum, id) => sum + Math.log10(settings[id]) * weights[id],
+    0,
+  );
+  const discrete =
+    (toggles.secondBest ? 4 : 0) +
+    (toggles.noAutomation ? 2.5 : 0) +
+    (toggles.noCriticals ? 1.25 : 0) +
+    (toggles.noShards ? 0.75 : 0);
+  return Math.max(0, continuous + discrete);
+}
+
+export function riftModifierRewardPreview(
+  settingsValue: unknown,
+  togglesValue: unknown,
+  riftYieldLevel = 0,
+): RiftModifierRewardPreview {
+  const difficultyScore = riftModifierDifficultyScore(settingsValue, togglesValue);
+  const yieldLevel = Math.max(0, Math.min(RIFT_PERKS.riftYield.maxLevel, Math.floor(Number(riftYieldLevel) || 0)));
+  const clearMultiplier = Math.pow(1.38, difficultyScore);
+  const hourlyMultiplier = Math.pow(1.5, difficultyScore) * (1 + yieldLevel * 0.05);
+  return {
+    difficultyScore,
+    pointsPerClear: Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(clearMultiplier))),
+    rpPerHour: Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, hourlyMultiplier)),
+  };
 }
 
 export interface RiftChallengeMainProgress {
@@ -225,6 +354,11 @@ export interface RiftChallengeRun {
   mainProgressAtStart: RiftChallengeMainProgress;
   mechanicUnlocks: RiftChallengeMechanicUnlocks;
   lastRoll: RiftChallengeLastRoll | null;
+  /** Dynamic target captured when a modifier run begins. */
+  targetRarity?: number;
+  baseCooldownMs?: number;
+  modifierSettings?: RiftModifierSettings;
+  challengeToggles?: RiftChallengeToggles;
   /** Complete, isolated main-game save used while this Rift challenge is active. */
   gameState?: PlayerState | null;
 }
@@ -243,6 +377,9 @@ export interface RiftChallengeArchive {
   totalRiftPointsEarned: number;
   /** Last permanently completed challenge's Rift-game progression, independent of the active run. */
   riftPlayerProgress: RiftChallengeMainProgress | null;
+  /** Player-selected Rift configuration, retained between runs and sessions. */
+  modifierSettings: RiftModifierSettings;
+  challengeToggles: RiftChallengeToggles;
   riftPerkLevels: RiftPerkLevels;
 }
 
@@ -356,14 +493,20 @@ export function riftPerkCost(id: RiftPerkId, currentLevel: number): number {
   return Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(definition.baseCost * Math.pow(definition.costGrowth, level)));
 }
 
-export function riftRatePerHour(completedChallengeIds: readonly string[], perkLevels: Partial<RiftPerkLevels> | null | undefined): number {
-  const firstClearRate = RIFT_CHALLENGES.reduce(
+export function riftRatePerHour(
+  completedChallengeIds: readonly string[],
+  perkLevels: Partial<RiftPerkLevels> | null | undefined,
+  modifierSettings: unknown = DEFAULT_RIFT_MODIFIERS,
+  challengeToggles: unknown = DEFAULT_RIFT_CHALLENGES,
+): number {
+  const legacyFirstClearRate = RIFT_CHALLENGES.reduce(
     (sum, challenge) => sum + (completedChallengeIds.includes(challenge.id) ? challenge.rateBonusPerHour : 0),
     0,
   );
   const yieldLevel = Math.max(0, Math.min(RIFT_PERKS.riftYield.maxLevel, Math.floor(Number(perkLevels?.riftYield) || 0)));
-  const rate = (RIFT_BASE_RATE_PER_HOUR + firstClearRate) * (1 + yieldLevel * 0.05);
-  return Number.isFinite(rate) ? Math.max(RIFT_BASE_RATE_PER_HOUR, rate) : Number.MAX_SAFE_INTEGER;
+  const preview = riftModifierRewardPreview(modifierSettings, challengeToggles, yieldLevel);
+  const rate = preview.rpPerHour + legacyFirstClearRate * (1 + yieldLevel * 0.05);
+  return Number.isFinite(rate) ? Math.max(RIFT_BASE_RATE_PER_HOUR, Math.min(Number.MAX_SAFE_INTEGER, rate)) : Number.MAX_SAFE_INTEGER;
 }
 
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
@@ -380,6 +523,8 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftLastAccruedAt: Math.max(0, Math.floor(now)),
     totalRiftPointsEarned: 0,
     riftPlayerProgress: null,
+    modifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
+    challengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels,
   };
 }
