@@ -1,0 +1,321 @@
+/* Rift-only visual identity. The normal game never inherits these overrides. */
+.io-ui.io-rift-active {
+  --ink: #090511;
+  --ink-raised: #130b20;
+  --ink-soft: #211333;
+  --line: rgba(190, 153, 255, .16);
+  --line-bright: rgba(208, 180, 255, .27);
+  --paper: #f4edff;
+  --muted: #b4a2cc;
+  --teal: #bd8cff;
+  --io-bg: #090511;
+  --io-panel: rgba(20, 11, 34, .95);
+  --io-panel-deep: rgba(11, 6, 21, .97);
+  --io-border: rgba(190, 153, 255, .16);
+  --io-text: #f4edff;
+  --io-muted: #b4a2cc;
+  --io-subtle: #ad9abe;
+  --io-accent: #bd8cff;
+  --io-focus: #d7baff;
+  --io-surface: #180e28;
+  --io-surface-raised: #241438;
+  --io-line: rgba(190, 153, 255, .16);
+  --io-line-bright: rgba(208, 180, 255, .27);
+  color: var(--io-text);
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(139, 75, 221, .23), transparent 48%),
+    radial-gradient(ellipse at 92% 48%, rgba(103, 52, 178, .16), transparent 48%),
+    radial-gradient(ellipse at 50% 100%, rgba(74, 34, 126, .20), transparent 52%),
+    linear-gradient(155deg, #090511 0%, #10091c 52%, #0b0715 100%) !important;
+  isolation: isolate;
+}
+
+body:has(.io-ui.io-rift-active) {
+  background: #090511 !important;
+}
+
+.io-ui.io-rift-active > :not(.io-rift-atmosphere) {
+  z-index: 1;
+}
+
+/* Layered arcs rotate at different speeds to suggest a dimensional current. */
+.io-rift-atmosphere {
+  position: fixed;
+  z-index: 0;
+  inset: -14vmax;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: .88;
+  contain: strict;
+}
+
+.io-rift-atmosphere::before,
+.io-rift-atmosphere::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.io-rift-atmosphere::before {
+  background:
+    conic-gradient(
+      from 16deg at 50% 50%,
+      transparent 0deg 24deg,
+      rgba(174, 106, 255, .18) 42deg,
+      transparent 69deg 132deg,
+      rgba(128, 79, 231, .15) 157deg,
+      transparent 188deg 244deg,
+      rgba(205, 157, 255, .13) 270deg,
+      transparent 299deg 338deg,
+      rgba(142, 91, 245, .17) 351deg,
+      transparent 360deg
+    ),
+    radial-gradient(ellipse at center, transparent 25%, rgba(146, 87, 226, .10) 34%, transparent 35% 47%, rgba(172, 121, 255, .075) 48%, transparent 50%);
+  filter: blur(22px);
+  mask-image: radial-gradient(ellipse at center, transparent 11%, #000 27%, #000 65%, transparent 81%);
+  animation: io-rift-vortex-spin 78s linear infinite;
+}
+
+.io-rift-atmosphere::after {
+  inset: 8% -4% -6% 6%;
+  background:
+    repeating-radial-gradient(
+      ellipse at 51% 49%,
+      transparent 0 7.8%,
+      rgba(180, 129, 255, .055) 8.1%,
+      transparent 8.55% 14.2%
+    ),
+    conic-gradient(
+      from 210deg at 51% 49%,
+      transparent 0deg 75deg,
+      rgba(158, 93, 255, .11) 110deg,
+      transparent 145deg 255deg,
+      rgba(202, 151, 255, .10) 293deg,
+      transparent 330deg
+    );
+  filter: blur(11px);
+  mask-image: radial-gradient(ellipse at center, transparent 14%, #000 33%, #000 69%, transparent 82%);
+  opacity: .72;
+  animation: io-rift-vortex-counter 104s linear infinite, io-rift-vortex-drift 28s ease-in-out infinite alternate;
+}
+
+@keyframes io-rift-vortex-spin {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes io-rift-vortex-counter {
+  from { transform: rotate(360deg) scale(1.02); }
+  to { transform: rotate(0deg) scale(1.02); }
+}
+
+@keyframes io-rift-vortex-drift {
+  from { translate: -1.2% 1%; }
+  to { translate: 1.2% -1%; }
+}
+
+/* Recolor the shared frame, navigation, and roll surface. */
+.io-ui.io-rift-active .app-header {
+  border-bottom-color: rgba(190, 153, 255, .18);
+  background: rgba(12, 6, 23, .94);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .28), 0 1px rgba(198, 158, 255, .05);
+}
+
+.io-ui.io-rift-active .brand-mark {
+  border-color: rgba(190, 143, 255, .52);
+  color: #f0ddff;
+  background: linear-gradient(145deg, rgba(130, 73, 194, .56), rgba(28, 15, 49, .96));
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 0 28px rgba(164, 102, 255, .22);
+}
+
+.io-ui.io-rift-active .brand-mark::before,
+.io-ui.io-rift-active .brand-mark::after {
+  border-color: rgba(230, 208, 255, .66);
+}
+
+.io-ui.io-rift-active .brand-title { color: #f4eaff; }
+.io-ui.io-rift-active .brand-subtitle { color: #b69bd9; }
+
+.io-ui.io-rift-active .app-nav {
+  border-bottom-color: rgba(190, 153, 255, .13);
+  background: rgba(15, 8, 28, .94);
+}
+
+.io-ui.io-rift-active .nav-tab:hover {
+  color: #f4eaff;
+  background: rgba(137, 88, 195, .16);
+}
+
+.io-ui.io-rift-active .nav-tab.is-active {
+  border-color: rgba(190, 143, 255, .36);
+  color: #f0ddff;
+  background: linear-gradient(135deg, rgba(113, 64, 168, .38), rgba(74, 43, 120, .40));
+  box-shadow: inset 0 1px rgba(255,255,255,.07), 0 0 18px rgba(140, 86, 218, .10);
+}
+
+.io-ui.io-rift-active .nav-tab.is-active svg,
+.io-ui.io-rift-active .io-nav-icon { color: #c49aff; }
+
+.io-ui.io-rift-active .resource-chip {
+  border-color: rgba(190, 153, 255, .17);
+  color: #eee3ff;
+  background: rgba(28, 17, 44, .86);
+}
+
+.io-ui.io-rift-active .resource-item,
+.io-ui.io-rift-active .resource-value { color: #eee3ff; }
+
+.io-ui.io-rift-active .resource-item svg,
+.io-ui.io-rift-active .resource-shards svg,
+.io-ui.io-rift-active .resource-marks svg { color: #c49aff; }
+
+.io-ui.io-rift-active .header-icon-button { color: #bda8d9; }
+.io-ui.io-rift-active .header-icon-button:hover {
+  border-color: rgba(190, 153, 255, .2);
+  color: #f4eaff;
+  background: rgba(115, 72, 164, .22);
+}
+
+.io-ui.io-rift-active .offline-button {
+  border-color: rgba(190, 143, 255, .42) !important;
+  color: #f4eaff !important;
+  background: #59358a !important;
+  box-shadow: 0 5px 20px rgba(117, 65, 179, .22) !important;
+}
+
+.io-ui.io-rift-active .roll-stage {
+  border-color: rgba(190, 153, 255, .25);
+  background:
+    radial-gradient(ellipse at 50% 43%, rgba(142, 77, 218, .24), transparent 42%),
+    radial-gradient(ellipse at 50% 110%, rgba(84, 47, 143, .34), transparent 62%),
+    linear-gradient(150deg, rgba(25, 14, 40, .98), rgba(11, 7, 20, .98));
+  box-shadow: 0 26px 80px rgba(0, 0, 0, .35), 0 0 32px rgba(125, 74, 202, .09), inset 0 1px rgba(255,255,255,.055);
+}
+
+.io-ui.io-rift-active .roll-stage::before {
+  background-image:
+    linear-gradient(rgba(192, 153, 255, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(192, 153, 255, .055) 1px, transparent 1px);
+}
+
+.io-ui.io-rift-active .roll-stage::after {
+  border-color: rgba(172, 125, 245, .22);
+  box-shadow: 0 0 0 22px rgba(145, 91, 219, .045), 0 0 0 54px rgba(145, 91, 219, .028);
+}
+
+.io-ui.io-rift-active .roll-cooldown {
+  border-color: rgba(190, 153, 255, .19);
+  background: rgba(12, 7, 22, .72);
+}
+
+.io-ui.io-rift-active .roll-cooldown .bg-gradient-to-r {
+  background-image: linear-gradient(90deg, #b78af7, #8051cf) !important;
+}
+
+.io-ui.io-rift-active .roll-button {
+  border-color: rgba(220, 192, 255, .54) !important;
+  color: #160b25 !important;
+  background: linear-gradient(105deg, #d9baff 0%, #b68af4 52%, #9b70e5 100%) !important;
+  box-shadow: 0 9px 30px rgba(153, 98, 226, .27), inset 0 1px rgba(255,255,255,.58) !important;
+}
+
+.io-ui.io-rift-active .roll-button:hover {
+  box-shadow: 0 13px 36px rgba(153, 98, 226, .38), inset 0 1px rgba(255,255,255,.58) !important;
+}
+
+.io-ui.io-rift-active .roll-button.is-waiting,
+.io-ui.io-rift-active .roll-button:disabled {
+  border-color: rgba(190, 153, 255, .14) !important;
+  color: #aa9abb !important;
+  background: linear-gradient(110deg, #21152f, #2c1d40) !important;
+  box-shadow: none !important;
+}
+
+.io-ui.io-rift-active .field-card {
+  border-color: rgba(190, 153, 255, .17);
+  background: linear-gradient(150deg, rgba(29, 17, 46, .92), rgba(15, 8, 26, .95));
+}
+
+.io-ui.io-rift-active .field-progress > span {
+  background: linear-gradient(90deg, #b88af4, #8656d0);
+  box-shadow: 0 0 12px rgba(168, 113, 236, .34);
+}
+
+.io-ui.io-rift-active .latest-orb-mark {
+  border-color: rgba(210, 181, 255, .38);
+  color: #f5eaff;
+  background: radial-gradient(circle at 34% 26%, rgba(230,205,255,.7), rgba(132,83,190,.72) 42%, rgba(26,15,42,.96) 77%);
+  box-shadow: 0 0 22px rgba(168, 113, 236, .23), inset 0 1px rgba(255,255,255,.28);
+}
+
+.io-ui.io-rift-active .field-progress,
+.io-ui.io-rift-active .roll-cooldown .w-48 {
+  background-color: rgba(190, 153, 255, .13);
+}
+
+/* Existing component utility classes use several accent families. During a
+   Rift run, cool blue/cyan/teal accents all converge on the Rift's purple. */
+.io-ui.io-rift-active [class*="text-cyan-"],
+.io-ui.io-rift-active [class*="text-sky-"],
+.io-ui.io-rift-active [class*="text-blue-"],
+.io-ui.io-rift-active [class*="text-indigo-"],
+.io-ui.io-rift-active [class*="text-teal-"] {
+  color: #c9a7ff !important;
+}
+
+.io-ui.io-rift-active [class*="border-cyan-"],
+.io-ui.io-rift-active [class*="border-sky-"],
+.io-ui.io-rift-active [class*="border-blue-"],
+.io-ui.io-rift-active [class*="border-indigo-"],
+.io-ui.io-rift-active [class*="border-teal-"] {
+  border-color: rgba(190, 143, 255, .34) !important;
+}
+
+.io-ui.io-rift-active [class*="bg-cyan-"],
+.io-ui.io-rift-active [class*="bg-sky-"],
+.io-ui.io-rift-active [class*="bg-blue-"],
+.io-ui.io-rift-active [class*="bg-indigo-"],
+.io-ui.io-rift-active [class*="bg-teal-"] {
+  background-color: rgba(127, 76, 190, .18) !important;
+}
+
+.io-ui.io-rift-active [class*="from-cyan-"],
+.io-ui.io-rift-active [class*="from-sky-"],
+.io-ui.io-rift-active [class*="from-blue-"],
+.io-ui.io-rift-active [class*="from-indigo-"],
+.io-ui.io-rift-active [class*="from-teal-"] {
+  background-image: linear-gradient(110deg, #a978e7, #7145b4) !important;
+}
+
+.io-ui.io-rift-active main [class*="bg-slate-950"] {
+  background-color: rgba(12, 7, 21, .86) !important;
+}
+
+.io-ui.io-rift-active main [class*="bg-slate-900"] {
+  background-color: rgba(25, 15, 39, .88) !important;
+}
+
+.io-ui.io-rift-active main [class*="border-slate-800"],
+.io-ui.io-rift-active main [class*="border-slate-700"] {
+  border-color: rgba(190, 153, 255, .17) !important;
+}
+
+.io-ui.io-rift-active main select {
+  color: #eee3ff;
+  background: #1a1029;
+  border-color: rgba(190, 153, 255, .24);
+}
+
+.io-ui.io-rift-active ::selection {
+  color: #170b26;
+  background: #d6b9ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .io-rift-atmosphere::before,
+  .io-rift-atmosphere::after {
+    animation: none !important;
+  }
+}
