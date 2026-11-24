@@ -358,7 +358,7 @@ export async function getRiftChallengeAdminStatus(userIdValue: unknown): Promise
       archive,
       kudosStats: {
         last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= now - RIFT_KUDOS_WINDOW_MS).length,
-        sinceLastOpen: archive.kudosReceivedAt.filter(timestamp => timestamp >= archive.lastGameOpenedAt).length,
+        sinceLastOpen: archive.kudosSinceLastOpen,
       },
       generatedAt: now,
     };
@@ -411,7 +411,8 @@ export async function registerRiftCompletionPost(
     subredditName: String(record.subredditName).replace(/^r\//i, '').slice(0, 100),
   };
   const expiresAt = value.createdAt + RIFT_POST_RECORD_TTL_MS;
-  await redis.set(RIFT_COMPLETION_POST_PREFIX + safePostId, JSON.stringify(value), { expiration: new Date(expiresAt) });
+  // Keep the post display record so old Reddit posts remain renderable after Kudos expires.
+  await redis.set(RIFT_COMPLETION_POST_PREFIX + safePostId, JSON.stringify(value));
   await redis.set(RIFT_COMPLETION_RUN_PREFIX + safeRunId, safePostId, { expiration: new Date(expiresAt) });
 }
 
