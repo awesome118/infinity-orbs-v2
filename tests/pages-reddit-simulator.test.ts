@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-test('Pages Reddit Simulator is a standalone page backed by the real Frenzy preview and claim engine', () => {
+test('Reddit Simulator is in More while Rift Challenges occupies its former full-page navigation slot', () => {
   const main = read('src/client/main.tsx');
   const simulator = read('src/client/components/RedditPostSimulator.tsx');
   const frenzy = read('src/client/frenzy.tsx');
@@ -15,12 +15,14 @@ test('Pages Reddit Simulator is a standalone page backed by the real Frenzy prev
   assert.ok(moreMenuStart >= 0);
   const moreMenuEnd = main.indexOf('                </div>\n                <button\n                  type="button"\n                  onClick={() => changeTab(\'fight\')}', moreMenuStart);
   assert.ok(moreMenuEnd > moreMenuStart);
-  assert.doesNotMatch(main.slice(moreMenuStart, moreMenuEnd), /reddit-simulator/);
-  assert.match(main, /IS_GITHUB_PAGES_TEST/);
+  assert.match(main.slice(moreMenuStart, moreMenuEnd), /renderNavItem\('reddit-simulator', 'Reddit Simulator', MessageSquare\)/);
+  assert.doesNotMatch(main.slice(moreMenuStart, moreMenuEnd), /renderNavItem\('challenges'/);
+  assert.match(main, /const standalonePageMode = combatMode \|\| riftChallengesMode/);
+  assert.match(main, /io-nav-rift/);
   assert.match(main, /redditSimulatorMode/);
-  assert.match(main, /io-nav-reddit-simulator/);
   assert.match(main, /RedditPostSimulator/);
   assert.match(main, /Back to Orbs/);
+  assert.doesNotMatch(main, /io-reddit-simulator-mode-switch/);
   assert.match(simulator, /\/api\/frenzy\/simulator\/create/);
   assert.match(simulator, /frenzy\.html/);
   assert.match(frenzy, /previewPostId/);
