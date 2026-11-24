@@ -1,9 +1,10 @@
 import { context, redis } from './devvit-mock.js';
-import { withPlayerMutationLock } from './player-lock.js';
-import { loadRaw, deleteRiftCodexForRun } from './game.js';
+import { withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
+import { loadRaw, deleteRiftCodexForRun, save, prepareFrenzyOwnerRewardWrites } from './game.js';
 import {
   createInitialState,
   calculateLevelFromXp,
+  grantFrenzyOwnerShards,
   type PlayerState,
 } from '../shared/game.js';
 import {
@@ -31,6 +32,39 @@ import {
 } from '../shared/rift-challenges.js';
 
 const RIFT_ARCHIVE_KEY_PREFIX = 'io:rift-challenge:v1:';
+const RIFT_COMPLETION_POST_PREFIX = 'io:rift-completion:post:v1:';
+const RIFT_COMPLETION_RUN_PREFIX = 'io:rift-completion:run:v1:';
+const RIFT_COMPLETION_KUDOS_PREFIX = 'io:rift-completion:kudos:v1:';
+const RIFT_COMPLETION_KUDOS_POST_LOCK_PREFIX = '__rift-completion-kudos__:';
+const RIFT_KUDOS_REWARD_SHARDS = 10;
+const RIFT_KUDOS_PROGRESS_MINUTES = 1;
+const RIFT_KUDOS_WINDOW_MS = 24 * 60 * 60_000;
+const RIFT_KUDOS_HISTORY_MS = 30 * 24 * 60 * 60_000;
+const RIFT_POST_RECORD_TTL_MS = 7 * 24 * 60 * 60_000;
+
+interface RiftCompletionPostRecord {
+  version: 1;
+  postId: string;
+  runId: string;
+  ownerId: string;
+  ownerUsername: string;
+  challengeId: string;
+  challengeName: string;
+  subredditName: string;
+  createdAt: number;
+}
+
+function riftCompletionKudosReceiptKey(postId: string, userId: string): string {
+  return RIFT_COMPLETION_KUDOS_PREFIX + encodeURIComponent(postId) + ':' + encodeURIComponent(userId);
+}
+
+async function withRiftPlayerLocks<T>(userIds: string[], fn: () => Promise<T>): Promise<T> {
+  const ordered = Array.from(new Set(userIds.map(id => String(id ?? '').trim()).filter(Boolean))).sort();
+  const acquire = (index: number): Promise<T> => index >= ordered.length
+    ? fn()
+    : withPlayerMutationLockFor(ordered[index], () => acquire(index + 1));
+  return acquire(0);
+}
 
 export type { RiftChallengeSnapshot } from '../shared/rift-challenges.js';
 
@@ -40,8 +74,8 @@ function currentUserId(): string {
   return userId;
 }
 
-function archiveKey(): string {
-  return RIFT_ARCHIVE_KEY_PREFIX + currentUserId();
+function archiveKey(userId = currentUserId()): string {
+  return RIFT_ARCHIVE_KEY_PREFIX + String(userId ?? '').trim();
 }
 
 function safeInteger(value: unknown, fallback = 0, maximum = Number.MAX_SAFE_INTEGER): number {
@@ -148,14 +182,21 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     riftPlayerProgress: isRecord(value.riftPlayerProgress)
       ? normalizeRiftMainProgress(value.riftPlayerProgress as Partial<RiftChallengeMainProgress>)
       : null,
+    kudosReceivedAt: Array.isArray(value.kudosReceivedAt)
+      ? value.kudosReceivedAt
+          .map(item => Number(item))
+          .filter(item => Number.isSafeInteger(item) && item >= Math.max(0, now - RIFT_KUDOS_HISTORY_MS) && item <= now)
+          .slice(-1000)
+      : [],
+    lastGameOpenedAt: safeInteger(value.lastGameOpenedAt, now),
     riftPerkLevels,
   };
   archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
   return archive;
 }
 
-async function readArchive(): Promise<RiftChallengeArchive> {
-  const raw = await redis.get(archiveKey());
+async function readArchive(userId = currentUserId()): Promise<RiftChallengeArchive> {
+  const raw = await redis.get(archiveKey(userId));
   if (!raw) return createEmptyRiftChallengeArchive(Date.now());
   try {
     return normalizeArchive(JSON.parse(String(raw)));
@@ -165,8 +206,8 @@ async function readArchive(): Promise<RiftChallengeArchive> {
   }
 }
 
-async function writeArchive(archive: RiftChallengeArchive): Promise<void> {
-  await redis.set(archiveKey(), JSON.stringify(archive));
+async function writeArchive(archive: RiftChallengeArchive, userId = currentUserId()): Promise<void> {
+  await redis.set(archiveKey(userId), JSON.stringify(archive));
 }
 
 function accrueRiftProgress(archive: RiftChallengeArchive, now = Date.now()): void {
@@ -254,6 +295,10 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
       ? riftChallengeMechanicUnlocks(mainProgress)
       : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
     challengeAvailable: riftChallengeIsAvailable(mainProgress),
+    kudosStats: {
+      last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
+      sinceLastOpen: archive.kudosReceivedAt.filter(timestamp => timestamp >= archive.lastGameOpenedAt).length,
+    },
   };
 }
 
@@ -280,6 +325,236 @@ export async function getRiftChallengeStatus(): Promise<RiftChallengeSnapshot> {
       return snapshot(archive, archive.activeRun.mainProgressAtStart);
     }
     return snapshot(archive, await readMainProgress());
+  });
+}
+
+/** Record one full-game entry so the Rift menu can report kudos received since the previous opening. */
+export async function markRiftGameOpened(): Promise<{ openedAt: number }> {
+  return withPlayerMutationLock(async () => {
+    const now = Date.now();
+    const archive = await readArchive();
+    accrueRiftProgress(archive, now);
+    archive.lastGameOpenedAt = now;
+    await writeArchive(archive);
+    return { openedAt: now };
+  });
+}
+
+export async function getRiftChallengeAdminStatus(userIdValue: unknown): Promise<{
+  archive: RiftChallengeArchive;
+  kudosStats: { last24Hours: number; sinceLastOpen: number };
+  generatedAt: number;
+}> {
+  const userId = String(userIdValue ?? '').trim();
+  if (!userId) throw new Error('A player ID is required.');
+  return withPlayerMutationLockFor(userId, async () => {
+    const now = Date.now();
+    const archive = await readArchive(userId);
+    accrueRiftProgress(archive, now);
+    await writeArchive(archive, userId);
+    return {
+      archive,
+      kudosStats: {
+        last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= now - RIFT_KUDOS_WINDOW_MS).length,
+        sinceLastOpen: archive.kudosReceivedAt.filter(timestamp => timestamp >= archive.lastGameOpenedAt).length,
+      },
+      generatedAt: now,
+    };
+  });
+}
+
+export async function adminGrantRiftProgress(
+  userIdValue: unknown,
+  options: { points?: unknown; minutes?: unknown },
+): Promise<{ archive: RiftChallengeArchive; grantedPoints: number; grantedMinutes: number }> {
+  const userId = String(userIdValue ?? '').trim();
+  if (!userId) throw new Error('A player ID is required.');
+  const points = Math.max(0, Math.min(1_000_000, Math.floor(Number(options.points) || 0)));
+  const minutes = Math.max(0, Math.min(1_000_000, Math.floor(Number(options.minutes) || 0)));
+  if (points === 0 && minutes === 0) throw new Error('Enter a positive Rift Point or progress-minute amount.');
+  return withPlayerMutationLockFor(userId, async () => {
+    const archive = await readArchive(userId);
+    accrueRiftProgress(archive);
+    const pointBalance = Math.min(Number.MAX_SAFE_INTEGER, archive.riftPoints + points);
+    const directPointsGranted = pointBalance - archive.riftPoints;
+    archive.riftPoints = pointBalance;
+    archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + directPointsGranted);
+    const accumulated = archive.riftProgress + archive.riftRatePerHour * minutes / 60;
+    const whole = Math.floor(accumulated);
+    const nextBalance = Math.min(Number.MAX_SAFE_INTEGER, archive.riftPoints + whole);
+    const progressPointsGranted = nextBalance - archive.riftPoints;
+    archive.riftPoints = nextBalance;
+    archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + progressPointsGranted);
+    archive.riftProgress = nextBalance >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accumulated - whole);
+    await writeArchive(archive, userId);
+    return { archive, grantedPoints: directPointsGranted + progressPointsGranted, grantedMinutes: minutes };
+  });
+}
+
+export async function registerRiftCompletionPost(
+  record: Omit<RiftCompletionPostRecord, 'version'>,
+): Promise<void> {
+  const safePostId = String(record.postId ?? '').trim();
+  const safeRunId = String(record.runId ?? '').trim();
+  if (!safePostId || !safeRunId || !record.ownerId || !record.ownerUsername || !record.challengeName) {
+    throw new Error('Rift completion post metadata is incomplete.');
+  }
+  const value: RiftCompletionPostRecord = {
+    version: 1,
+    ...record,
+    postId: safePostId,
+    runId: safeRunId,
+    ownerUsername: String(record.ownerUsername).replace(/^u\//i, '').slice(0, 32),
+    challengeName: String(record.challengeName).slice(0, 100),
+    subredditName: String(record.subredditName).replace(/^r\//i, '').slice(0, 100),
+  };
+  const expiresAt = value.createdAt + RIFT_POST_RECORD_TTL_MS;
+  await redis.set(RIFT_COMPLETION_POST_PREFIX + safePostId, JSON.stringify(value), { expiration: new Date(expiresAt) });
+  await redis.set(RIFT_COMPLETION_RUN_PREFIX + safeRunId, safePostId, { expiration: new Date(expiresAt) });
+}
+
+export async function getRiftCompletionPostInfo(postIdValue?: unknown): Promise<{
+  postId: string;
+  ownerUsername: string;
+  challengeId: string;
+  challengeName: string;
+  createdAt: number;
+  kudosExpiresAt: number;
+  expired: boolean;
+  isOwner: boolean;
+  alreadyKudosed: boolean;
+  canKudos: boolean;
+}> {
+  const postId = String(postIdValue ?? context.postId ?? '').trim();
+  if (!postId) throw new Error('This is not a Rift completion post.');
+  const raw = await redis.get(RIFT_COMPLETION_POST_PREFIX + postId);
+  if (typeof raw !== 'string' || !raw) throw new Error('Rift completion post data was not found.');
+  let record: RiftCompletionPostRecord;
+  try {
+    record = JSON.parse(raw) as RiftCompletionPostRecord;
+  } catch {
+    throw new Error('Rift completion post data is corrupted.');
+  }
+  if (record.version !== 1 || record.postId !== postId || !record.ownerId || !record.challengeName ||
+      !Number.isSafeInteger(record.createdAt) || record.createdAt < 0) {
+    throw new Error('Rift completion post data is invalid.');
+  }
+  const viewerId = currentUserId();
+  const now = Date.now();
+  const kudosExpiresAt = record.createdAt + RIFT_KUDOS_WINDOW_MS;
+  const expired = now >= kudosExpiresAt;
+  const isOwner = viewerId === record.ownerId;
+  const alreadyKudosed = await redis.get(riftCompletionKudosReceiptKey(postId, viewerId)) != null;
+  return {
+    postId,
+    ownerUsername: record.ownerUsername,
+    challengeId: record.challengeId,
+    challengeName: record.challengeName,
+    createdAt: record.createdAt,
+    kudosExpiresAt,
+    expired,
+    isOwner,
+    alreadyKudosed,
+    canKudos: !expired && !isOwner && !alreadyKudosed,
+  };
+}
+
+export async function awardRiftCompletionKudos(postIdValue?: unknown): Promise<{
+  alreadyKudosed: boolean;
+  shardsGrantedToYou: number;
+  shardsGrantedToOwner: number;
+  progressMinutesGranted: number;
+}> {
+  const postId = String(postIdValue ?? context.postId ?? '').trim();
+  if (!postId) throw new Error('This is not a Rift completion post.');
+  const giverId = currentUserId();
+  const initialRaw = await redis.get(RIFT_COMPLETION_POST_PREFIX + postId);
+  if (typeof initialRaw !== 'string' || !initialRaw) throw new Error('Rift completion post data was not found.');
+  let initialRecord: RiftCompletionPostRecord;
+  try { initialRecord = JSON.parse(initialRaw) as RiftCompletionPostRecord; }
+  catch { throw new Error('Rift completion post data is corrupted.'); }
+  const ownerId = String(initialRecord.ownerId ?? '').trim();
+  if (!ownerId || initialRecord.postId !== postId) throw new Error('Rift completion post ownership is invalid.');
+  if (giverId === ownerId) throw new Error('You cannot kudos your own Rift completion post.');
+  if (Date.now() >= Number(initialRecord.createdAt) + RIFT_KUDOS_WINDOW_MS) {
+    throw new Error('Kudos are only available for the first 24 hours after this post was created.');
+  }
+
+  return withRiftPlayerLocks([giverId, ownerId, RIFT_COMPLETION_KUDOS_POST_LOCK_PREFIX + postId + ':' + giverId], async () => {
+    const raw = await redis.get(RIFT_COMPLETION_POST_PREFIX + postId);
+    if (typeof raw !== 'string' || !raw) throw new Error('Rift completion post data was not found.');
+    const record = JSON.parse(raw) as RiftCompletionPostRecord;
+    if (record.ownerId !== ownerId || record.postId !== postId) throw new Error('Rift completion post ownership changed.');
+    const now = Date.now();
+    if (now >= record.createdAt + RIFT_KUDOS_WINDOW_MS) {
+      throw new Error('Kudos are only available for the first 24 hours after this post was created.');
+    }
+    const receiptKey = riftCompletionKudosReceiptKey(postId, giverId);
+    if (await redis.get(receiptKey) != null) {
+      return { alreadyKudosed: true, shardsGrantedToYou: 0, shardsGrantedToOwner: 0, progressMinutesGranted: 0 };
+    }
+
+    const ownerArchiveKey = archiveKey(ownerId);
+    const archiveRaw = await redis.get(ownerArchiveKey);
+    if (typeof archiveRaw !== 'string' || !archiveRaw) {
+      throw new Error('The Rift owner archive is unavailable; no kudos rewards were granted.');
+    }
+    let archiveData: unknown;
+    try { archiveData = JSON.parse(archiveRaw); }
+    catch { throw new Error('The Rift owner archive is corrupted; no kudos rewards were granted.'); }
+    const archive = normalizeArchive(archiveData, now);
+    accrueRiftProgress(archive, now);
+    const progressAmount = archive.riftRatePerHour * RIFT_KUDOS_PROGRESS_MINUTES / 60;
+    const accumulated = archive.riftProgress + progressAmount;
+    const whole = Math.floor(accumulated);
+    const nextBalance = Math.min(Number.MAX_SAFE_INTEGER, archive.riftPoints + whole);
+    const earned = nextBalance - archive.riftPoints;
+    archive.riftPoints = nextBalance;
+    archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + earned);
+    archive.riftProgress = nextBalance >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accumulated - whole);
+    archive.kudosReceivedAt = [...archive.kudosReceivedAt.filter(timestamp => timestamp >= now - RIFT_KUDOS_HISTORY_MS), now].slice(-1000);
+
+    const giverState = await loadRaw({ source: 'main' });
+    const shardsGrantedToYou = grantFrenzyOwnerShards(giverState, RIFT_KUDOS_REWARD_SHARDS);
+    const ownerReward = await prepareFrenzyOwnerRewardWrites(ownerId, RIFT_KUDOS_REWARD_SHARDS, false);
+    const receipt = JSON.stringify({
+      postId,
+      giverId,
+      ownerId,
+      createdAt: now,
+      shardsGrantedToYou,
+      shardsGrantedToOwner: ownerReward.granted,
+      progressMinutesGranted: RIFT_KUDOS_PROGRESS_MINUTES,
+    });
+    try {
+      await save(giverState, [
+        ...ownerReward.writes,
+        {
+          key: ownerArchiveKey,
+          expectedValue: archiveRaw,
+          nextValue: JSON.stringify(archive),
+          conflictMessage: 'The Rift owner archive changed. Retry the kudos action.',
+        },
+        {
+          key: receiptKey,
+          expectedValue: null,
+          nextValue: receipt,
+          expiration: new Date(now + RIFT_POST_RECORD_TTL_MS),
+          conflictMessage: 'You have already kudosed this Rift completion post.',
+        },
+      ]);
+    } catch (error) {
+      if (await redis.get(receiptKey) != null) {
+        return { alreadyKudosed: true, shardsGrantedToYou: 0, shardsGrantedToOwner: 0, progressMinutesGranted: 0 };
+      }
+      throw error;
+    }
+    return {
+      alreadyKudosed: false,
+      shardsGrantedToYou,
+      shardsGrantedToOwner: ownerReward.granted,
+      progressMinutesGranted: RIFT_KUDOS_PROGRESS_MINUTES,
+    };
   });
 }
 
