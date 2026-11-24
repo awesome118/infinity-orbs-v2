@@ -286,7 +286,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       ? progressFromGameState(archive.activeRun.gameState)
       : await readMainProgress();
     if (mainProgress.level < challenge.requiredMainLevel) {
-      throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in the main game to unlock ' + challenge.name + '.');
+      throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in ' + (challenge.prerequisiteId ? 'the previous Rift run' : 'the main game') + ' to unlock ' + challenge.name + '.');
     }
     if (challenge.prerequisiteId && !archive.completedChallengeIds.includes(challenge.prerequisiteId)) {
       const prerequisite = getRiftChallengeDefinition(challenge.prerequisiteId);
