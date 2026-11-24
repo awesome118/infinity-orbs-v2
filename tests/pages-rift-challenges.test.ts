@@ -35,6 +35,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /async function saveActiveRiftPlayerState/);
   assert.match(game, /if \(s\.riftSession\) \{/);
   assert.match(game, /run\.gameState = storedState/);
+  assert.match(game, /archive\.riftPlayerProgress =/);
+  assert.match(server, /archive\.riftPlayerProgress \?\? await readMainProgress/);
   assert.match(game, /state\.riftRunComplete = true/);
   assert.match(game, /riftCodexOwnerId\(userId, session\.runId\)/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
