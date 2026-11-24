@@ -67,4 +67,26 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
   assert.match(server, /progressFromGameState\(archive\.activeRun\.gameState\)/);
+
+  // Rift presentation is active-save scoped and never replaces the real game UI.
+  const rollUi = read('src/client/components/RollSection.tsx');
+  const riftTheme = read('src/client/rift-theme.css');
+  assert.match(client, /const riftActive = Boolean/);
+  assert.match(client, /newBestModalData && !riftActive/);
+  assert.match(client, /current\.riftSession \|\| current\.riftSaveContext/);
+  assert.match(client, /if \(loadedState\.riftSession\) throw new Error\('Frenzy publishing is unavailable inside an isolated Rift run/);
+  assert.match(rollUi, /const isRiftSave = Boolean\(state\.riftSession/);
+  assert.match(rollUi, /const frenzyArmedForRoll = frenzyArmed && !isRiftSave/);
+  assert.match(rollUi, /!isRiftSave && \(/);
+  assert.match(rollUi, /busy \? 'Rolling…' : canRoll \? 'Ready to roll'/);
+  assert.match(rollUi, /!busy && displayOrb\?\.isCrit/);
+  assert.match(rollUi, /!busy && displayOrb\?\.isNew/);
+  assert.doesNotMatch(client, /if \(canShowPrediction && prediction\) \{\s*setLastOrb\(prediction\.orb\);\s*setLastBatch\(\[prediction\.orb\]\);\s*setBatchSummary\(null\);/);
+
+  // The Rift uses a layered, animated purple portal and respects reduced motion.
+  assert.match(client, /io-rift-vortex__ring--outer/);
+  assert.match(riftTheme, /io-rift-vortex__ring--outer/);
+  assert.match(riftTheme, /io-rift-energy-stream/);
+  assert.match(riftTheme, /io-rift-particles/);
+  assert.match(riftTheme, /prefers-reduced-motion: reduce/);
 });

@@ -38,21 +38,25 @@ body:has(.io-ui.io-rift-active) {
   z-index: 1;
 }
 
-/* Layered arcs rotate at different speeds to suggest a dimensional current. */
+/* A dimensional portal lives behind the game. Every layer is input-transparent. */
 .io-rift-atmosphere {
   position: fixed;
   z-index: 0;
-  inset: -14vmax;
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
-  opacity: .88;
+  opacity: .98;
   contain: strict;
+  background:
+    radial-gradient(ellipse at 50% 43%, rgba(105, 55, 174, .15), transparent 43%),
+    radial-gradient(ellipse at 4% 84%, rgba(95, 43, 158, .13), transparent 42%),
+    radial-gradient(ellipse at 96% 10%, rgba(151, 89, 226, .12), transparent 40%);
 }
 
 .io-rift-atmosphere::before,
 .io-rift-atmosphere::after {
   position: absolute;
-  inset: 0;
+  inset: -24vmax;
   border-radius: 50%;
   content: "";
   pointer-events: none;
@@ -61,44 +65,180 @@ body:has(.io-ui.io-rift-active) {
 .io-rift-atmosphere::before {
   background:
     conic-gradient(
-      from 16deg at 50% 50%,
-      transparent 0deg 24deg,
-      rgba(174, 106, 255, .18) 42deg,
-      transparent 69deg 132deg,
-      rgba(128, 79, 231, .15) 157deg,
-      transparent 188deg 244deg,
-      rgba(205, 157, 255, .13) 270deg,
-      transparent 299deg 338deg,
-      rgba(142, 91, 245, .17) 351deg,
-      transparent 360deg
+      from 12deg at 50% 50%,
+      transparent 0deg 12deg,
+      rgba(167, 105, 255, .15) 28deg,
+      transparent 48deg 78deg,
+      rgba(112, 65, 203, .19) 94deg,
+      transparent 118deg 151deg,
+      rgba(220, 180, 255, .12) 166deg,
+      transparent 190deg 222deg,
+      rgba(133, 78, 226, .17) 239deg,
+      transparent 262deg 292deg,
+      rgba(192, 142, 255, .13) 309deg,
+      transparent 332deg 360deg
     ),
-    radial-gradient(ellipse at center, transparent 25%, rgba(146, 87, 226, .10) 34%, transparent 35% 47%, rgba(172, 121, 255, .075) 48%, transparent 50%);
-  filter: blur(22px);
-  mask-image: radial-gradient(ellipse at center, transparent 11%, #000 27%, #000 65%, transparent 81%);
-  animation: io-rift-vortex-spin 78s linear infinite;
+    repeating-conic-gradient(
+      from 7deg at 50% 50%,
+      transparent 0deg 17deg,
+      rgba(185, 137, 255, .035) 18deg 18.7deg,
+      transparent 20deg 36deg
+    );
+  filter: blur(28px);
+  mask-image: radial-gradient(ellipse at center, transparent 8%, #000 22%, #000 64%, transparent 82%);
+  transform-origin: 50% 50%;
+  animation: io-rift-vortex-spin 92s linear infinite;
 }
 
 .io-rift-atmosphere::after {
-  inset: 8% -4% -6% 6%;
+  inset: -12vmax;
   background:
-    repeating-radial-gradient(
-      ellipse at 51% 49%,
-      transparent 0 7.8%,
-      rgba(180, 129, 255, .055) 8.1%,
-      transparent 8.55% 14.2%
-    ),
+    radial-gradient(circle at 15% 24%, rgba(223, 195, 255, .42) 0 1px, transparent 2px),
+    radial-gradient(circle at 74% 16%, rgba(199, 154, 255, .38) 0 1px, transparent 2px),
+    radial-gradient(circle at 32% 72%, rgba(220, 190, 255, .30) 0 1px, transparent 2px),
+    radial-gradient(circle at 88% 68%, rgba(185, 130, 255, .42) 0 1px, transparent 2px),
+    radial-gradient(circle at 57% 89%, rgba(214, 183, 255, .32) 0 1px, transparent 2px),
     conic-gradient(
-      from 210deg at 51% 49%,
-      transparent 0deg 75deg,
-      rgba(158, 93, 255, .11) 110deg,
-      transparent 145deg 255deg,
-      rgba(202, 151, 255, .10) 293deg,
-      transparent 330deg
+      from 196deg at 50% 50%,
+      transparent 0deg 58deg,
+      rgba(153, 94, 231, .10) 92deg,
+      transparent 126deg 238deg,
+      rgba(208, 160, 255, .09) 274deg,
+      transparent 309deg
     );
-  filter: blur(11px);
-  mask-image: radial-gradient(ellipse at center, transparent 14%, #000 33%, #000 69%, transparent 82%);
+  filter: blur(8px);
+  mask-image: radial-gradient(ellipse at center, transparent 12%, #000 32%, #000 70%, transparent 85%);
   opacity: .72;
-  animation: io-rift-vortex-counter 104s linear infinite, io-rift-vortex-drift 28s ease-in-out infinite alternate;
+  animation: io-rift-vortex-counter 118s linear infinite, io-rift-vortex-drift 32s ease-in-out infinite alternate;
+}
+
+.io-rift-vortex {
+  position: absolute;
+  top: 43%;
+  left: 50%;
+  width: min(108vmin, 1380px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  opacity: .76;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(circle at center, rgba(10, 5, 20, .08) 0 17%, rgba(118, 65, 194, .10) 27%, transparent 48%),
+    radial-gradient(circle at 50% 50%, transparent 0 36%, rgba(161, 104, 244, .055) 43%, transparent 58%);
+  filter: drop-shadow(0 0 45px rgba(131, 74, 210, .10));
+  will-change: transform;
+}
+
+.io-rift-vortex__ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+}
+
+.io-rift-vortex__ring--outer {
+  inset: 4%;
+  border: 1px solid rgba(187, 140, 255, .16);
+  box-shadow: 0 0 24px rgba(145, 85, 226, .08), inset 0 0 24px rgba(145, 85, 226, .04);
+  background: conic-gradient(from 30deg, transparent 0deg 42deg, rgba(197, 151, 255, .68) 51deg, transparent 63deg 176deg, rgba(138, 82, 222, .52) 193deg, transparent 209deg 302deg, rgba(221, 193, 255, .5) 317deg, transparent 332deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - .5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - .5px));
+  animation: io-rift-ring-clockwise 68s linear infinite;
+}
+
+.io-rift-vortex__ring--middle {
+  inset: 15%;
+  border: 1px dashed rgba(195, 151, 255, .24);
+  box-shadow: 0 0 22px rgba(147, 91, 229, .10);
+  animation: io-rift-ring-counter 46s linear infinite;
+}
+
+.io-rift-vortex__ring--inner {
+  inset: 27%;
+  background: conic-gradient(from 225deg, transparent 0deg 34deg, rgba(218, 184, 255, .48) 45deg, transparent 59deg 152deg, rgba(149, 99, 226, .48) 169deg, transparent 188deg 270deg, rgba(201, 157, 255, .38) 286deg, transparent 303deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  filter: blur(.5px);
+  animation: io-rift-ring-clockwise 34s linear infinite reverse;
+}
+
+.io-rift-vortex__ring--outer::after,
+.io-rift-vortex__ring--middle::after,
+.io-rift-vortex__ring--inner::after {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  content: "";
+  background: #e0c6ff;
+  box-shadow: 0 0 9px 3px rgba(189, 133, 255, .78), 0 0 26px 8px rgba(149, 91, 232, .44);
+  transform: translate(-50%, -50%);
+}
+
+.io-rift-vortex__ring--middle::after {
+  width: 5px;
+  height: 5px;
+  background: #bd94ff;
+  box-shadow: 0 0 8px 3px rgba(178, 122, 255, .72), 0 0 22px 7px rgba(139, 81, 219, .40);
+}
+
+.io-rift-vortex__ring--inner::after {
+  width: 4px;
+  height: 4px;
+  background: #f1deff;
+  box-shadow: 0 0 8px 3px rgba(218, 186, 255, .8), 0 0 18px 6px rgba(157, 103, 229, .46);
+}
+
+.io-rift-vortex__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(207, 169, 255, .24);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 47%, rgba(4, 2, 10, .96) 0 24%, rgba(30, 13, 51, .84) 35%, rgba(141, 83, 216, .25) 55%, transparent 73%);
+  box-shadow: 0 0 28px rgba(147, 86, 226, .20), 0 0 90px 18px rgba(115, 59, 190, .13), inset 0 0 32px rgba(194, 139, 255, .12);
+  transform: translate(-50%, -50%);
+  animation: io-rift-core-pulse 8s ease-in-out infinite;
+}
+
+.io-rift-energy-stream {
+  position: absolute;
+  top: -20%;
+  left: 50%;
+  width: 42vw;
+  min-width: 230px;
+  max-width: 720px;
+  height: 145vh;
+  opacity: .5;
+  background: linear-gradient(180deg, transparent 0%, rgba(145, 89, 224, .025) 30%, rgba(203, 161, 255, .12) 49%, rgba(138, 82, 213, .025) 67%, transparent 100%);
+  filter: blur(22px);
+  transform: translateX(-50%) rotate(34deg);
+  animation: io-rift-stream-drift 24s ease-in-out infinite alternate;
+}
+
+.io-rift-energy-stream--two {
+  width: 28vw;
+  opacity: .32;
+  transform: translateX(-50%) rotate(-42deg);
+  animation-duration: 31s;
+  animation-direction: alternate-reverse;
+}
+
+.io-rift-particles {
+  position: absolute;
+  inset: -8%;
+  opacity: .44;
+  background-image:
+    radial-gradient(circle, rgba(229, 208, 255, .78) 0 1px, transparent 1.8px),
+    radial-gradient(circle, rgba(184, 132, 255, .64) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(214, 183, 255, .50) 0 1.5px, transparent 2.8px);
+  background-position: 12px 24px, 80px 110px, 175px 55px;
+  background-size: 173px 191px, 241px 223px, 313px 287px;
+  mask-image: radial-gradient(ellipse at center, #000 18%, transparent 80%);
+  animation: io-rift-particles-drift 42s linear infinite;
 }
 
 @keyframes io-rift-vortex-spin {
@@ -114,6 +254,31 @@ body:has(.io-ui.io-rift-active) {
 @keyframes io-rift-vortex-drift {
   from { translate: -1.2% 1%; }
   to { translate: 1.2% -1%; }
+}
+
+@keyframes io-rift-ring-clockwise {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@keyframes io-rift-ring-counter {
+  from { rotate: 360deg; }
+  to { rotate: 0deg; }
+}
+
+@keyframes io-rift-core-pulse {
+  0%, 100% { filter: brightness(.88); box-shadow: 0 0 28px rgba(147, 86, 226, .17), 0 0 70px 14px rgba(115, 59, 190, .10), inset 0 0 32px rgba(194, 139, 255, .09); }
+  50% { filter: brightness(1.18); box-shadow: 0 0 38px rgba(177, 125, 255, .30), 0 0 105px 22px rgba(129, 72, 206, .19), inset 0 0 42px rgba(220, 190, 255, .18); }
+}
+
+@keyframes io-rift-stream-drift {
+  from { translate: -12vw -2vh; rotate: -8deg; }
+  to { translate: 12vw 2vh; rotate: 8deg; }
+}
+
+@keyframes io-rift-particles-drift {
+  from { background-position: 12px 24px, 80px 110px, 175px 55px; }
+  to { background-position: 185px 215px, -161px 333px, 488px -232px; }
 }
 
 /* Recolor the shared frame, navigation, and roll surface. */
@@ -313,9 +478,27 @@ body:has(.io-ui.io-rift-active) {
   background: #d6b9ff;
 }
 
+
+@media (max-width: 680px) {
+  .io-rift-vortex {
+    top: 44%;
+    width: 125vmin;
+    opacity: .68;
+  }
+  .io-rift-vortex__ring--middle { inset: 17%; }
+  .io-rift-vortex__ring--inner { inset: 30%; }
+  .io-rift-energy-stream { opacity: .38; }
+  .io-rift-particles { opacity: .3; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .io-rift-atmosphere::before,
-  .io-rift-atmosphere::after {
+  .io-rift-atmosphere::after,
+  .io-rift-vortex__ring,
+  .io-rift-vortex__core,
+  .io-rift-energy-stream,
+  .io-rift-particles {
     animation: none !important;
   }
 }
+
