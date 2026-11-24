@@ -740,7 +740,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const loadRiftAdmin = async () => {
-    const username = riftAdminUsername.trim().replace(/^u\\//i, '');
+    const username = riftAdminUsername.trim().replace(/^u\//i, '');
     if (!username) {
       setMessage('Enter a Reddit username to inspect its Rift archive.');
       return;
@@ -760,7 +760,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   };
 
   const grantRiftAdminProgress = async () => {
-    const username = riftAdminUsername.trim().replace(/^u\\//i, '');
+    const username = riftAdminUsername.trim().replace(/^u\//i, '');
     const points = Math.max(0, Math.floor(Number(riftAdminPoints) || 0));
     const minutes = Math.max(0, Math.floor(Number(riftAdminMinutes) || 0));
     if (!username || (points === 0 && minutes === 0)) {
