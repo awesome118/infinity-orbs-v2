@@ -115,8 +115,8 @@ import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
-import './rift-theme.css';
 import './mobile-experience.css';
+import './rift-theme.css';
 
 const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
