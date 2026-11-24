@@ -43,6 +43,7 @@ jobs:
           node --import tsx --test tests/quest-scaling.test.ts tests/offline-frenzy-rewards.test.ts tests/pages-reddit-simulator.test.ts
           node --import tsx --test tests/admin-cli.test.ts tests/rarity-icon-visuals.test.ts tests/admin-save-commands.test.ts tests/roll-batching.test.ts tests/live-balance.test.ts
           node --import tsx --test tests/rift-challenges.test.ts tests/pages-rift-challenges.test.ts
+          node --import tsx --test tests/full-log-snapshot.test.ts
           node --import tsx --test --test-name-pattern="third lifetime Orb guarantee is main-game-only" tests/audit-regressions.test.ts
 
       - name: Build static Pages version
