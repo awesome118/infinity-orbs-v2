@@ -18,6 +18,14 @@ import {
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
   RIFT_PERKS,
+  RIFT_ASCENT,
+  DEFAULT_RIFT_MODIFIERS,
+  DEFAULT_RIFT_CHALLENGES,
+  getRiftChallengeDefinition,
+  normalizeRiftModifierSettings,
+  normalizeRiftChallengeToggles,
+  riftModifierDifficultyScore,
+  riftModifierRewardPreview,
 } from '../src/shared/rift-challenges.js';
 
 test('The First Spark retains its Level 5 unlock and original objective', () => {
@@ -121,9 +129,61 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftLastAccruedAt: 1234,
     totalRiftPointsEarned: 0,
     riftPlayerProgress: null,
+    modifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
+    challengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels: {
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
     },
   });
+});
+
+
+test('Rift Ascent is the configurable entry point while legacy trials remain readable', () => {
+  assert.equal(getRiftChallengeDefinition('rift-ascent')?.id, RIFT_ASCENT.id);
+  assert.equal(RIFT_ASCENT.requiredMainLevel, 5);
+  assert.equal(RIFT_ASCENT.targetRarity, 1_000);
+  assert.equal(getRiftChallengeDefinition('first-spark')?.id, 'first-spark');
+});
+
+test('modifier settings normalize to safe, neutral minimums', () => {
+  assert.deepEqual(normalizeRiftModifierSettings({
+    instability: 0,
+    temporalDrag: 1.5,
+    fortuneSuppression: Infinity,
+    coinScarcity: -10,
+    upgradeInflation: 12.25,
+    ignored: 999,
+  }), {
+    instability: 1,
+    temporalDrag: 1.5,
+    fortuneSuppression: 1,
+    coinScarcity: 1,
+    upgradeInflation: 12.25,
+  });
+  assert.deepEqual(normalizeRiftChallengeToggles({ secondBest: true, noShards: true, noAutomation: 1 }), {
+    secondBest: true,
+    noAutomation: false,
+    noCriticals: false,
+    noShards: true,
+  });
+});
+
+test('Rift difficulty and rewards scale from continuous modifiers and challenge rules', () => {
+  assert.equal(riftModifierDifficultyScore(DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES), 0);
+  assert.deepEqual(
+    riftModifierRewardPreview(DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES),
+    { difficultyScore: 0, pointsPerClear: 1, rpPerHour: 1 },
+  );
+
+  const modifiers = { ...DEFAULT_RIFT_MODIFIERS, instability: 10 };
+  assert.equal(riftModifierDifficultyScore(modifiers, DEFAULT_RIFT_CHALLENGES), 1.25);
+  assert.ok(riftModifierRewardPreview(modifiers, DEFAULT_RIFT_CHALLENGES).pointsPerClear > 1);
+
+  const secondBest = { ...DEFAULT_RIFT_CHALLENGES, secondBest: true };
+  assert.equal(riftModifierDifficultyScore(DEFAULT_RIFT_MODIFIERS, secondBest), 4);
+  const preview = riftModifierRewardPreview(DEFAULT_RIFT_MODIFIERS, secondBest);
+  assert.equal(preview.pointsPerClear, 3);
+  assert.equal(preview.rpPerHour, 5.0625);
+  assert.ok(riftModifierRewardPreview(DEFAULT_RIFT_MODIFIERS, secondBest, 2).rpPerHour > preview.rpPerHour);
 });
