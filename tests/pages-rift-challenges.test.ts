@@ -66,7 +66,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /fractured-tempo/);
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
-  assert.match(server, /progressFromGameState\\(archive\\.activeRun\\.gameState\\)/);
+  assert.match(server, /progressFromGameState\(archive\.activeRun\.gameState\)/);
 
   // Rift presentation is active-save scoped and never replaces the real game UI.
   const rollUi = read('src/client/components/RollSection.tsx');
