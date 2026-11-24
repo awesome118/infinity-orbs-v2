@@ -4,6 +4,7 @@ import * as game from '../server/game.js';
 import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
 import * as riftChallenges from '../server/rift-challenges.js';
+import { handlePagesAdminRequest } from './admin-api.js';
 import { context } from './devvit-client.js';
 
 type JsonRecord = Record<string, any>;
@@ -65,7 +66,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
   const path = url.pathname;
 
   if (path.startsWith('/api/dev/')) {
-    return jsonResponse({ error: 'Developer-only controls are not available in the browser Pages build.' }, 404);
+    // Pages admin actions are local-only and scoped to the active browser profile.
+    return handlePagesAdminRequest(url, method, body);
   }
   if (path.startsWith('/api/payments/')) {
     return jsonResponse({ error: 'Payments are unavailable in the GitHub Pages test build.' }, 404);

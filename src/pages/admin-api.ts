@@ -1,6 +1,7 @@
 import * as game from '../server/game.js';
 import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
+import * as riftChallenges from '../server/rift-challenges.js';
 import * as rules from '../shared/game.js';
 import * as combatRules from '../shared/combat.js';
 import { redis } from '../server/devvit-mock.js';
@@ -380,6 +381,11 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
           return response(await getImpressionDashboard());
         case '/combat-lab/state':
           return response(await combatLabSnapshot());
+        case '/rift/status': {
+          const username = String(query.get('username') ?? context.username ?? '').trim().replace(/^\/?u\//i, '');
+          const userId = requireCurrentProfile(username);
+          return response({ username, userId, ...(await riftChallenges.getRiftChallengeAdminStatus(userId)) });
+        }
         case '/payment-logs':
           return response({ logs: await game.getPaymentDebugLogs(Math.max(1, Math.min(200, integer(query.get('limit'), 200)))) });
         case '/save-logs':
@@ -614,6 +620,15 @@ export async function handlePagesAdminRequest(url: URL, method: string, body: Js
       }
       case '/combat-lab/action':
         return response(await combat.adminCombatLabAction(body));
+      case '/rift/grant': {
+        const username = String(body.username ?? context.username ?? '').trim().replace(/^\/?u\//i, '');
+        const userId = requireCurrentProfile(username);
+        const result = await riftChallenges.adminGrantRiftProgress(userId, {
+          points: body.points,
+          minutes: body.minutes,
+        });
+        return response({ ok: true, username, userId, ...result });
+      }
       case '/diagnostic-logs/clear-all':
         return response(await game.clearAllDiagnosticLogs());
       case '/payment-logs/clear':

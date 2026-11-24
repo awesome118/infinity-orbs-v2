@@ -34,3 +34,17 @@ test('Reddit Simulator is in More while Rift Challenges occupies its former full
   assert.match(game, /buildFrenzyPostSubmission/);
   assert.match(game, /options\.allowAdminTestOwner/);
 });
+
+test('Pages Admin Console routes to the local-only adapter, including Rift controls', () => {
+  const api = read('src/pages/api.ts');
+  const admin = read('src/pages/admin-api.ts');
+  assert.ok(api.includes("import { handlePagesAdminRequest } from './admin-api.js';"));
+  assert.ok(api.includes('return handlePagesAdminRequest(url, method, body)'));
+  assert.ok(!api.includes('Developer-only controls are not available in the browser Pages build.'));
+  assert.ok(admin.includes('isAdmin: true'));
+  assert.ok(admin.includes('GitHub Pages testing has access only to the current local test profile.'));
+  assert.ok(admin.includes("case '/rift/status':"));
+  assert.ok(admin.includes('getRiftChallengeAdminStatus(userId)'));
+  assert.ok(admin.includes("case '/rift/grant':"));
+  assert.ok(admin.includes('adminGrantRiftProgress(userId'));
+});
