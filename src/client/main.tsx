@@ -113,11 +113,14 @@ import { ChangelogModal } from './components/ChangelogModal.js';
 import { GettingStartedModal } from './components/GettingStartedModal.js';
 import { SplashScreen } from './components/SplashScreen.js';
 import { APP_VERSION } from '../shared/version.js';
+import { installFullLogCapture, recordFullLogEvent } from './diagnostics/full-log-snapshot.js';
 import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
 import './rift-theme.css';
+
+installFullLogCapture();
 
 
 function optimisticShardSpend(
@@ -1018,6 +1021,15 @@ function App() {
       appliedServerRevisionRef.current,
       options?.allowSameRevisionBalanceChanges === true,
     )) {
+      recordFullLogEvent('player-state.snapshot-rejected', {
+        incomingRevision: nextServerRevision,
+        incomingGeneration: nextServerGeneration,
+        currentRevision: appliedServerRevisionRef.current,
+        currentGeneration: appliedServerGenerationRef.current,
+        incomingLevel: nextState.level,
+        incomingRolls: nextState.totalRolls,
+        isRift: Boolean(nextState.riftSession || nextState.riftSaveContext),
+      });
       return;
     }
 
@@ -1049,6 +1061,17 @@ function App() {
     stateRef.current = mergedState;
     stateRevisionRef.current += 1;
     setState(mergedState);
+    recordFullLogEvent('player-state.applied', {
+      level: mergedState.level,
+      totalRolls: mergedState.totalRolls,
+      highestRarity: mergedState.highestRarity,
+      coins: mergedState.coins,
+      shards: mergedState.shards,
+      stateRevision: mergedState.stateRevision,
+      saveGeneration: mergedState.saveGeneration,
+      isRift: Boolean(mergedState.riftSession || mergedState.riftSaveContext),
+      riftRunId: mergedState.riftSession?.runId ?? null,
+    });
   }, []);
   // Mutations are optimistic on the client: update the visible state immediately,
   // then let the server verify/save it. Rejections restore the exact prior state.
@@ -1236,6 +1259,7 @@ function App() {
       }
     }
     sound.playClick();
+    recordFullLogEvent('ui.tab-change', { from: activeTabRef.current, to: nextTab });
     setTab(nextTab);
     setMoreNavOpen(false);
     reportJourneyInteraction('tab_opened', nextTab);
@@ -1276,6 +1300,7 @@ function App() {
   const showToast = (msg: string, type: 'info' | 'success' | 'warn' = 'info') => {
     // Reset the old timer so a repeated message stays visible for a full 4 seconds.
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    recordFullLogEvent('ui.toast', { type, message: msg });
     setToast({ msg, type });
     toastTimerRef.current = window.setTimeout(() => {
       setToast(prev => (prev?.msg === msg ? null : prev));
