@@ -4321,8 +4321,8 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
-    globalBoosters,
-    dailyStreakCommunity,
+    globalBoosters: activeRiftRun ? createInitialState().globalBoosters : globalBoosters,
+    dailyStreakCommunity: activeRiftRun ? createInitialState().dailyStreakCommunity : dailyStreakCommunity,
   };
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
   // enforces the safe-integer storage boundary for the Number-based save.
@@ -4395,9 +4395,9 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
     throw new Error('Daily Streak count reached its supported limit; no reward was granted.');
   }
 
-  // Prepare/validate the shared event before touching player rewards. If this
-  // separate shared record is corrupt or out of range, the attempt must leave
-  // the local streak, Shards, Coins and free rolls untouched.
+  // Prepare/validate shared community progress only for the main account.
+  // The Rift carries its own player streak but never writes to the shared event.
+  let communityEvent = s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity!;
   if (!s.riftSession) {
     const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
     stageSaveExtraWrite(s, {
@@ -4406,6 +4406,7 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
       nextValue: communityUpdate.nextValue,
       conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
     });
+    communityEvent = communityUpdate.event;
   }
 
   const day = ((nextStreakCount - 1) % 7) + 1;
@@ -4418,7 +4419,7 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   s.streak.lastClaimDate = today;
   s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  s.dailyStreakCommunity = communityUpdate.event;
+  s.dailyStreakCommunity = communityEvent;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
@@ -6894,7 +6895,18 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   resetFreeShardBudgetIfNeeded(s, now);
   // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
-  s.globalBoosters = await getGlobalBoosters();
+  s.globalBoosters = s.riftSession
+    ? createInitialState().globalBoosters
+    : await getGlobalBoosters();
+
+  // First Spark explicitly disables offline progression and every automation.
+  // Resetting the local vault also clears any legacy migrated backlog.
+  if (s.riftSession?.challengeId === 'first-spark') {
+    s.offlineRolls = 0;
+    s.autoRollEnabled = false;
+    s.lastSeenAt = now;
+    return s;
+  }
 
   // Old saves may outlive a lower current vault cap after prestige/upgrades change.
   // Normalize before looking at lastSeenAt, so a recent/future timestamp cannot
@@ -7217,6 +7229,9 @@ export async function checkOffline(): Promise<PlayerState> {
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (enabled && s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Auto Roll is disabled in The First Spark.');
+  }
   if ((s.upgrades.auto ?? 0) <= 0) {
     s.autoRollEnabled = false;
     await save(s);
@@ -7281,6 +7296,9 @@ export async function roll(
       : null;
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
+    if (isAuto && s.riftSession?.challengeId === 'first-spark') {
+      throw new Error('Auto Roll is disabled in The First Spark.');
+    }
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
     }
@@ -7352,7 +7370,7 @@ export async function roll(
     let rollCount = 0;
     let remainingActivations = activations;
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
-    const timeEnergyProgressUserId = usingTimeEnergy && safeProgressAttemptId ? currentUserId() : '';
+    const timeEnergyProgressUserId = usingTimeEnergy && safeProgressAttemptId && !s.riftSession ? currentUserId() : '';
     const timeEnergyProgressTotal = freeRollActivations * ballsPerActivation;
     let lastTimeEnergyProgressWriteAt = 0;
     if (timeEnergyProgressUserId && safeProgressAttemptId) {
@@ -7696,6 +7714,9 @@ export async function claimOffline(): Promise<RollResponse> {
     skipAutoOfflineClaim: true,
     skipOfflineNotifications: true,
   });
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Offline rolls are disabled in The First Spark.');
+  }
   if (!Number.isSafeInteger(s.offlineRolls) || s.offlineRolls < 0) {
     throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
   }
@@ -8723,6 +8744,9 @@ export async function activateGlobalBooster(
   });
 
   const s = await settleOffline(await loadRaw());
+  if (s.riftSession) {
+    throw new Error('Global Boosters are outside this isolated Rift run.');
+  }
 
   await appendGlobalBoosterDebugLog('player:loaded-state', {
     userId,
@@ -8765,6 +8789,9 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
 export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Automation is disabled in The First Spark.');
+  }
   const info = AUTOMATIONS[id];
   if (!info) throw new Error('Unknown automation.');
   if (s.automations?.[id]) throw new Error(info.name + ' is already unlocked.');

@@ -445,11 +445,13 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
 }
 
 export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
+  if (s.riftSession?.challengeId === 'first-spark') return 0;
   // Free rewards use the same whole-Shard normalization and numeric safety as roll rewards.
   return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
+  if (s.riftSession?.challengeId === 'first-spark') return 0;
   resetFreeShardBudgetIfNeeded(s, now);
   const rawEarnedToday = s.freeShardsEarnedToday;
   // This field is telemetry only now: malformed values are repaired, not used to
@@ -464,6 +466,9 @@ export function grantRollShards(s: PlayerState, requested: number, now = Date.no
 }
 
 export function spendShards(s: PlayerState, requested: number): number {
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Shards are disabled in The First Spark.');
+  }
   if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
   if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');

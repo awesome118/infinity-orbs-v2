@@ -876,9 +876,11 @@ function App() {
     // Global Boosters are shared state with their own polling timeline. Keep the
     // freshest accepted snapshot across delayed /api/me and mutation responses,
     // just as we preserve the live online-player overlay.
-    const currentGlobalBoosters =
-      latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
-    if (latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
+    const isRiftSave = Boolean(nextState.riftSession || nextState.riftSaveContext?.startsWith('rift:'));
+    const currentGlobalBoosters = isRiftSave
+      ? nextState.globalBoosters ?? null
+      : latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
+    if (!isRiftSave && latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
       latestGlobalBoostersRef.current = currentGlobalBoosters;
     }
     const mergedState = {
@@ -1256,13 +1258,16 @@ function App() {
       if (me.gameBan?.active) return;
       const isCurrentRefresh = () =>
         componentMountedRef.current && refreshSequence === refreshSequenceRef.current;
+      if (me.riftSession || me.riftSaveContext?.startsWith('rift:')) setWorldEvent(null);
       const communityReads = [
+        ...(!(me.riftSession || me.riftSaveContext?.startsWith('rift:')) ? [
+          getJson<WorldEvent | null>('/api/world-event')
+            .then(value => { if (isCurrentRefresh()) setWorldEvent(value); })
+            .catch(() => undefined),
+        ] : []),
         ...(activeTabRef.current === 'social'
           ? [refreshLeaderboards().catch(() => undefined), refreshGuildData().catch(() => undefined)]
           : []),
-        getJson<WorldEvent | null>('/api/world-event')
-          .then(value => { if (isCurrentRefresh()) setWorldEvent(value); })
-          .catch(() => undefined),
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement')
           .then(value => { if (isCurrentRefresh()) setDeveloperAnnouncement(value?.message ? value : null); })
           .catch(() => undefined),
@@ -1590,6 +1595,10 @@ function App() {
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     if (!splashEntered) return;
+    if (state?.riftSession || state?.riftSaveContext?.startsWith('rift:')) {
+      setWorldEvent(null);
+      return;
+    }
     const pollInterval = tab === 'social' ? 10_000 : 20_000;
     let cancelled = false;
     let worldEventInFlight = false;
@@ -1646,11 +1655,11 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab, splashEntered]);
+  }, [tab, splashEntered, state?.riftSession?.runId, state?.riftSaveContext]);
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (!splashEntered || tab !== 'boosters') return;
+    if (!splashEntered || tab !== 'boosters' || state?.riftSession || state?.riftSaveContext?.startsWith('rift:')) return;
     let cancelled = false;
     let inFlight = false;
     const refreshGlobalBoosters = async () => {
@@ -1658,7 +1667,7 @@ function App() {
       inFlight = true;
       try {
         const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
-        if (cancelled || !snapshot) return;
+        if (cancelled || !snapshot || stateRef.current?.riftSession || stateRef.current?.riftSaveContext?.startsWith('rift:')) return;
         latestGlobalBoostersRef.current = snapshot;
         if (stateRef.current) stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
         setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
@@ -4345,7 +4354,7 @@ function App() {
               speed: { tier: 0, activationProgress: 0, endsAt: 0 },
               crit: { tier: 0, activationProgress: 0, endsAt: 0 },
             }}
-            worldEvent={worldEvent}
+            worldEvent={state.riftSession || state.riftSaveContext?.startsWith('rift:') ? null : worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
             onActivateGlobalBooster={handleActivateGlobalBooster}
             onBuyAutomation={handleBuyAutomation}
