@@ -17,6 +17,7 @@ function validDevvitConfig(name = 'infinity-orbs') {
         default: { entry: 'splash.html', height: 'tall' },
         game: { entry: 'game.html' },
         frenzy: { entry: 'frenzy.html', height: 'tall' },
+        rift: { entry: 'rift.html', height: 'tall' },
       },
     },
     server: { dir: 'dist/server', entry: 'index.cjs' },
