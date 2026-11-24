@@ -47,4 +47,5 @@ test('Pages Admin Console routes to the local-only adapter, including Rift contr
   assert.ok(admin.includes('getRiftChallengeAdminStatus(userId)'));
   assert.ok(admin.includes("case '/rift/grant':"));
   assert.ok(admin.includes('adminGrantRiftProgress(userId'));
+  assert.ok(admin.includes("return fail('Command-line admin tools are unavailable in the browser-only Pages build.', 501)"));
 });
