@@ -3793,6 +3793,9 @@ interface ActiveRiftRunContext {
   challengeId: string;
   targetRarity: number;
   baseCooldownMs: number;
+  riftLuckPerkLevel: number;
+  riftSpeedPerkLevel: number;
+  challengeCoinMultiplier: number;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   gameState: PlayerState;
 }
@@ -3926,7 +3929,7 @@ async function saveActiveRiftPlayerState(
   const userId = currentUserId();
   const expectedTicketKey = rollTicketKey(userId, session.runId);
   const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
-  if (ticketWrites.length > 1 || allExtraWrites.some(write => write.key !== rollTicketKey())) {
+  if (ticketWrites.length > 1 || allExtraWrites.some(write => write.key !== expectedTicketKey)) {
     throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
   }
 
@@ -4318,6 +4321,9 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       challengeId: activeRiftRun.challengeId,
       targetRarity: activeRiftRun.targetRarity,
       baseCooldownMs: activeRiftRun.baseCooldownMs,
+      riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
+      riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
+      challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
       upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
   }
