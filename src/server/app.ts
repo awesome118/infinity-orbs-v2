@@ -1112,7 +1112,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/rift-challenges/roll', async (_req, res) => {
+  app.post('/api/rift-challenges/roll', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
       const runId = req.body?.runId;
@@ -1158,7 +1158,7 @@ export function createApp() {
     }
   });
 
-  app.post('/api/rift-challenges/abandon', async (_req, res) => {
+  app.post('/api/rift-challenges/abandon', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
       const runId = req.body?.runId;
