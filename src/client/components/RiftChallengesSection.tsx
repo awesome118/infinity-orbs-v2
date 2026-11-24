@@ -7,10 +7,10 @@ import {
   RIFT_PERKS,
   normalizeRiftChallengeToggles,
   normalizeRiftModifierSettings,
+  getRiftChallengeDefinition,
   riftChallengeUpgradeCost,
   riftModifierRewardPreview,
   riftPerkCost,
-  type RiftChallengeId,
   type RiftChallengeSnapshot,
   type RiftChallengeUpgradeId,
   type RiftChallengeToggles,
@@ -19,7 +19,7 @@ import {
   type RiftPerkId,
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
-import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert, Sparkles } from 'lucide-react';
+import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -117,9 +117,7 @@ export const RiftChallengesSection: React.FC<{
 
   const archive = snapshot?.archive;
   const run = archive?.activeRun ?? null;
-  const challenge = run
-    ? run.challengeId === RIFT_ASCENT.id ? RIFT_ASCENT : undefined
-    : RIFT_ASCENT;
+  const challenge = run ? getRiftChallengeDefinition(run.challengeId) ?? RIFT_ASCENT : RIFT_ASCENT;
   const isActive = run?.status === 'active';
   const isCompleted = run?.status === 'completed';
 
@@ -181,11 +179,28 @@ export const RiftChallengesSection: React.FC<{
     }
   };
 
-  const startRift = () => void performAction(
-    'start-rift-ascent',
-    '/api/rift-challenges/start',
-    { challengeId: RIFT_ASCENT.id },
-  );
+  const startRift = () => void (async () => {
+    setBusyAction('start-rift-ascent');
+    setError(null);
+    try {
+      if (configDirty) {
+        await challengeRequest<RiftChallengeSnapshot>('/api/rift-challenges/modifiers', 'POST', {
+          modifierSettings,
+          challengeToggles,
+        });
+      }
+      const result = await challengeRequest<RiftChallengeSnapshot>('/api/rift-challenges/start', 'POST', {
+        challengeId: RIFT_ASCENT.id,
+      });
+      applySnapshot(result);
+      setConfirmAbandon(false);
+      onEnterGame?.();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not begin the Rift run.');
+    } finally {
+      setBusyAction(null);
+    }
+  })();
   const saveModifiers = () => void performAction(
     'save-modifiers',
     '/api/rift-challenges/modifiers',
