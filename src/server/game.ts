@@ -4012,13 +4012,14 @@ async function saveActiveRiftPlayerState(
       run.gameState = storedState;
       run.coins = storedState.coins;
       run.totalRolls = storedState.totalRolls;
-      run.bestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      const riftBestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      run.bestRarity = riftBestRarity;
       run.updatedAt = now;
       archive.version = 3;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
-      if (run.bestRarity >= challenge.targetRarity) {
+      if (riftBestRarity >= challenge.targetRarity) {
         completed = true;
         run.status = 'completed';
         run.completedAt = now;
@@ -4040,7 +4041,7 @@ async function saveActiveRiftPlayerState(
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
-        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, run.bestRarity);
+        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, riftBestRarity);
         archive.bestRarityByChallenge = bestByChallenge;
         archive.riftRatePerHour = riftRatePerHour(completedIds, (isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {}) as never);
       }
@@ -4397,10 +4398,8 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   // Prepare/validate the shared event before touching player rewards. If this
   // separate shared record is corrupt or out of range, the attempt must leave
   // the local streak, Shards, Coins and free rolls untouched.
-  const communityUpdate = s.riftSession
-    ? { event: s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity! }
-    : await prepareDailyStreakCommunityProgress(nextStreakCount);
   if (!s.riftSession) {
+    const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
     stageSaveExtraWrite(s, {
       key: communityUpdate.key,
       expectedValue: communityUpdate.expectedValue,
