@@ -127,19 +127,19 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
   mainLuck: {
     id: 'mainLuck', name: 'Rift Attunement', category: 'main-game',
     description: 'Tune ordinary Orb rolls to the Rift frequency.',
-    effect: '+2% main-game Luck per level.',
+    effect: '+2% Luck in the Rift and main game per level.',
     baseCost: 3, costGrowth: 1.62, maxLevel: 10,
   },
   mainCoins: {
     id: 'mainCoins', name: 'Fracture Dividend', category: 'main-game',
     description: 'Recover value from the edges of every discovery.',
-    effect: '+5% main-game Coin earnings per level.',
+    effect: '+5% Coin earnings in the Rift and main game per level.',
     baseCost: 4, costGrowth: 1.68, maxLevel: 10,
   },
   mainXp: {
     id: 'mainXp', name: 'Echo Study', category: 'main-game',
     description: 'Carry a little more knowledge back from each roll.',
-    effect: '+5% main-game XP earnings per level.',
+    effect: '+5% XP earnings in the Rift and main game per level.',
     baseCost: 4, costGrowth: 1.68, maxLevel: 10,
   },
   riftLuck: {
@@ -172,25 +172,25 @@ export const RIFT_CHALLENGE_UPGRADES: Record<RiftChallengeUpgradeId, RiftChallen
   fortune: {
     name: 'Fortune Lens',
     description: '+12% effective Luck per level in this challenge.',
-    mainRequirement: 'Reach Level 5 in the main game',
+    mainRequirement: 'Reach Level 5 in the Rift',
     baseCost: 10, costGrowth: 1.42, maxLevel: 10,
   },
   speed: {
     name: 'Quickstep Coil',
     description: 'Reduces the challenge roll cooldown by 90ms per level.',
-    mainRequirement: 'Reach Level 10 in the main game',
+    mainRequirement: 'Reach Level 10 in the Rift',
     baseCost: 18, costGrowth: 1.48, maxLevel: 10,
   },
   prosperity: {
     name: 'Coin Converter',
     description: '+20% Coins earned per level in this challenge.',
-    mainRequirement: 'Roll 25 Orbs in the main game',
+    mainRequirement: 'Roll 25 Orbs in the Rift',
     baseCost: 14, costGrowth: 1.45, maxLevel: 10,
   },
   critical: {
     name: 'Critical Echo',
     description: '+1.5 percentage points of critical chance per level, up to 15%.',
-    mainRequirement: 'Land 10 critical rolls in the main game',
+    mainRequirement: 'Land 10 critical rolls in the Rift',
     baseCost: 55, costGrowth: 1.65, maxLevel: 10,
   },
 };
