@@ -16,7 +16,7 @@ name: Deploy Devvit
 # Retry after updating the AppUpgrade source-contract test to assert the v2.2.11 audit branch.
 # Retry after removing the historical literal-version comparison so TypeScript accepts the 2.2.11 read-only audit.
 # Retry after moving the audit timestamp initialization ahead of its hourly CCU key generation.
-# Explicit user-requested dev-only upload of v2.2.38. Current marker: [deploy-dev:2.2.38].
+# Explicit user-requested dev-only upload of v2.2.40. Current marker: [deploy-dev:2.2.40].
 # Retry v2.2.35 after fixing the required PlayerRegistryEntry fields in notification attribution.
 # This workflow never installs to production; production review/install remains separate.
 # CI authentication uses the full ~/.devvit/token JSON plus ~/.devvit/session-id.
@@ -45,7 +45,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.38]')) }}
+    if: ${{ inputs.confirm_install || (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-dev:2.2.40]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -111,6 +111,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run preflight:guard
+          # Guard Rift first-clear publishing, Kudos rewards/counters, admin controls, and popup configuration/preview.
+          node --import tsx --test tests/rift-challenges.test.ts tests/rift-completion-posts.test.ts tests/popups.test.ts tests/predeploy-check.test.ts
           node --import tsx --test tests/alignment-prompt-ui.test.ts
           node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts tests/inline-main-post-cta-layout.test.ts tests/game-ban-status.test.ts
           node --import tsx --test tests/storage-compression.test.ts
@@ -354,6 +356,6 @@ jobs:
 # Retry the v2.2.25 dev-only deployment from the synchronized main head after lockfile refresh.
 # Retry 2.2.29 after restoring Guild word-list imports used by adjacent name-validation UI.
 
-# Manual retry of the existing v2.2.38 unlisted Reddit review submission on 2026-11-13.
+# Manual retry of the existing v2.2.40 unlisted Reddit review submission on 2026-11-13.
 
-# Retry existing Infinity Orbs 2.2.38 Reddit review submission on 2026-11-13.
+# Retry existing Infinity Orbs 2.2.40 Reddit review submission on 2026-11-13.
