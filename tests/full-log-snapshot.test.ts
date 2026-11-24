@@ -39,6 +39,19 @@ test('full log snapshots preserve ordered events and redact sensitive fields', (
   assert.equal(getRecentFullLogEvents(0).length, 0);
 });
 
+test('full log error count includes unsuccessful HTTP responses', () => {
+  clearFullLogEvents();
+  recordFullLogEvent('api.response', { status: 200, ok: true });
+  recordFullLogEvent('api.response', { status: 403, ok: false });
+  recordFullLogEvent('api.response', { status: 400, ok: false });
+  recordFullLogEvent('api.network-error', { path: '/api/example' });
+  recordFullLogEvent('browser.unhandled-rejection', { reason: 'test rejection' });
+
+  const status = getFullLogStatus();
+  assert.equal(status.errorCount, 4);
+  assert.equal(status.warningCount, 0);
+});
+
 test('full log data is bounded and circular values are safe to serialize', () => {
   const circular: Record<string, unknown> = {};
   circular.self = circular;
