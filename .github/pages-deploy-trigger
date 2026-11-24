@@ -71,3 +71,5 @@ Pages update: enhance the Rift portal with layered rotating rings, a pulsing dar
 Pages validation fix: check the Rift Frenzy server guard against src/server/game.ts in the UI regression test.
 
 Pages update: stage Rift challenge clears with a 2.25-second glowing orb charge and emitted lights, followed by a radial rush reveal and a Challenge completed dialog; add drifting nebulae, layered starfields, and slow spiral arms to the Rift background.
+
+Pages validation fix: preserve the canonical Orb borderColor expression while applying Rift charge borders through the Rift-only CSS override.
