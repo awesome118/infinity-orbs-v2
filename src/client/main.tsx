@@ -807,6 +807,12 @@ function App() {
       ? Math.min(95, (frenzyProgressCount / frenzyProgress.total) * 95)
       : frenzyProgress.percent;
   const [frenzyArmed, setFrenzyArmed] = useState(false);
+  useEffect(() => {
+    if (riftActive) {
+      setFrenzyArmed(false);
+      setNewBestModalData(null);
+    }
+  }, [riftActive]);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
   const [popupConfig, setPopupConfig] = useState<PopupConfig>(() => ({ ...DEFAULT_POPUP_CONFIG }));
@@ -2247,7 +2253,7 @@ function App() {
     };
 
     try {
-      if (!isAutoRoll && !useTimeEnergy && frenzyArmed) {
+      if (!isAutoRoll && !useTimeEnergy && frenzyArmed && !(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'))) {
         frenzySubmissionInFlight = true;
         // Consume the armed state immediately so a failed request cannot
         // leave the UI stuck in a dead "RELEASE FRENZY" state.
@@ -2832,6 +2838,11 @@ function App() {
 
     const current = stateRef.current;
     if (!current) return;
+    if (current.riftSession || current.riftSaveContext?.startsWith('rift:')) {
+      setFrenzyArmed(false);
+      showToast('Orb Frenzy cannot be charged during a Rift run.', 'info');
+      return;
+    }
     const remaining = frenzyCooldownRemaining(current.lastFrenzyAt);
     if (remaining > 0) {
       const total = Math.ceil(remaining / 1000);
@@ -4690,7 +4701,7 @@ function App() {
       )}
 
       {/* New Best Ball Celebration Modal */}
-      {newBestModalData && (
+      {newBestModalData && !riftActive && (
         <NewBestModal
           orb={newBestModalData.orb}
           prevBest={newBestModalData.prevBest}
