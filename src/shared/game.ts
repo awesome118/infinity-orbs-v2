@@ -1121,6 +1121,9 @@ export interface RiftPlayerSession {
   targetRarity: number;
   baseCooldownMs: number;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+  riftLuckPerkLevel: number;
+  riftSpeedPerkLevel: number;
+  challengeCoinMultiplier: number;
 }
 
 export interface PlayerState {
@@ -2582,6 +2585,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
   cd *= Math.pow(0.95, chronoFlowLevel);
+  if (s.riftSession) cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
