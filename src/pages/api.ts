@@ -116,10 +116,6 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
           return jsonResponse(await game.getFollowRewardStatus());
         case '/api/developer-announcement':
           return jsonResponse(await game.getDeveloperAnnouncement());
-        case '/api/menu-control':
-          return jsonResponse(await game.getGlobalMenuControl());
-        case '/api/live-balance':
-          return jsonResponse(await game.getLiveBalanceSnapshot());
         case '/api/health':
           return jsonResponse({ status: 'ok', runtime: 'github-pages-test' });
         case '/api/version':
@@ -234,8 +230,6 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await game.claimCommunityReward());
       case '/api/frenzy/start':
         return jsonResponse(await game.startOrbFrenzy());
-      case '/api/frenzy/simulator/create':
-        return jsonResponse(await game.createFrenzySimulatorPost(body.rarity));
       case '/api/frenzy/simulator/claim': {
         const postId = String(body.postId ?? '').trim();
         if (!postId) throw new Error('Choose a Frenzy post before claiming it.');
@@ -251,8 +245,6 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
       }
       case '/api/frenzy/arm':
         return jsonResponse(await game.armOrbFrenzyClaim());
-      case '/api/frenzy/offline-reward/ack':
-        return jsonResponse({ state: await game.acknowledgeFrenzyOfflineReward() });
       case '/api/frenzy/claim': {
         const result = await game.claimOrbFrenzy({
           attemptId: typeof body.attemptId === 'string' ? body.attemptId : undefined,
@@ -323,6 +315,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         await game.recordShareAction(state);
         return jsonResponse({ success: true, localOnly: true, id: 'pages-share-' + Date.now(), text });
       }
+      case '/api/diagnostics/upgrade-rollback':
+        return new Response(null, { status: 204 });
       case '/api/feedback': {
         const message = String(body.message ?? '').trim();
         if (!message) throw new Error('Please describe the bug or suggestion.');
