@@ -97,3 +97,5 @@ Pages save reset fix: atomically advance the player save generation and clear pl
 Pages diagnostics fix: do not poll Global Chat until server availability is true; count failed HTTP responses and unhandled promise rejections in full-log error totals, with regression coverage.
 
 # Rift modifier builder and reward rebalance
+
+# Retry after correcting Rift TypeScript validation
