@@ -283,6 +283,23 @@ export function riftChallengeIsAvailable(mainProgress: Partial<RiftChallengeMain
   return normalizeRiftMainProgress(mainProgress).level >= RIFT_FIRST_SPARK.requiredMainLevel;
 }
 
+export interface RiftChallengeUnlockStatus {
+  levelReady: boolean;
+  prerequisiteCleared: boolean;
+  unlocked: boolean;
+}
+
+/** Entry gates use the player's main-save level plus the prior challenge clear. */
+export function riftChallengeUnlockStatus(
+  challenge: Pick<RiftChallengeDefinition, 'requiredMainLevel' | 'prerequisiteId'>,
+  mainProgress: Partial<RiftChallengeMainProgress> | null | undefined,
+  completedChallengeIds: readonly string[],
+): RiftChallengeUnlockStatus {
+  const levelReady = normalizeRiftMainProgress(mainProgress).level >= challenge.requiredMainLevel;
+  const prerequisiteCleared = !challenge.prerequisiteId || completedChallengeIds.includes(challenge.prerequisiteId);
+  return { levelReady, prerequisiteCleared, unlocked: levelReady && prerequisiteCleared };
+}
+
 export function riftChallengeMechanicUnlocks(
   mainProgress: Partial<RiftChallengeMainProgress> | null | undefined,
 ): RiftChallengeMechanicUnlocks {

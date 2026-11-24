@@ -4,6 +4,7 @@ import {
   RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
   riftChallengeUpgradeCost,
+  riftChallengeUnlockStatus,
   riftPerkCost,
   type RiftChallengeId,
   type RiftChallengeSnapshot,
@@ -213,7 +214,7 @@ export const RiftChallengesSection: React.FC<{
             <div className="mt-1 text-lg font-black text-white">{formatNumber(archive.totalCompletedRuns)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Rift level</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Main-game level</div>
             <div className="mt-1 text-lg font-black text-white">Lv {formatNumber(mainLevel)}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
@@ -238,7 +239,7 @@ export const RiftChallengesSection: React.FC<{
           <div>
             <div className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">01 · Rift trials</div>
             <h2 className="mt-1 text-xl font-black text-white">Challenges</h2>
-            <p className="mt-1 text-xs text-slate-400">First clears improve your permanent generation rate. Replays award additional Rift Points.</p>
+            <p className="mt-1 text-xs text-slate-400">First clears improve your permanent generation rate. Entry also requires the listed main-game level and the previous challenge clear.</p>
           </div>
           <div className="text-[10px] text-slate-500">Your main save is preserved and restored when the Rift run ends.</div>
         </div>
@@ -246,13 +247,12 @@ export const RiftChallengesSection: React.FC<{
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           {RIFT_CHALLENGES.map((item, index) => {
             const cleared = archive.completedChallengeIds.includes(item.id);
-            const prerequisiteCleared = !item.prerequisiteId || archive.completedChallengeIds.includes(item.prerequisiteId);
-            const levelReady = mainLevel >= item.requiredMainLevel;
-            const unlocked = prerequisiteCleared && levelReady;
+            const unlock = riftChallengeUnlockStatus(item, snapshot.mainProgress, archive.completedChallengeIds);
+            const { prerequisiteCleared, levelReady, unlocked } = unlock;
             const isCurrent = run?.challengeId === item.id;
             const best = archive.bestRarityByChallenge[item.id] ?? 2;
             const lockedReason = !levelReady
-              ? 'Reach Level ' + item.requiredMainLevel
+              ? 'Reach main-game Level ' + item.requiredMainLevel
               : item.prerequisiteId && !prerequisiteCleared
                 ? 'Complete ' + (RIFT_CHALLENGES.find(value => value.id === item.prerequisiteId)?.name ?? 'the prior challenge')
                 : '';

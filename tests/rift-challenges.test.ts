@@ -9,6 +9,7 @@ import {
   riftChallengeCriticalChance,
   riftChallengeEffectiveLuck,
   riftChallengeIsAvailable,
+  riftChallengeUnlockStatus,
   riftChallengeMechanicUnlocks,
   riftChallengeUpgradeCost,
   riftPerkCost,
@@ -33,6 +34,30 @@ test('Rift challenge catalog is sequential and has increasing objectives', () =>
   assert.deepEqual(RIFT_CHALLENGES.map(challenge => challenge.targetRarity), [1_000, 10_000, 100_000]);
   assert.equal(RIFT_CHALLENGES[1].prerequisiteId, 'first-spark');
   assert.equal(RIFT_CHALLENGES[2].prerequisiteId, 'fractured-tempo');
+});
+
+test('later Rift challenges require main-game levels and the previous first clear', () => {
+  const fractured = RIFT_CHALLENGES[1];
+  assert.deepEqual(
+    riftChallengeUnlockStatus(fractured, { level: 10 }, ['first-spark']),
+    { levelReady: true, prerequisiteCleared: true, unlocked: true },
+  );
+  assert.deepEqual(
+    riftChallengeUnlockStatus(fractured, { level: 9 }, ['first-spark']),
+    { levelReady: false, prerequisiteCleared: true, unlocked: false },
+  );
+  assert.deepEqual(
+    riftChallengeUnlockStatus(fractured, { level: 20 }, []),
+    { levelReady: true, prerequisiteCleared: false, unlocked: false },
+  );
+  assert.equal(
+    riftChallengeUnlockStatus(RIFT_CHALLENGES[2], { level: 15 }, ['first-spark']).unlocked,
+    false,
+  );
+  assert.equal(
+    riftChallengeUnlockStatus(RIFT_CHALLENGES[2], { level: 15 }, ['fractured-tempo']).unlocked,
+    true,
+  );
 });
 
 test('Rift game progress independently unlocks challenge mechanics', () => {
