@@ -47,9 +47,13 @@ Retry prompt: CLI shortcut parser captures the numeric token then validates it, 
 Retry prompt: corrected the expected newline in the exponential coin grant test.
 
 Deploy prompt: add nine global feature switches and enforce them on server routes.
+
 Admin feature switches: master maintenance, granular feature controls, and route-map enforcement.
+
 Roll cooldown recovery: separate manual/auto timers and reset invalid future timestamps.
+
 Deploy prompt: validated live balance settings, runtime reward/cooldown tuning, audit history, and revision rollback.
+
 Pages validation retry: manual cooldown regression test now expects the live balance config parameter.
 
 Pages update: expanded Admin CLI feature controls, server-side granular route gating, and read-only mode.
@@ -65,3 +69,5 @@ Pages update: add the full purple Rift theme and slow rotating vortex atmosphere
 Pages update: enhance the Rift portal with layered rotating rings, a pulsing dark core, drifting energy streams and particles; make Rift New Best a small non-blocking violet burst; disable Rift Frenzy charging; stabilize manual-roll status and reward text.
 
 Pages validation fix: check the Rift Frenzy server guard against src/server/game.ts in the UI regression test.
+
+Pages update: stage Rift challenge clears with a 2.25-second glowing orb charge and emitted lights, followed by a radial rush reveal and a Challenge completed dialog; add drifting nebulae, layered starfields, and slow spiral arms to the Rift background.
