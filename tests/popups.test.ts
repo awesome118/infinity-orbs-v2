@@ -13,11 +13,13 @@ test('Frenzy and notification popups render with dedicated styling and admin pre
   const styles = read('src/client/styles.css');
   const admin = read('src/client/components/DevDebugModal.tsx');
   const shared = read('src/shared/game.ts');
+  const pagesApi = read('src/pages/api.ts');
 
   assert.match(main, /showFrenzyPrompt && \(/);
   assert.match(main, /className="io-modal-card io-frenzy-prompt/);
   assert.match(main, /Post today’s Frenzy/);
   assert.match(main, /frenzyShardPopupPending/);
+  assert.match(pagesApi, /case '\/api\/frenzy\/shard-popup\/ack'/);
   assert.match(main, /className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400\/35/);
   assert.match(admin, /Preview Frenzy Shard Popup/);
   assert.match(shared, /frenzyShard: true/);
