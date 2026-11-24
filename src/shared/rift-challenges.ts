@@ -199,6 +199,7 @@ export const RIFT_CHALLENGE_MIN_COOLDOWN_MS = 600;
 export const RIFT_CHALLENGE_COOLDOWN_REDUCTION_PER_LEVEL_MS = 90;
 export const RIFT_CHALLENGE_COST_TAX_PER_10_ROLLS = 0.05;
 export const RIFT_CHALLENGE_MAX_COST_TAX = 0.5;
+// Rift energy accrues continuously and is credited when the player next opens the Rift page or performs a Rift action.
 export const RIFT_BASE_RATE_PER_HOUR = 1;
 
 export interface RiftChallengeLastRoll {
