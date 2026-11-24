@@ -4312,13 +4312,17 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   // Prepare/validate the shared event before touching player rewards. If this
   // separate shared record is corrupt or out of range, the attempt must leave
   // the local streak, Shards, Coins and free rolls untouched.
-  const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
-  stageSaveExtraWrite(s, {
-    key: communityUpdate.key,
-    expectedValue: communityUpdate.expectedValue,
-    nextValue: communityUpdate.nextValue,
-    conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
-  });
+  const communityUpdate = s.riftSession
+    ? { event: s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity! }
+    : await prepareDailyStreakCommunityProgress(nextStreakCount);
+  if (!s.riftSession) {
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
+    });
+  }
 
   const day = ((nextStreakCount - 1) % 7) + 1;
   const rewardCoins = day * 100;
@@ -5329,7 +5333,8 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    (s.riftSession?.upgradeLevels.critical ?? 0) * 0.015,
   );
 }
 
@@ -5463,7 +5468,7 @@ export async function applyRolls(
       return null;
     }),
     getFakeCcuBonus(),
-    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
+    (s.riftSession ? Promise.resolve(null) : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
       console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
@@ -5495,7 +5500,9 @@ export async function applyRolls(
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
-  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) * riftMultipliers.luckMultiplier;
+  const challengeLuckMultiplier = 1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12;
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
+    riftMultipliers.luckMultiplier * challengeLuckMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
@@ -6092,7 +6099,8 @@ export async function applyRolls(
     criticalDividendMultiplier(s, criticalRollsInBatch / Math.max(1, rollCount)) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (1 + runeBonuses.coinGainPct / 100);
+    (1 + runeBonuses.coinGainPct / 100) *
+    (1 + (s.riftSession?.upgradeLevels.prosperity ?? 0) * 0.20);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = lowRarityCoinsEstimate;
@@ -6131,7 +6139,7 @@ export async function applyRolls(
   // Persistent Rift perks multiply the complete Coin payout, including filtered and transmuted bonuses.
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * riftMultipliers.coinMultiplier));
   coinsGained = normalizeCoinAmount(coinsGained);
-  if (!previewOnly) {
+  if (!previewOnly && !s.riftSession) {
     const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
     const rareOrbCount = countGuildTaskRareOrbs(rarities, rarityWeights);
     let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
@@ -6176,7 +6184,7 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  if (!previewOnly) {
+  if (!previewOnly && !s.riftSession) {
     const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
     try {
       const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
@@ -7096,7 +7104,7 @@ export async function getMe(): Promise<PlayerState> {
   }
   // Refresh the Reddit flair on game entry so existing members receive the
   // guild label even before their next roll/save.
-  void syncRarityFlair(s);
+  if (!s.riftSession) void syncRarityFlair(s);
   return s;
 }
 
@@ -7343,9 +7351,11 @@ export async function roll(
       );
     }
 
-    void recordLeaderboard(s).catch(error => {
-      console.error('[Leaderboard] Background update failed:', error);
-    });
+    if (!s.riftSession) {
+      void recordLeaderboard(s).catch(error => {
+        console.error('[Leaderboard] Background update failed:', error);
+      });
+    }
     void appendPlayerSpyLog('roll-activation', {
       mode: isAuto ? 'auto' : 'manual',
       processedRolls: rollCount,
@@ -7506,6 +7516,7 @@ export async function claimFollowReward(): Promise<{
     if (await redis.get(rewardKey)) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
 
     const s = await settleOffline(await loadRaw());
+    if (s.riftSession) throw new Error('Follow rewards are tied to your main account and cannot be claimed inside a Rift run.');
     const effectiveLevel = Math.max(1, Math.floor(Number(s.level) || 1), calculateLevelFromXp(Number(s.xp) || 0).level);
     if (effectiveLevel < 5) throw new Error('FOLLOW_REWARD_LEVEL_REQUIRED');
 
@@ -7612,9 +7623,11 @@ export async function claimOffline(): Promise<RollResponse> {
   ]).catch(error => {
     console.error('[Offline Claim] Reminder cleanup failed after save:', error);
   });
-  await recordLeaderboard(s).catch(error => {
-    console.error('[Leaderboard] Offline-claim projection failed after save:', error);
-  });
+  if (!s.riftSession) {
+    await recordLeaderboard(s).catch(error => {
+      console.error('[Leaderboard] Offline-claim projection failed after save:', error);
+    });
+  }
 
   return {
     orb: bestOrb,
