@@ -111,7 +111,6 @@ import { FeedbackModal } from './components/FeedbackModal.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { GettingStartedModal } from './components/GettingStartedModal.js';
 import { SplashScreen } from './components/SplashScreen.js';
-import { RedditPostSimulator } from './components/RedditPostSimulator.js';
 import { APP_VERSION } from '../shared/version.js';
 import './styles.css';
 import './ui-polish.css';
@@ -164,7 +163,6 @@ type ActiveTab =
   | 'arena'
   | 'reddit-simulator';
 
-const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
 
