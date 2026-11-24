@@ -75,3 +75,5 @@ Pages update: stage Rift challenge clears with a 2.25-second glowing orb charge 
 Pages validation fix: preserve the canonical Orb borderColor expression while applying Rift charge borders through the Rift-only CSS override.
 
 Pages GUI layering fix: keep the Rift portal behind content without flattening child z-index values; preserve header, navigation, dropdown, and dialog stacking.
+
+Pages update: fix Rift GUI stacking; queue admin guaranteed rarities for the next ordinary manual roll so the server processes full roll rewards and Rift challenge completion normally.
