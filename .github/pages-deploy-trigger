@@ -63,3 +63,5 @@ Pages validation retry: remove duplicate client declarations introduced while me
 Pages update: add the full purple Rift theme and slow rotating vortex atmosphere, scoped to active Rift sessions.
 
 Pages update: enhance the Rift portal with layered rotating rings, a pulsing dark core, drifting energy streams and particles; make Rift New Best a small non-blocking violet burst; disable Rift Frenzy charging; stabilize manual-roll status and reward text.
+
+Pages validation fix: check the Rift Frenzy server guard against src/server/game.ts in the UI regression test.
