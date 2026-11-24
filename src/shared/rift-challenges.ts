@@ -127,19 +127,19 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
   mainLuck: {
     id: 'mainLuck', name: 'Rift Attunement', category: 'main-game',
     description: 'Tune ordinary Orb rolls to the Rift frequency.',
-    effect: '+2% Luck in the Rift and main game per level.',
+    effect: '+2% main-game Luck per level.',
     baseCost: 3, costGrowth: 1.62, maxLevel: 10,
   },
   mainCoins: {
     id: 'mainCoins', name: 'Fracture Dividend', category: 'main-game',
     description: 'Recover value from the edges of every discovery.',
-    effect: '+5% Coin earnings in the Rift and main game per level.',
+    effect: '+5% main-game Coin earnings per level.',
     baseCost: 4, costGrowth: 1.68, maxLevel: 10,
   },
   mainXp: {
     id: 'mainXp', name: 'Echo Study', category: 'main-game',
     description: 'Carry a little more knowledge back from each roll.',
-    effect: '+5% XP earnings in the Rift and main game per level.',
+    effect: '+5% main-game XP earnings per level.',
     baseCost: 4, costGrowth: 1.68, maxLevel: 10,
   },
   riftLuck: {
