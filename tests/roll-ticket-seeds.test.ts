@@ -31,7 +31,8 @@ test('Auto Roll uses the current saved cooldown and a self-rescheduling timer', 
   assert.ok(start >= 0 && end > start);
   const effect = main.slice(start, end);
   assert.match(effect, /stateRef\.current/);
-  assert.match(effect, /cooldownMs\(latest, true\)/);
+  assert.match(effect, /cooldownMs\(latest, true, liveBalance\)/);
+  assert.match(effect, /autoRollCooldownRetryUntilRef\.current/);
   assert.match(effect, /window\.setTimeout/);
   assert.doesNotMatch(effect, /setInterval/);
 });
