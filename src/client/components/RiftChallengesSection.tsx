@@ -203,7 +203,7 @@ export const RiftChallengesSection: React.FC<{
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
             <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Challenge clears</div>
             <div className="mt-1 text-lg font-black text-white">{archive.completedChallengeIds.length}/{RIFT_CHALLENGES.length}</div>
@@ -219,6 +219,14 @@ export const RiftChallengesSection: React.FC<{
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
             <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Rift points spent</div>
             <div className="mt-1 text-lg font-black text-white">{formatNumber(Math.max(0, archive.totalRiftPointsEarned - archive.riftPoints))}</div>
+          </div>
+          <div className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/[0.06] px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-fuchsia-200/75">Kudos · Last 24h</div>
+            <div className="mt-1 text-lg font-black text-fuchsia-100">{formatNumber(snapshot.kudosStats.last24Hours)}</div>
+          </div>
+          <div className="rounded-xl border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2.5">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-violet-200/75">Since Last Open</div>
+            <div className="mt-1 text-lg font-black text-violet-100">{formatNumber(snapshot.kudosStats.sinceLastOpen)}</div>
           </div>
         </div>
       </header>
