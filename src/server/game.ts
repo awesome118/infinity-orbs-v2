@@ -8415,7 +8415,40 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
 
   });}
 
-export async function startOrbFrenzy(options: {
+export async function startOrbFrenzy(options: {type FrenzyPostSubmission = {
+  runAs: 'USER';
+  subredditName: string;
+  title: string;
+  flairId?: string;
+  entry: 'frenzy';
+  userGeneratedContent: { text: string };
+};
+
+/** Shared payload builder for the live Frenzy publisher and local Pages preview. */
+async function buildFrenzyPostSubmission(
+  ownerUsername: string,
+  subredditName: string,
+  rarity: number,
+  isInfinity: boolean,
+): Promise<FrenzyPostSubmission> {
+  const rarityText = `1/${formatRarity(rarity, isInfinity)}`;
+  const body =
+    `u/${ownerUsername} got a ${rarityText} Orb in their Frenzy.\n\n` +
+    `Click below to claim it! You can only claim one every 23 hours.\n\n` +
+    `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
+    `This owner reward is granted separately from roll-earned Shards.\n\n` +
+    `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
+  return {
+    runAs: 'USER',
+    subredditName,
+    title: `u/${ownerUsername} got a ${rarityText} Orb in their Frenzy`,
+    ...(await getPostFlairOptions(subredditName, 'frenzy')),
+    entry: 'frenzy',
+    userGeneratedContent: { text: body },
+  };
+}
+
+
   bypassDailyLimit?: boolean;
   forcedRarity?: number;
   adminTest?: boolean;
@@ -8447,20 +8480,8 @@ export async function startOrbFrenzy(options: {
     const isInfinity = result.bestOrb.isInfinity === true;
     const createdAt = Date.now();
     const expiresAt = frenzyPostExpiresAt(createdAt);
-    const postText =
-      `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy.\n\n` +
-      `Click below to claim it! You can only claim one every 23 hours.\n\n` +
-      `When someone claims your Frenzy, you receive +${FRENZY_OWNER_SHARD_REWARD} Shards. ` +
-      `This owner reward is granted separately from roll-earned Shards.\n\n` +
-      `If you claim this Frenzy, please consider upvoting the post to thank its owner.`;
-    const post = await reddit.submitCustomPost({
-      runAs: 'USER',
-      subredditName,
-      title: `u/${ownerUsername} got a 1/${formatRarity(rarity, isInfinity)} Orb in their Frenzy`,
-      ...(await getPostFlairOptions(subredditName, 'frenzy')),
-      entry: 'frenzy',
-      userGeneratedContent: { text: postText },
-    });
+    const postSubmission = await buildFrenzyPostSubmission(ownerUsername, subredditName, rarity, isInfinity);
+    const post = await reddit.submitCustomPost(postSubmission);
     const postId = String(post?.id ?? '').trim();
     if (!postId) throw new Error('Could not create the Frenzy post.');
 
@@ -8625,7 +8646,81 @@ export async function startOrbFrenzy(options: {
   });
 }
 
-export async function getOrbFrenzyInfo(): Promise<{
+export async function getOrbFrenzyInfo(): Promise<{/**
+ * Create a synthetic Frenzy post in the Pages Redis mock. The stored record and
+ * preview payload match the real publisher; only the external Reddit submission is skipped.
+ */
+export async function createFrenzySimulatorPost(requestedRarity: unknown): Promise<{
+  postId: string;
+  title: string;
+  body: string;
+  subredditName: string;
+  ownerUsername: string;
+  runAs: 'USER';
+  entry: 'frenzy';
+  flairId: string | null;
+  rarity: number;
+  isInfinity: boolean;
+  createdAt: number;
+  expiresAt: number;
+}> {
+  const ownerId = currentUserId();
+  if (!ownerId.startsWith('github-pages-test-')) {
+    throw new Error('The Reddit post simulator is only available in the GitHub Pages test build.');
+  }
+  const rawRarity = Number(requestedRarity);
+  if (!Number.isFinite(rawRarity) || !Number.isInteger(rawRarity) || rawRarity < 2) {
+    throw new Error('Enter a valid Orb rarity of at least 2.');
+  }
+
+  return withPlayerMutationLock(async () => {
+    const rarity = Math.min(MAX_ORB_RARITY, rawRarity);
+    const isInfinity = rarity >= MAX_ORB_RARITY;
+    const state = await loadRaw({ registerActivity: false });
+    const ownerUsername = String(context.username ?? state.username ?? 'Redditor')
+      .trim()
+      .replace(/^u\//i, '') || 'Redditor';
+    const subredditName = String(context.subredditName ?? 'infinityorbs').trim() || 'infinityorbs';
+    const createdAt = Date.now();
+    const expiresAt = frenzyPostExpiresAt(createdAt);
+    const submission = await buildFrenzyPostSubmission(ownerUsername, subredditName, rarity, isInfinity);
+    const postId = 't3_pages_preview-' + createSecureId();
+    const record: FrenzyPostRecord = {
+      ownerId,
+      ownerUsername,
+      rarity,
+      isInfinity,
+      subredditName,
+      adminTest: true,
+      inGame: true,
+      createdAt,
+      expiresAt,
+      consumedAt: null,
+    };
+    await redis.set(
+      FRENZY_POST_PREFIX + postId,
+      JSON.stringify(record),
+      { expiration: new Date(expiresAt + FRENZY_POST_RECEIPT_RETENTION_MS) },
+    );
+
+    return {
+      postId,
+      title: submission.title,
+      body: submission.userGeneratedContent.text,
+      subredditName: submission.subredditName,
+      ownerUsername,
+      runAs: submission.runAs,
+      entry: submission.entry,
+      flairId: submission.flairId ?? null,
+      rarity,
+      isInfinity,
+      createdAt,
+      expiresAt,
+    };
+  });
+}
+
+export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTestOwner?: boolean } = {}): Promise<{
   rarity: number;
   isInfinity: boolean;
   ownerUsername: string;
@@ -8648,16 +8743,18 @@ export async function getOrbFrenzyInfo(): Promise<{
   recentClaimers: Array<{ username: string; claimedAt: number }>;
   inGame?: boolean;
 }> {
-  const contextPostId = String(context.postId ?? '').trim();
+  const requestedPostId = String(options.postId ?? '').trim();
+  if (requestedPostId && options.allowAdminTestOwner !== true) {
+    throw new Error('Explicit Frenzy post previews are admin-only.');
+  }
+  const contextPostId = requestedPostId || String(context.postId ?? '').trim();
   const viewerId = currentUserId();
   const contextPostRaw = contextPostId
     ? await redis.get(FRENZY_POST_PREFIX + contextPostId)
     : null;
   const contextPostData = parseFrenzyPostRecord(contextPostRaw);
-  // Keep the post the viewer is actually looking at authoritative. When the
-  // expanded game has a different post context, resolve only this viewer's
-  // short-lived, explicitly armed handoff instead of failing to find the Frenzy.
-  const handoff = contextPostData ? null : await readFrenzyHandoff(viewerId);
+  // Explicit Pages preview IDs bypass Reddit post context and stale handoffs.
+  const handoff = contextPostData || requestedPostId ? null : await readFrenzyHandoff(viewerId);
   const postId = contextPostData ? contextPostId : handoff?.postId ?? contextPostId;
   if (!postId) throw new Error('This is not an Orb Frenzy post.');
 
@@ -8682,7 +8779,7 @@ export async function getOrbFrenzyInfo(): Promise<{
   const selfClaimTest =
     isOwner &&
     data.adminTest === true &&
-    isFrenzyTestAdmin(s.username);
+    (isFrenzyTestAdmin(s.username) || options.allowAdminTestOwner === true);
 
   const baseOrbCount = frenzyOrbCountForRarity(data.rarity);
   const multiRolls = rollsPerActivation(s);

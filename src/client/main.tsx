@@ -23,6 +23,7 @@ import {
   X,
   Gem,
   Compass,
+  MessageSquare,
 } from 'lucide-react';
 import type {
   PlayerState,
@@ -84,6 +85,7 @@ import { autoRollCooldownRetryDelayMs } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
 import { RiftChallengesSection } from './components/RiftChallengesSection.js';
+import { RedditPostSimulator } from './components/RedditPostSimulator.js';
 import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
@@ -150,7 +152,10 @@ type ActiveTab =
   | 'gear'
   | 'forge'
   | 'skills'
-  | 'arena';
+  | 'arena'
+  | 'reddit-simulator';
+
+const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
 
@@ -490,8 +495,10 @@ function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
-  const combatModeRef = useRef(combatMode);
-  combatModeRef.current = combatMode;
+  const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
+  const standalonePageMode = combatMode || redditSimulatorMode;
+  const combatModeRef = useRef(standalonePageMode);
+  combatModeRef.current = standalonePageMode;
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -502,14 +509,14 @@ function App() {
   // different browsers, and Reddit's embedded webview storage boundaries.
   useEffect(() => {
     setAutoRoll(Boolean(
-      !combatMode &&
+      !standalonePageMode &&
       state &&
       (state.upgrades.auto ?? 0) > 0 &&
       state.autoRollEnabled === true,
     ));
-  }, [combatMode, state?.autoRollEnabled, state?.upgrades.auto]);
+  }, [standalonePageMode, state?.autoRollEnabled, state?.upgrades.auto]);
 
-  // Persist Auto Roll as OFF while Combat is open, including direct links into a Combat tab.
+  // Persist Auto Roll as OFF while a standalone page is open, including direct links.
   useEffect(() => {
     const onCombatBeatState = (event: Event) => {
       combatBeatActiveRef.current = (event as CustomEvent<{active?:boolean}>).detail?.active === true;
@@ -519,7 +526,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!combatMode) {
+    if (!standalonePageMode) {
       autoRollDisableForCombatRef.current = false;
       return;
     }
@@ -537,11 +544,11 @@ function App() {
     }).catch(() => {
       // Keep Auto Roll disabled locally even if the preference write failed.
       setAutoRoll(false);
-      showToast('Auto Roll was stopped for Combat, but the preference could not be saved.', 'warn');
+      showToast('Auto Roll was stopped for the standalone page, but the preference could not be saved.', 'warn');
     }).finally(() => {
       autoRollDisableForCombatRef.current = false;
     });
-  }, [combatMode, state?.autoRollEnabled]);
+  }, [standalonePageMode, state?.autoRollEnabled]);
 
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
@@ -1006,6 +1013,7 @@ function App() {
     skills: 'Combat',
     arena: 'Combat',
     runes: 'Runes',
+    'reddit-simulator': 'Reddit Simulator',
   };
 
   const changeTab = (nextTab: ActiveTab) => {
@@ -1018,8 +1026,10 @@ function App() {
       return;
     }
     const targetIsCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
-    if (targetIsCombatMode && rollActionLockRef.current) {
-      showToast('Finish the current roll before entering Combat.', 'info');
+    const targetIsRedditSimulatorMode = IS_GITHUB_PAGES_TEST && nextTab === 'reddit-simulator';
+    const targetIsStandalonePageMode = targetIsCombatMode || targetIsRedditSimulatorMode;
+    if (targetIsStandalonePageMode && rollActionLockRef.current) {
+      showToast(targetIsRedditSimulatorMode ? 'Finish the current roll before opening the Reddit Simulator.' : 'Finish the current roll before entering Combat.', 'info');
       return;
     }
     if (combatMode && !targetIsCombatMode && combatBeatActiveRef.current) {
@@ -1028,8 +1038,8 @@ function App() {
     }
     if (combatMode && !targetIsCombatMode) window.dispatchEvent(new CustomEvent('io-combat-leaving'));
     // Update synchronously so stale interval callbacks cannot roll during a tab transition.
-    combatModeRef.current = targetIsCombatMode;
-    if (targetIsCombatMode) {
+    combatModeRef.current = targetIsStandalonePageMode;
+    if (targetIsStandalonePageMode) {
       setAutoRoll(false);
       if (stateRef.current?.autoRollEnabled === true) {
         beginOptimisticState(current => ({ ...current, autoRollEnabled: false }));
@@ -4003,9 +4013,9 @@ function App() {
         </div>
       )}
 
-      <nav aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav" + (combatMode ? " io-nav-combat" : "")}>
+      <nav aria-label={combatMode ? "Combat navigation" : redditSimulatorMode ? "Reddit Simulator navigation" : "Game navigation"} className={"io-nav app-nav" + (standalonePageMode ? " io-nav-combat" : "") + (redditSimulatorMode ? " io-nav-reddit-simulator" : "")}>
         <div className="nav-shell">
-          {!combatMode ? (
+          {!standalonePageMode ? (
             <>
               <div className="io-nav-primary" role="group" aria-label="Main game">
                 {renderNavItem('roll', 'Roll', Sparkles)}
@@ -4066,9 +4076,21 @@ function App() {
                   <span className="io-nav-label">Combat</span>
                   {state.level < FEATURE_UNLOCK_LEVELS.combat && <span className="io-nav-unlock">Lv {FEATURE_UNLOCK_LEVELS.combat}</span>}
                 </button>
+                {IS_GITHUB_PAGES_TEST && (
+                  <button
+                    type="button"
+                    onClick={() => changeTab('reddit-simulator')}
+                    className="nav-tab io-combat-mode-switch io-reddit-simulator-mode-switch"
+                    aria-label="Open Reddit Simulator"
+                    title="Preview the real Frenzy post and claim flow without publishing to Reddit."
+                  >
+                    <MessageSquare className="io-nav-icon" />
+                    <span className="io-nav-label">Reddit Simulator</span>
+                  </button>
+                )}
               </div>
             </>
-          ) : (
+          ) : combatMode ? (
             <>
               <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Combat pages">
                 <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-nav-item" + (tab === 'fight' ? " is-active" : "")}><Flame className="io-nav-icon" /><span className="io-nav-label">Fight</span></button>
@@ -4114,6 +4136,18 @@ function App() {
                 </button>
               </div>
             </>
+          ) : (
+            <>
+              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Reddit Simulator pages">
+                {renderNavItem('reddit-simulator', 'Post Preview', MessageSquare)}
+              </div>
+              <div className="io-nav-trailing io-nav-combat-trailing">
+                <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
+                  <Sparkles className="io-nav-icon" />
+                  <span className="io-nav-label">Back to Orbs</span>
+                </button>
+              </div>
+            </>
           )}
         </div>
       </nav>
@@ -4140,9 +4174,9 @@ function App() {
       )}
 
       {/* Main Container Content */}
-      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : "")}>
+      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : redditSimulatorMode ? " io-app-main-reddit-simulator" : "")}>
 
-        {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
+        {!standalonePageMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
           <div className="io-tutorial-topline"><span>First steps</span><span>Step {Math.min(4, tutorialStep + 1)} of 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
             {tutorialStep === 0 && <>
@@ -4173,6 +4207,24 @@ function App() {
         )}
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+        ) : redditSimulatorMode ? (
+          <RedditPostSimulator
+            state={state}
+            onClaimed={res => {
+              applyPlayerState(res.state);
+              setLastOrb(res.orb);
+              setLastBatch(res.batch ?? [res.orb]);
+              setBatchSummary({
+                totalVal: res.totalRollValue,
+                coins: res.coinsGained,
+                shards: res.shardsGained,
+                xp: res.xpGained,
+                frenzyCount: res.frenzyCount ?? 0,
+              });
+              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+              showToast('Simulator Frenzy claimed. ' + formatNumber(res.frenzyCount ?? 0) + ' Orbs rolled.', 'success');
+            }}
+          />
         ) : (
           <>
         {tab === 'roll' && (

@@ -230,6 +230,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await game.claimCommunityReward());
       case '/api/frenzy/start':
         return jsonResponse(await game.startOrbFrenzy());
+      case '/api/frenzy/simulator/create':
+        return jsonResponse(await game.createFrenzySimulatorPost(body.rarity));
       case '/api/frenzy/simulator/claim': {
         const postId = String(body.postId ?? '').trim();
         if (!postId) throw new Error('Choose a Frenzy post before claiming it.');

@@ -988,3 +988,29 @@ html:fullscreen .io-rarity-modal .io-rarity-orb-icon--compact {
     transition: none !important;
   }
 }
+
+
+/* Reddit Simulator is a standalone Pages mode, separate from the More menu. */
+.io-ui .io-reddit-simulator-screen { min-width: 0; color: #e6f0ff; }
+.io-ui .io-reddit-simulator-page-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 18px 20px; border: 1px solid rgba(104,158,228,.25); border-radius: 14px;
+  background: linear-gradient(125deg, rgba(18,43,76,.94), rgba(8,17,33,.97));
+  box-shadow: inset 0 1px rgba(255,255,255,.035);
+}
+.io-ui .io-reddit-simulator-page-head>div { min-width: 0; }
+.io-ui .io-reddit-simulator-page-head>div>span {
+  color: #79d9ef; font: 900 9px ui-monospace,monospace; letter-spacing: .14em;
+}
+.io-ui .io-reddit-simulator-page-head h1 { margin: 5px 0 4px; color: #f5f9ff; font-size: clamp(20px,3vw,27px); font-weight: 950; letter-spacing: -.025em; }
+.io-ui .io-reddit-simulator-page-head p { margin: 0; max-width: 760px; color: #a6bad3; font-size: 12px; line-height: 1.55; }
+.io-ui .io-reddit-simulator-page-head>strong {
+  flex: 0 0 auto; padding: 7px 9px; border: 1px solid rgba(94,220,242,.32);
+  border-radius: 7px; background: rgba(34,193,220,.08); color: #8be9f7;
+  font: 900 9px ui-monospace,monospace; letter-spacing: .1em;
+}
+.io-ui .io-app-main-reddit-simulator { max-width: 1180px; }
+@media(max-width:600px) {
+  .io-ui .io-reddit-simulator-page-head { flex-direction: column; padding: 14px; }
+  .io-ui .io-reddit-simulator-page-head>strong { align-self: flex-start; }
+}

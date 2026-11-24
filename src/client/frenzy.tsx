@@ -7,11 +7,16 @@ import './post-revamp.css';
 import { formatNumber, formatRarity, getOrbInfo, FRENZY_POST_LIFETIME_MS, FRENZY_CLAIM_COOLDOWN_MS, MAX_ORB_RARITY } from '../shared/game.js';
 import { recordPostImpression } from './impressions.js';
 
-async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 10_000): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = 10_000,
+  fetcher: typeof fetch = fetch,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetcher(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Request timed out. For claims or comments, refresh to verify the result before trying again.');
@@ -164,6 +169,23 @@ function AnimatedRarity({ rarity, color, isInfinity = false }: { rarity: number;
 }
 
 function FrenzyPost() {
+  const previewPostId = new URLSearchParams(window.location.search).get('previewPostId')?.trim() ?? '';
+  const infoUrl = previewPostId
+    ? '/api/frenzy/simulator/info?postId=' + encodeURIComponent(previewPostId)
+    : '/api/frenzy/info';
+  const fetchPostApi = (url: string, init?: RequestInit, timeoutMs = 10_000) => {
+    let fetcher: typeof fetch = fetch;
+    if (previewPostId && window.parent !== window) {
+      try {
+        if (window.parent.location.origin === window.location.origin) {
+          fetcher = window.parent.fetch.bind(window.parent);
+        }
+      } catch {
+        // The parent Pages app owns the local API adapter. Fall back if unavailable.
+      }
+    }
+    return fetchWithTimeout(url, init, timeoutMs, fetcher);
+  };
   const [info, setInfo] = useState<FrenzyInfo | null>(null);
   const [playedBefore, setPlayedBefore] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -187,7 +209,7 @@ function FrenzyPost() {
     setLoadingInfo(true);
     setError(null);
     try {
-      const res = await fetchWithTimeout('/api/frenzy/info');
+      const res = await fetchPostApi(infoUrl);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load Frenzy.');
       const data = await res.json() as FrenzyInfo;
       setInfo(data);
@@ -211,7 +233,7 @@ function FrenzyPost() {
       if (!active || inFlight || document.visibilityState === 'hidden') return;
       inFlight = true;
       try {
-        const response = await fetchWithTimeout('/api/frenzy/info', { cache: 'no-store' }, 6_000);
+        const response = await fetchPostApi(infoUrl, { cache: 'no-store' }, 6_000);
         if (!response.ok) return;
         const fresh = await response.json() as FrenzyInfo;
         if (active && fresh.postId === info.postId) {
@@ -239,7 +261,7 @@ function FrenzyPost() {
 
   useEffect(() => {
     let active = true;
-    void fetchWithTimeout('/api/player/experience')
+    void fetchPostApi('/api/player/experience')
       .then(response => response.ok ? response.json() as Promise<{ playedBefore?: unknown }> : null)
       .then(result => { if (active && typeof result?.playedBefore === 'boolean') setPlayedBefore(result.playedBefore); })
       .catch(() => undefined);
@@ -248,10 +270,10 @@ function FrenzyPost() {
 
   // Viewing a Frenzy post is an impression, not a live-player heartbeat.
   useEffect(() => {
-    if (impressionRecordedRef.current) return;
+    if (previewPostId || impressionRecordedRef.current) return;
     impressionRecordedRef.current = true;
     void recordPostImpression('frenzy', context.postId);
-  }, []);
+  }, [previewPostId]);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -276,6 +298,45 @@ function FrenzyPost() {
     if (!info?.canClaim || loading) return;
     setLoading(true);
     setError(null);
+
+    if (previewPostId) {
+      try {
+        const attemptId = 'pages-preview-' + Date.now().toString(36) + '-' +
+          (typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : 'local');
+        const response = await fetchPostApi('/api/frenzy/simulator/claim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ postId: previewPostId, attemptId }),
+        }, 120_000);
+        const payload = await response.json().catch(() => ({})) as {
+          error?: unknown;
+          orb?: { rarity?: unknown; isInfinity?: unknown };
+          frenzyCount?: unknown;
+          state?: unknown;
+        };
+        if (!response.ok) {
+          throw new Error(typeof payload.error === 'string' ? payload.error : 'The Frenzy claim failed.');
+        }
+        const claimedRarity = Number(payload.orb?.rarity);
+        if (!Number.isSafeInteger(claimedRarity) || claimedRarity < 2 || !payload.state) {
+          throw new Error('The Frenzy claim returned an incomplete result.');
+        }
+        setInlineClaimedRarity(claimedRarity);
+        setInlineClaimedIsInfinity(payload.orb?.isInfinity === true);
+        setInlineClaimedCount(Math.max(0, Math.floor(Number(payload.frenzyCount) || 0)));
+        setInlineClaimedAt(Date.now());
+        window.parent.postMessage(
+          { type: 'io-frenzy-preview-claimed', result: payload },
+          window.location.origin,
+        );
+        void load();
+      } catch (error: unknown) {
+        setError(error instanceof Error ? error.message : 'The Frenzy claim failed.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     let expansion: Promise<unknown>;
     try {
@@ -476,7 +537,9 @@ function FrenzyPost() {
                 <ArrowRight className="w-4 h-4" />
                 {playedBefore === true ? 'Continue in Infinity Orbs' : 'Play Infinity Orbs'}
               </button>
-              <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>
+              {previewPostId
+                ? <span className="io-public-note-link">Preview only. This post was not published to Reddit.</span>
+                : <a href={`https://www.reddit.com/comments/${info.postId.replace(/^t3_/, '')}/`} target="_blank" rel="noreferrer" className="io-public-note-link">Upvote the Frenzy post</a>}
             </div>
             {error && <p className="io-public-inline-error" role="alert">{error}</p>}
           </section>
