@@ -398,6 +398,11 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
     if (archive.riftPoints < cost) throw new Error('Need ' + String(cost) + ' Rift Points for this perk.');
     archive.riftPoints -= cost;
     archive.riftPerkLevels[perkId] = currentLevel + 1;
+    if (archive.activeRun?.status === 'active' && archive.activeRun.gameState) {
+      const nextRevision = safeInteger(archive.activeRun.gameState.stateRevision) + 1;
+      if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+      archive.activeRun.gameState.stateRevision = nextRevision;
+    }
     archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
     await writeArchive(archive);
     const mainProgress = archive.activeRun?.status === 'active' && archive.activeRun.gameState
