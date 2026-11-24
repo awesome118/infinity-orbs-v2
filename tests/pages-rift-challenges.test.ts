@@ -23,6 +23,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(build, /main\.tsx/);
   assert.match(build, /dist-pages/);
   assert.match(api, /getRiftChallengeStatus/);
+  assert.match(api, /updateRiftModifiers\(body\.modifierSettings, body\.challengeToggles\)/);
   assert.match(api, /startRiftChallenge\(body\.challengeId\)/);
   assert.match(api, /rollRiftChallenge/);
   assert.match(api, /buyRiftChallengeUpgrade/);
@@ -38,9 +39,13 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /async function saveActiveRiftPlayerState/);
   assert.match(game, /if \(s\.riftSession\) \{/);
   assert.match(game, /run\.gameState = storedState/);
+  assert.match(server, /updateRiftModifiers/);
   assert.match(server, /const mainProgress = await readMainProgress\(\)/);
   assert.match(server, /riftChallengeUnlockStatus\(challenge, mainProgress, archive\.completedChallengeIds\)/);
   assert.match(server, /Reach Level .* in the main game to unlock/);
+  assert.match(shared, /RIFT_ASCENT/);
+  assert.match(shared, /normalizeRiftModifierSettings/);
+  assert.match(shared, /riftModifierRewardPreview/);
   assert.match(shared, /requiredMainLevel: 10/);
   assert.match(shared, /requiredMainLevel: 15/);
   assert.match(game, /state\.riftRunComplete = true/);
@@ -57,7 +62,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.doesNotMatch(adminDebug.slice(queuedDevAdminStart, queuedDevAdminEnd), /applyRolls\(/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
   assert.match(game, /challengeCoinMultiplier/);
-  assert.match(game, /Auto Roll is disabled in The First Spark/);
+  assert.match(game, /Auto Roll is disabled by this Rift challenge/);
   assert.match(game, /Offline rolls are disabled in The First Spark/);
   assert.match(game, /Automation is disabled in The First Spark/);
   assert.match(game, /Global Boosters are outside this isolated Rift run/);
@@ -82,6 +87,14 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.doesNotMatch(client, /renderNavItem\('challenges', 'Challenges', Compass\)/);
 
   assert.match(challengeUi, /Rift game active/);
+  assert.match(challengeUi, /Instability/);
+  assert.match(challengeUi, /Temporal Drag/);
+  assert.match(challengeUi, /Fortune Suppression/);
+  assert.match(challengeUi, /Coin Scarcity/);
+  assert.match(challengeUi, /Upgrade Inflation/);
+  assert.match(challengeUi, /Second-best/);
+  assert.match(challengeUi, /BEGIN RIFT ASCENT/);
+  assert.match(challengeUi, /projected generation/i);
   assert.match(challengeUi, /ENTER RIFT GAME/);
   assert.doesNotMatch(challengeUi, /\/api\/rift-challenges\/roll/);
   assert.match(challengeUi, /\/api\/rift-challenges\/perk/);
