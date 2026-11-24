@@ -7,6 +7,7 @@ import * as combatRules from '../shared/combat.js';
 import { redis } from '../server/devvit-mock.js';
 import { context } from './devvit-client.js';
 import { withPlayerMutationLock } from '../server/player-lock.js';
+import { retireRedisLargeValue } from '../server/redis-large-values.js';
 import { getServerMonitorSnapshot, estimateKnownRedisStorage } from '../server/server-monitor.js';
 import { auditKnownRedisStorage } from '../server/redis-storage-audit.js';
 import { getImpressionDashboard } from '../server/impressions.js';
@@ -126,12 +127,15 @@ async function resetCurrentProfile(): Promise<Awaited<ReturnType<typeof game.loa
     const generationKey = 'player-generation:' + userId;
     const playerKey = 'player:' + userId;
     const combatKey = 'infinity-orbs:combat:' + userId;
+    const riftArchiveKey = 'io:rift-challenge:v1:' + userId;
 
     // Fence the reset from every save or combat write that began before it.
     // A fresh revision-zero save must never go through the ordinary save CAS.
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const txn = await redis.watch(generationKey, playerKey, combatKey);
+      const txn = await redis.watch(generationKey, playerKey, combatKey, riftArchiveKey);
       const rawGeneration = await redis.get(generationKey);
+      const previousPlayerRaw = await redis.get(playerKey);
+      const previousCombatRaw = await redis.get(combatKey);
       const parsedGeneration = Number.parseInt(String(rawGeneration ?? '0'), 10);
       const currentGeneration = Number.isSafeInteger(parsedGeneration) && parsedGeneration >= 0
         ? parsedGeneration
@@ -150,8 +154,15 @@ async function resetCurrentProfile(): Promise<Awaited<ReturnType<typeof game.loa
       await txn.set(generationKey, String(fresh.saveGeneration));
       await txn.set(playerKey, JSON.stringify(fresh));
       await txn.del(combatKey);
+      await txn.del(riftArchiveKey);
       const committed = await txn.exec();
       if (committed !== null) {
+        await game.cleanupPreviousPlayerSave(userId, previousPlayerRaw).catch(error => {
+          console.warn('[Pages Admin Reset] Previous player-save chunks could not be retired:', error);
+        });
+        await retireRedisLargeValue(combatKey, previousCombatRaw).catch(error => {
+          console.warn('[Pages Admin Reset] Previous Combat chunks could not be retired:', error);
+        });
         await redis.del('io:roll-ticket:' + userId).catch(() => undefined);
         await social.recordLeaderboard(fresh);
         return fresh;
