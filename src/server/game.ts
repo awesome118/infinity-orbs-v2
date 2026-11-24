@@ -8415,7 +8415,7 @@ export async function claimCommunityReward(): Promise<{ state: PlayerState; rewa
 
   });}
 
-export async function startOrbFrenzy(options: {type FrenzyPostSubmission = {
+type FrenzyPostSubmission = {
   runAs: 'USER';
   subredditName: string;
   title: string;
@@ -8448,7 +8448,7 @@ async function buildFrenzyPostSubmission(
   };
 }
 
-
+export async function startOrbFrenzy(options: {
   bypassDailyLimit?: boolean;
   forcedRarity?: number;
   adminTest?: boolean;
@@ -8646,7 +8646,7 @@ async function buildFrenzyPostSubmission(
   });
 }
 
-export async function getOrbFrenzyInfo(): Promise<{/**
+/**
  * Create a synthetic Frenzy post in the Pages Redis mock. The stored record and
  * preview payload match the real publisher; only the external Reddit submission is skipped.
  */
