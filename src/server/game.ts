@@ -4411,7 +4411,7 @@ async function saveActiveRiftPlayerState(
       run.coins = storedState.coins;
       run.totalRolls = storedState.totalRolls;
       const selectedRarity = safeNonNegativeInteger(state.riftSelectedBestRarity);
-      const previousRunBest = safeNonNegativeInteger(run.bestRarity, 2);
+      const previousRunBest = safeNonNegativeInteger(run.bestRarity) || 2;
       const riftBestRarity = challenge.id === RIFT_ASCENT.id
         ? Math.max(2, previousRunBest, selectedRarity || 2)
         : Math.max(2, Number(storedState.highestRarity) || 2);
