@@ -75,7 +75,7 @@ test('notification prompt works for returning players and admin preview does not
   const header = read('src/client/components/Header.tsx');
 
   assert.match(main, /const \[notificationsEnabled, setNotificationsEnabled\] = useState\(false\)/);
-  assert.match(main, /We’ll only send notifications when your idle rewards are ready to claim or an Infinity Orbs update is ready\./);
+  assert.match(main, /We’ll only send the types of alerts you choose: game updates and reminders when your offline Orbs are full\./);
   assert.match(main, /This prompt will only appear once\./);
   assert.match(main, /You can change your choice later with the bell icon\./);
 
