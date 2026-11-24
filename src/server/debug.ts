@@ -57,6 +57,7 @@ import {
   discardRedisLargeValueWritePlan,
 } from './redis-large-values.js';
 import { adminCombatLabAction, getCombatSnapshot, getCombatSnapshotForUser, performCombatBeat } from './combat.js';
+import { getRiftChallengeAdminStatus, adminGrantRiftProgress } from './rift-challenges.js';
 import { COMBAT_MAX_DEPTH, COMBAT_SKILLS, combatBossLuckBonus, combatGearRarityOdds, combatGearStatBudgetMultiplier, combatOrbDamageMultiplier, combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityStrengthPct, combatRuneScaledValue, combatStatsFor, combatTotalBossesBeaten, getEnemyForDungeonDepth, type CombatRuneBonuses, type CombatState } from '../shared/combat.js';
 import { context, redis, reddit } from './devvit-mock.js';
 import {
@@ -480,6 +481,31 @@ debugRouter.get('/popups', async (_req, res) => {
     res.json({ config, stats, generatedAt: Date.now() });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || 'Failed to load popup analytics.' });
+  }
+});
+
+debugRouter.get('/rift/status', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    const username = targetUsername(req.query?.username);
+    const userId = await resolveUserId(username);
+    res.json({ username, userId, ...(await getRiftChallengeAdminStatus(userId)) });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not inspect Rift progression.' });
+  }
+});
+
+debugRouter.post('/rift/grant', async (req, res) => {
+  try {
+    const username = targetUsername(req.body?.username);
+    const userId = await resolveUserId(username);
+    const result = await adminGrantRiftProgress(userId, {
+      points: req.body?.points,
+      minutes: req.body?.minutes,
+    });
+    res.json({ ok: true, username, userId, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Could not grant Rift progress.' });
   }
 });
 

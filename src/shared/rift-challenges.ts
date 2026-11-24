@@ -243,6 +243,14 @@ export interface RiftChallengeArchive {
   totalRiftPointsEarned: number;
   /** Last permanently completed challenge's Rift-game progression, independent of the active run. */
   riftPlayerProgress: RiftChallengeMainProgress | null;
+  /** Timestamps of kudos received in the recent month, used for social reward counters. */
+  kudosReceivedAt: number[];
+  /** Most recent full-game open, used as the baseline for the session kudos counter. */
+  lastGameOpenedAt: number;
+  /** Number of Kudos received after the most recent game entry; snapshotted on the next entry. */
+  kudosSinceLastOpen: number;
+  /** Kudos received during the previous interval, displayed in the current game session. */
+  kudosDisplaySinceLastOpen: number;
   riftPerkLevels: RiftPerkLevels;
 }
 
@@ -254,6 +262,7 @@ export interface RiftChallengeSnapshot {
   mainProgress: RiftChallengeMainProgress;
   mechanicUnlocks: RiftChallengeMechanicUnlocks;
   challengeAvailable: boolean;
+  kudosStats: { last24Hours: number; sinceLastOpen: number };
 }
 
 export function normalizeRiftMainProgress(value: Partial<RiftChallengeMainProgress> | null | undefined): RiftChallengeMainProgress {
@@ -363,6 +372,10 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftLastAccruedAt: Math.max(0, Math.floor(now)),
     totalRiftPointsEarned: 0,
     riftPlayerProgress: null,
+    kudosReceivedAt: [],
+    lastGameOpenedAt: Math.max(0, Math.floor(now)),
+    kudosSinceLastOpen: 0,
+    kudosDisplaySinceLastOpen: 0,
     riftPerkLevels,
   };
 }

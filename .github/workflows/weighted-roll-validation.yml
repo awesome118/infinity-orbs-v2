@@ -5,9 +5,16 @@ on:
     branches: [main]
     paths:
       - "src/server/game.ts"
+      - "src/server/rift-challenges.ts"
       - "src/server/social.ts"
       - "src/shared/roll-batching.ts"
+      - "src/shared/rift-challenges.ts"
       - "src/client/main.tsx"
+      - "src/client/components/**"
+      - "src/client/rift.tsx"
+      - "src/pages/api.ts"
+      - "devvit.json"
+      - "scripts/predeploy-check.mjs"
       - "tests/**"
       - "package.json"
       - "package-lock.json"
@@ -46,6 +53,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run preflight:guard
+          # Exercise the new Rift post, Kudos, archive-counter, admin, and popup paths on every relevant change.
+          node --import tsx --test tests/rift-challenges.test.ts tests/rift-completion-posts.test.ts tests/popups.test.ts tests/predeploy-check.test.ts
           node --import tsx --test tests/alignment-prompt-ui.test.ts
           node --import tsx --test tests/player-save-chunking.test.ts tests/player-lock.test.ts tests/inline-main-post-cta-layout.test.ts tests/game-ban-status.test.ts
           node --import tsx --test tests/storage-compression.test.ts

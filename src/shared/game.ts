@@ -1113,12 +1113,12 @@ export interface PlayerStreak {
   longestStreak: number;
 }
 
-export type GamePopupId = 'notification' | 'frenzy' | 'joinSubreddit';
+export type GamePopupId = 'notification' | 'frenzy' | 'frenzyShard' | 'joinSubreddit';
 export type GamePopupEvent = 'shown' | 'accepted' | 'dismissed';
-export interface PopupConfig { notification: boolean; frenzy: boolean; joinSubreddit: boolean }
+export interface PopupConfig { notification: boolean; frenzy: boolean; frenzyShard: boolean; joinSubreddit: boolean }
 export interface PopupMetric { shown: number; accepted: number; dismissed: number; acceptanceRate: number }
 export type PopupStats = Record<GamePopupId, PopupMetric>;
-export const DEFAULT_POPUP_CONFIG: PopupConfig = { notification: true, frenzy: true, joinSubreddit: true };
+export const DEFAULT_POPUP_CONFIG: PopupConfig = { notification: true, frenzy: true, frenzyShard: true, joinSubreddit: true };
 
 export interface RiftPlayerSession {
   runId: string;
@@ -1136,6 +1136,10 @@ export interface PlayerState {
   riftSession?: RiftPlayerSession;
   /** Runtime-only flag returned on the roll that completes a Rift challenge. */
   riftRunComplete?: boolean;
+  /** Runtime-only first-clear announcement payload attached only after the Rift transaction commits. */
+  riftChallengeFirstClear?: { challengeId: string; challengeName: string; runId: string; completedAt: number; ownerId: string; ownerUsername: string };
+  /** Shard reward notice queued by Frenzy claims and acknowledged when the owner dismisses it. */
+  frenzyShardPopupPending?: { amount: number; eventCount: number; lastRewardAt: number };
   /** Runtime identity that lets the client distinguish a completed Rift response from the restored main save. */
   riftSaveContext?: string;
   username?: string;

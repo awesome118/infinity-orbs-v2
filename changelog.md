@@ -1,5 +1,14 @@
 # Infinity Orbs Changelog
 
+### New in 2.2.40
+
+- **Rift First-Clear Posts:** Publishing a challenge's first completion now creates a dedicated Rift achievement post with animated visuals and separate Play and Kudos actions.
+- **Kudos Rewards:** Each viewer can Kudos a first-clear post once within 24 hours. The viewer receives 10 Shards, the champion receives 10 Shards, and the champion's Rift Bar receives one minute of progress.
+- **Rift Kudos Counters:** The Rift menu tracks Kudos received in the last 24 hours and since the previous game opening.
+- **Rift Administration:** The Admin Console now includes searchable Rift controls for inspecting player archives and granting Rift Points or progress time.
+- **Frenzy Shard Reward Popup:** Frenzy owner Shard rewards now have a dedicated configurable popup, analytics, and an admin-only preview that grants nothing.
+
+
 ### New in 2.2.39
 
 - **Reddit Review Retry:** Reissues the existing 2.2.38 candidate under a new patch version because Devvit does not allow an already-created AppVersion to be submitted again. No gameplay changes.

@@ -4,18 +4,51 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { context, redis } from '../src/server/devvit-mock.js';
-import { getPopupStats, recordPopupEvent } from '../src/server/game.js';
+import { getPopupConfig, getPopupStats, recordPopupEvent, setPopupConfig } from '../src/server/game.js';
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+
+test('Frenzy Shard popup settings default on for older installs and persist admin toggles', async () => {
+  const original = await getPopupConfig();
+  try {
+    await redis.set('io:popup-config:v1', JSON.stringify({
+      notification: true,
+      frenzy: true,
+      joinSubreddit: true,
+    }));
+    const migrated = await getPopupConfig();
+    assert.equal(migrated.frenzyShard, true);
+
+    const disabled = await setPopupConfig({ frenzyShard: false });
+    assert.equal(disabled.frenzyShard, false);
+    assert.equal((await getPopupConfig()).frenzyShard, false);
+
+    const enabled = await setPopupConfig({ frenzyShard: true });
+    assert.equal(enabled.frenzyShard, true);
+  } finally {
+    await setPopupConfig(original);
+  }
+});
 
 test('Frenzy and notification popups render with dedicated styling and admin previews', () => {
   const main = read('src/client/main.tsx');
   const styles = read('src/client/styles.css');
   const admin = read('src/client/components/DevDebugModal.tsx');
+  const shared = read('src/shared/game.ts');
+  const pagesApi = read('src/pages/api.ts');
 
   assert.match(main, /showFrenzyPrompt && \(/);
   assert.match(main, /className="io-modal-card io-frenzy-prompt/);
   assert.match(main, /Post today’s Frenzy/);
+  assert.match(main, /frenzyShardPopupPending/);
+  assert.match(pagesApi, /case '\/api\/frenzy\/shard-popup\/ack'/);
+  assert.match(main, /className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400\/35/);
+  assert.match(admin, /Preview Frenzy Shard Popup/);
+  const activeAdminModal = main.slice(main.lastIndexOf('<DevDebugModal'));
+  assert.match(activeAdminModal, /onForceFrenzyShardPopup=\{\(\) => \{/);
+  assert.match(activeAdminModal, /setFrenzyShardPopup\(\{ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true \}\)/);
+  assert.match(shared, /frenzyShard: true/);
+  assert.match(admin, /no Shards and records no metrics/);
 
   assert.match(main, /showNotificationPrompt && \(notificationPromptPreview \|\| !notificationsEnabled\) && \(/);
   assert.match(main, /className="io-modal-card io-notification-prompt/);
@@ -42,7 +75,7 @@ test('notification prompt works for returning players and admin preview does not
   const header = read('src/client/components/Header.tsx');
 
   assert.match(main, /const \[notificationsEnabled, setNotificationsEnabled\] = useState\(false\)/);
-  assert.match(main, /We’ll only send notifications when your idle rewards are ready to claim or an Infinity Orbs update is ready\./);
+  assert.match(main, /We’ll only send the types of alerts you choose: game updates and reminders when your offline Orbs are full\./);
   assert.match(main, /This prompt will only appear once\./);
   assert.match(main, /You can change your choice later with the bell icon\./);
 
@@ -57,10 +90,14 @@ test('notification prompt works for returning players and admin preview does not
   assert.match(main, /setNotificationPromptPreview\(true\)/);
   assert.doesNotMatch(main, /maybePromptForNotifications/);
 
-  assert.match(header, /Enable Reddit notifications/);
-  assert.match(header, /Disable Reddit notifications/);
+  assert.match(header, /Push notifications/);
+  assert.match(header, /Choose each type independently/);
+  assert.match(header, /aria-label="Notification settings"/);
+  assert.match(header, /role="switch"/);
+  assert.match(header, /Game updates/);
+  assert.match(header, /Offline Orbs/);
   assert.match(server, /export async function getNotificationState/);
-  assert.match(server, /return notifications\.isOptedIn\(id\)/);
+  assert.match(server, /return \(await getNotificationPreferences\(userId\)\)\.enabled/);
   assert.match(server, /await notifications\.optInCurrentUser\(\)/);
   assert.match(server, /await notifications\.optOutCurrentUser\(\)/);
 });
@@ -87,6 +124,12 @@ test('popup metrics persist real popup events for shadow_fen while admin preview
     assert.equal(developerResult.recorded, true);
     assert.equal(developerResult.excluded, undefined);
     assert.equal(afterDeveloper.notification.shown, afterNormal.notification.shown + 1);
+
+    const shardBefore = await getPopupStats();
+    const shardShown = await recordPopupEvent('frenzyShard', 'shown');
+    const shardAfter = await getPopupStats();
+    assert.equal(shardShown.recorded, true);
+    assert.equal(shardAfter.frenzyShard.shown, shardBefore.frenzyShard.shown + 1);
 
     const main = read('src/client/main.tsx');
     assert.match(main, /if \(notificationPromptPreview\)[\s\S]*?return;[\s\S]*?trackPopupEvent\('notification', 'dismissed'\)/);

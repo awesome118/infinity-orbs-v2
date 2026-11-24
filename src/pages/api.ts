@@ -76,6 +76,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
       switch (path) {
         case '/api/rift-challenges':
           return jsonResponse(await riftChallenges.getRiftChallengeStatus());
+        case '/api/rift-completion/info':
+          return jsonResponse(await riftChallenges.getRiftCompletionPostInfo());
         case '/api/me':
           return jsonResponse(await game.getMe());
         case '/api/roll-ticket':
@@ -169,6 +171,12 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
     }
 
     switch (path) {
+      case '/api/frenzy/shard-popup/ack':
+        return jsonResponse({ state: await game.acknowledgeFrenzyShardPopup() });
+      case '/api/rift-challenges/mark-opened':
+        return jsonResponse(await riftChallenges.markRiftGameOpened());
+      case '/api/rift-completion/kudos':
+        return jsonResponse(await riftChallenges.awardRiftCompletionKudos());
       case '/api/rift-challenges/start':
         return jsonResponse(await riftChallenges.startRiftChallenge(body.challengeId));
       case '/api/rift-challenges/roll':
