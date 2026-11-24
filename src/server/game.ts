@@ -3926,6 +3926,12 @@ async function saveActiveRiftPlayerState(
 ): Promise<void> {
   const session = state.riftSession;
   if (!session) throw new Error('RIFT_SESSION_MISSING');
+  if (session.challengeId === 'first-spark') {
+    state.shards = 0;
+    state.lifetimeShards = 0;
+    state.freeShardsEarnedToday = 0;
+    state.shardPityRolls = 0;
+  }
   const userId = currentUserId();
   const expectedTicketKey = rollTicketKey(userId, session.runId);
   const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
@@ -5414,6 +5420,8 @@ function effectiveRollCritChance(
 
 async function readRiftMainGameMultipliers(userId: string): Promise<{ luckMultiplier: number; coinMultiplier: number; xpMultiplier: number }> {
   const fallback = { luckMultiplier: 1, coinMultiplier: 1, xpMultiplier: 1 };
+  // These cross-game perks intentionally do not bypass challenge-specific
+  // Sealed Progression modifiers. Rift-only perks remain active in a run.
   if (!userId) return fallback;
   try {
     const raw = await redis.get('io:rift-challenge:v1:' + userId);
@@ -5468,7 +5476,9 @@ export async function applyRolls(
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
   const now = Date.now();
   const spyUserId = currentUserId();
-  const riftMultipliers = await readRiftMainGameMultipliers(spyUserId);
+  const riftMultipliers = s.riftSession
+    ? { luckMultiplier: 1, coinMultiplier: 1, xpMultiplier: 1 }
+    : await readRiftMainGameMultipliers(spyUserId);
   const spyBefore = {
     totalRolls: s.totalRolls,
     totalCrits: s.totalCrits ?? 0,
@@ -6069,6 +6079,7 @@ export async function applyRolls(
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
+    const shardDropsDisabled = s.riftSession?.challengeId === 'first-spark';
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
     const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, dryStreakForBatchProcs) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
@@ -6108,6 +6119,7 @@ export async function applyRolls(
       }
     }
 
+    if (shardDropsDisabled) earnedShards = 0;
     shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + earnedShards);
     xpGained += earnedXp;
 
