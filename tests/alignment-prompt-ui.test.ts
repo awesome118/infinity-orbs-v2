@@ -231,3 +231,24 @@ test('Alignment migration preserves legacy effects and new choices stack for two
   assert.equal(celestialAlignmentStackCount(active, 'goldenOrbit', first.expiresAt + 1), 1);
   assert.equal(CELESTIAL_ALIGNMENT_DURATION_MS, 2 * 60 * 60_000);
 });
+
+
+test('Alignment queue grace applies only to choices admitted before the visible deadline', () => {
+  const shared = source('src/shared/game.ts');
+  const server = source('src/server/game.ts');
+  const status = server.slice(
+    server.indexOf('export async function getCelestialAlignmentStatus'),
+    server.indexOf('export async function chooseCelestialAlignment'),
+  );
+  const choice = server.slice(
+    server.indexOf('export async function chooseCelestialAlignment'),
+    server.indexOf('export async function synthesizeDust'),
+  );
+
+  assert.match(shared, /CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS = 30 \* 1_000/);
+  assert.match(status, /CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS \+ CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS/);
+  assert.match(status, /now < Number\(s\.alignmentPendingAt\) \+ CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS/);
+  assert.match(choice, /const choiceQueuedAt = Date\.now\(\)/);
+  assert.match(choice, /choiceQueuedAt >= pendingAt \+ CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS/);
+  assert.match(choice, /now >= pendingAt \+ CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS \+ CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS/);
+});

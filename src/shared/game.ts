@@ -188,6 +188,8 @@ export const CELESTIAL_ALIGNMENT_MEAN_INTERVAL_MS =
 export const CELESTIAL_ALIGNMENT_LEGACY_DURATION_MS = 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_DURATION_MS = 2 * 60 * 60 * 1_000;
 export const CELESTIAL_ALIGNMENT_CHOICE_WINDOW_MS = 60 * 1_000;
+/** Allows a selection admitted before expiry to finish in the server action queue. */
+export const CELESTIAL_ALIGNMENT_CHOICE_GRACE_MS = 30 * 1_000;
 export type CelestialAlignmentChoice = 'starseeker' | 'goldenOrbit' | 'clockwork';
 export interface CelestialAlignmentInstance { id: string; choice: CelestialAlignmentChoice; activatedAt: number; expiresAt: number; }
 const CELESTIAL_ALIGNMENT_CHOICES: readonly CelestialAlignmentChoice[] = ['starseeker', 'goldenOrbit', 'clockwork'];

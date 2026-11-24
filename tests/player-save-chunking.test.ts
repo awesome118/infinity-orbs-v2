@@ -176,3 +176,15 @@ test('read-only Redis storage audit runs from the production AppUpgrade trigger'
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.doesNotMatch(app, /clearAllDiagnosticLogs/);
 });
+
+
+test('combat saves use shared chunk manifests while preserving compressed payloads', () => {
+  const combat = source('src/server/combat.ts');
+  assert.match(combat, /createRedisLargeValueWritePlan\(key,compressStorageString\(JSON\.stringify\(s\)\)\)/);
+  assert.match(combat, /readRedisLargeValue\(key,previousRaw\)/);
+  assert.match(combat, /retireRedisLargeValue\(key,previousRaw\)/);
+  assert.match(combat, /discardRedisLargeValueWritePlan\(writePlan\)/);
+  assert.doesNotMatch(combat, /txn\.set\(key,compressStorageString\(JSON\.stringify\(s\)\)\)/);
+  assert.match(combat, /saveExists: storedRaw != null/);
+  assert.match(combat, /JSON\.parse\(decompressStorageString\(raw\)\)/);
+});
