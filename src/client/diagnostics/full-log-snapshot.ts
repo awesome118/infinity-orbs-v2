@@ -100,7 +100,16 @@ export function recordFullLogEvent(type: string, detail: unknown = {}): void {
     event = { ...event, detail: '[unserializable diagnostic detail]' };
   }
   events.push(event);
-  if (safeType.includes('error') || safeType === 'browser.error' || safeType === 'api.network-error') errorCount += 1;
+  const failedApiResponse = safeType === 'api.response' &&
+    safeDetail !== null &&
+    typeof safeDetail === 'object' &&
+    !Array.isArray(safeDetail) &&
+    (safeDetail as Record<string, unknown>).ok === false;
+  if (
+    failedApiResponse ||
+    safeType.includes('error') ||
+    safeType === 'browser.unhandled-rejection'
+  ) errorCount += 1;
   if (safeType.includes('warn')) warningCount += 1;
   while (events.length > MAX_EVENTS) {
     events.shift();
