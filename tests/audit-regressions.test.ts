@@ -966,7 +966,7 @@ test('roll rewards commit atomically with Guild and community progress', () => {
   assert.match(game, /stageSaveExtraWrite\(s, guildEffects\.extraWrite\)/);
   assert.doesNotMatch(roll, /onConflict:/);
   assert.match(roll, /prepareCommunityRolls\(rollCount, pendingCommunityWrite\)/);
-  assert.match(roll, /getCommunityEvent\(\)\.catch\(error =>/);
+  assert.match(roll, /s\.riftSession \? Promise\.resolve\(null\) : getCommunityEvent\(\)\)\.catch\(error =>/);
   assert.match(roll, /Read failed; rolling without the event bonus/);
   assert.match(roll, /Progress not recorded for this roll; preserving shared data/);
 
@@ -2002,14 +2002,14 @@ test('optional World Event conflicts cannot block primary player rewards', () =>
   assert.doesNotMatch(claim, /Frenzy progress not recorded; preserving shared data/);
 });
 
-test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () => {
+test('third lifetime Orb guarantee is main-game-only and uses an immutable pre-batch roll count', () => {
   const game = source('src/server/game.ts');
   const start = game.indexOf('export async function applyRolls');
   const end = game.indexOf('async function sendOfflineFullNotification', start);
   assert.ok(start >= 0 && end > start);
   const roll = game.slice(start, end);
   assert.match(roll, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
-  assert.match(roll, /forcedRarity == null && lifetimeRollsBeforeBatch \+ virtualRollOffset === 2/);
+  assert.match(roll, /!s\.riftSession && forcedRarity == null && lifetimeRollsBeforeBatch \+ virtualRollOffset === 2/);
   assert.doesNotMatch(roll, /s\.totalRolls \+ i === 2/);
 
   const shared = source('src/shared/game.ts');
@@ -2018,7 +2018,7 @@ test('third lifetime Orb guarantee uses an immutable pre-batch roll count', () =
   assert.ok(predictionStart >= 0 && predictionEnd > predictionStart);
   const prediction = shared.slice(predictionStart, predictionEnd);
   assert.match(prediction, /const lifetimeRollsBeforeBatch = s\.totalRolls/);
-  assert.match(prediction, /const isGuaranteedThirdBall = lifetimeRollsBeforeBatch \+ i === 2/);
+  assert.match(prediction, /const isGuaranteedThirdBall = !s\.riftSession && lifetimeRollsBeforeBatch \+ i === 2/);
   assert.doesNotMatch(prediction, /s\.totalRolls \+ i === 2/);
 });
 
