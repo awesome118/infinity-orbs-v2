@@ -232,12 +232,11 @@ function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): v
 }
 
 function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChallengeMainProgress): RiftChallengeSnapshot {
+  const storedRun = archive.activeRun?.gameState ? archive.activeRun : null;
   const activeRun = archive.activeRun?.status === 'active' ? archive.activeRun : null;
-  if (activeRun) {
-    syncRunSummaryFromGameState(activeRun);
-  }
-  const mainProgress = activeRun?.gameState
-    ? progressFromGameState(activeRun.gameState)
+  if (activeRun) syncRunSummaryFromGameState(activeRun);
+  const mainProgress = storedRun?.gameState
+    ? progressFromGameState(storedRun.gameState)
     : currentMainProgress;
   return {
     challenge: RIFT_FIRST_SPARK,
@@ -247,9 +246,7 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
     mechanicUnlocks: activeRun?.gameState
       ? riftChallengeMechanicUnlocks(mainProgress)
       : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
-    challengeAvailable: activeRun
-      ? true
-      : riftChallengeIsAvailable(currentMainProgress),
+    challengeAvailable: riftChallengeIsAvailable(mainProgress),
   };
 }
 
@@ -283,9 +280,11 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
   const challenge = getRiftChallengeDefinition(String(challengeIdValue ?? RIFT_FIRST_SPARK.id));
   if (!challenge) throw new Error('Choose a valid Rift Challenge.');
   return withPlayerMutationLock(async () => {
-    const mainProgress = await readMainProgress();
     const archive = await readArchive();
     accrueRiftProgress(archive);
+    const mainProgress = archive.activeRun?.gameState
+      ? progressFromGameState(archive.activeRun.gameState)
+      : await readMainProgress();
     if (mainProgress.level < challenge.requiredMainLevel) {
       throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in the main game to unlock ' + challenge.name + '.');
     }
