@@ -1317,6 +1317,10 @@ function App() {
     setTab('challenges');
     setMoreNavOpen(false);
     setAutoRoll(false);
+    setLastOrb(null);
+    setLastBatch([]);
+    setBatchSummary(null);
+    setReadyAt(0);
     // The winning roll response contains the finished Rift save. Load the
     // original account save after the server has closed the Rift run.
     void refreshAll({ allowSameRevisionBalanceChanges: true });
@@ -4242,7 +4246,16 @@ function App() {
               setReadyAt(0);
               void refreshAll({ allowSameRevisionBalanceChanges: true });
             }}
-            onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onExit={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
             onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
         ) : redditSimulatorMode ? (
@@ -4309,7 +4322,16 @@ function App() {
               setReadyAt(0);
               void refreshAll({ allowSameRevisionBalanceChanges: true });
             }}
-            onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onExit={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
             onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
         )}
