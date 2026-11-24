@@ -495,8 +495,9 @@ function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
+  const riftChallengesMode = tab === 'challenges';
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
-  const standalonePageMode = combatMode || redditSimulatorMode;
+  const standalonePageMode = combatMode || riftChallengesMode;
   const combatModeRef = useRef(standalonePageMode);
   combatModeRef.current = standalonePageMode;
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
@@ -1026,10 +1027,10 @@ function App() {
       return;
     }
     const targetIsCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
-    const targetIsRedditSimulatorMode = IS_GITHUB_PAGES_TEST && nextTab === 'reddit-simulator';
-    const targetIsStandalonePageMode = targetIsCombatMode || targetIsRedditSimulatorMode;
+    const targetIsRiftChallengesMode = nextTab === 'challenges';
+    const targetIsStandalonePageMode = targetIsCombatMode || targetIsRiftChallengesMode;
     if (targetIsStandalonePageMode && rollActionLockRef.current) {
-      showToast(targetIsRedditSimulatorMode ? 'Finish the current roll before opening the Reddit Simulator.' : 'Finish the current roll before entering Combat.', 'info');
+      showToast(targetIsRiftChallengesMode ? 'Finish the current roll before opening Rift Challenges.' : 'Finish the current roll before entering Combat.', 'info');
       return;
     }
     if (combatMode && !targetIsCombatMode && combatBeatActiveRef.current) {
@@ -4013,7 +4014,7 @@ function App() {
         </div>
       )}
 
-      <nav aria-label={combatMode ? "Combat navigation" : redditSimulatorMode ? "Reddit Simulator navigation" : "Game navigation"} className={"io-nav app-nav" + (standalonePageMode ? " io-nav-combat" : "") + (redditSimulatorMode ? " io-nav-reddit-simulator" : "")}>
+      <nav aria-label={combatMode ? "Combat navigation" : riftChallengesMode ? "Rift Challenges navigation" : "Game navigation"} className={"io-nav app-nav" + (standalonePageMode ? " io-nav-combat" : "") + (riftChallengesMode ? " io-nav-rift" : "") + (redditSimulatorMode ? " io-nav-reddit-simulator" : "")}>
         <div className="nav-shell">
           {!standalonePageMode ? (
             <>
@@ -4029,7 +4030,7 @@ function App() {
                 <div className="io-nav-more-wrap">
                   <button
                     type="button"
-                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery', 'challenges'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
+                    className={"nav-tab io-nav-more" + (moreNavOpen || ['boosters', 'altar', 'mastery'].includes(tab) ? " is-active" : "") + (['quests', 'social'].includes(tab) ? " io-nav-mobile-more-active" : "") + (tab === 'profile' ? " io-nav-profile-active" : "")}
                     aria-expanded={moreNavOpen}
                     aria-controls="io-more-navigation"
                     onClick={() => setMoreNavOpen(open => !open)}
@@ -4038,7 +4039,7 @@ function App() {
                     {tab === 'boosters' && <span className="io-nav-current-page">Boosters</span>}
                     {tab === 'altar' && <span className="io-nav-current-page">Altar</span>}
                     {tab === 'mastery' && <span className="io-nav-current-page">Mastery</span>}
-                    {tab === 'challenges' && <span className="io-nav-current-page">Challenges</span>}
+                    {tab === 'reddit-simulator' && <span className="io-nav-current-page">Reddit Simulator</span>}
                     {tab === 'quests' && <span className="io-nav-current-page">Quests</span>}
                     {tab === 'social' && <span className="io-nav-current-page">Guilds</span>}
                     {tab === 'profile' && <span className="io-nav-current-page">Progress</span>}
@@ -4061,7 +4062,7 @@ function App() {
                       {renderNavItem('boosters', 'Boosters', Dices)}
                       {renderNavItem('altar', 'Altar', Flame)}
                       {renderNavItem('mastery', 'Mastery', Sparkles, (state.masteryPoints ?? 0) > 0)}
-                      {renderNavItem('challenges', 'Challenges', Compass)}
+                      {IS_GITHUB_PAGES_TEST && renderNavItem('reddit-simulator', 'Reddit Simulator', MessageSquare)}
                     </div>
                   )}
                 </div>
@@ -4076,18 +4077,16 @@ function App() {
                   <span className="io-nav-label">Combat</span>
                   {state.level < FEATURE_UNLOCK_LEVELS.combat && <span className="io-nav-unlock">Lv {FEATURE_UNLOCK_LEVELS.combat}</span>}
                 </button>
-                {IS_GITHUB_PAGES_TEST && (
-                  <button
-                    type="button"
-                    onClick={() => changeTab('reddit-simulator')}
-                    className="nav-tab io-combat-mode-switch io-reddit-simulator-mode-switch"
-                    aria-label="Open Reddit Simulator"
-                    title="Preview the real Frenzy post and claim flow without publishing to Reddit."
-                  >
-                    <MessageSquare className="io-nav-icon" />
-                    <span className="io-nav-label">Reddit Simulator</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => changeTab('challenges')}
+                  className="nav-tab io-combat-mode-switch io-rift-mode-switch"
+                  aria-label="Open Rift Challenges"
+                  title="Build passive Rift Points, clear trials, and buy permanent perks."
+                >
+                  <Compass className="io-nav-icon" />
+                  <span className="io-nav-label">Rift</span>
+                </button>
               </div>
             </>
           ) : combatMode ? (
@@ -4138,8 +4137,8 @@ function App() {
             </>
           ) : (
             <>
-              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Reddit Simulator pages">
-                {renderNavItem('reddit-simulator', 'Post Preview', MessageSquare)}
+              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Rift Challenges pages">
+                {renderNavItem('challenges', 'Rift Progression', Compass)}
               </div>
               <div className="io-nav-trailing io-nav-combat-trailing">
                 <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
@@ -4174,7 +4173,7 @@ function App() {
       )}
 
       {/* Main Container Content */}
-      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : redditSimulatorMode ? " io-app-main-reddit-simulator" : "")}>
+      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : riftChallengesMode ? " io-app-main-rift" : redditSimulatorMode ? " io-app-main-reddit-simulator" : "")}>
 
         {!standalonePageMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
@@ -4207,6 +4206,8 @@ function App() {
         )}
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+        ) : riftChallengesMode ? (
+          <RiftChallengesSection />
         ) : redditSimulatorMode ? (
           <RedditPostSimulator
             state={state}
@@ -4258,8 +4259,6 @@ function App() {
             busy={false}
           />
         )}
-
-        {tab === 'challenges' && <RiftChallengesSection />}
 
         {tab === 'boosters' && (
           <BoostersAndAutomation
