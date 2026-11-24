@@ -264,7 +264,7 @@ export const RiftChallengesSection: React.FC<{
                   <div className="mt-1 text-[10px] text-slate-500">Best: 1 / {formatRarity(best)}</div>
                 </div>
                 <div className="mt-3 space-y-1.5">
-                  {item.debuffs.slice(0, 3).map(debuff => (
+                  {item.debuffs.map(debuff => (
                     <div key={debuff.name} className="flex items-start gap-2 text-[10px] leading-relaxed text-slate-500">
                       <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80" />
                       <span><strong className="font-bold text-slate-300">{debuff.name}:</strong> {debuff.description}</span>
@@ -306,7 +306,7 @@ export const RiftChallengesSection: React.FC<{
           <div>
             <div className="text-[10px] font-black uppercase tracking-[.2em] text-violet-300">02 · Permanent upgrades</div>
             <h2 className="mt-1 text-xl font-black text-white">Rift Point shop</h2>
-            <p className="mt-1 text-xs text-slate-400">These perks persist across challenges and sessions. Cross-game perks affect the normal Orb engine, including while it runs on Rift progress.</p>
+            <p className="mt-1 text-xs text-slate-400">These perks persist across challenges and sessions. Main-game perks affect ordinary rolls outside challenge runs.</p>
           </div>
           <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
             <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Available</div>
@@ -320,7 +320,7 @@ export const RiftChallengesSection: React.FC<{
               <div className="mb-3 flex items-center gap-2 border-b border-slate-700/70 pb-2">
                 {category === 'main-game' ? <ArrowUpRight className="h-4 w-4 text-cyan-300" /> : <Zap className="h-4 w-4 text-violet-300" />}
                 <h3 className="text-xs font-black uppercase tracking-[.16em] text-slate-200">
-                  {category === 'main-game' ? 'Cross-game perks' : 'Rift-only perks'}
+                  {category === 'main-game' ? 'Main-game perks' : 'Rift-only perks'}
                 </h3>
               </div>
               <div className="space-y-2">
