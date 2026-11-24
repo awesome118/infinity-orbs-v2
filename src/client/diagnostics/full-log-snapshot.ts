@@ -110,6 +110,7 @@ export function recordFullLogEvent(type: string, detail: unknown = {}): void {
 
 export function getRecentFullLogEvents(limit = 30): FullLogEvent[] {
   const count = Math.max(0, Math.min(MAX_EVENTS, Math.floor(Number(limit) || 0)));
+  if (count === 0) return [];
   return events.slice(-count).map(event => ({ ...event }));
 }
 
