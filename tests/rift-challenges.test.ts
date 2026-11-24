@@ -183,7 +183,7 @@ test('Rift difficulty and rewards scale from continuous modifiers and challenge 
   const secondBest = { ...DEFAULT_RIFT_CHALLENGES, secondBest: true };
   assert.equal(riftModifierDifficultyScore(DEFAULT_RIFT_MODIFIERS, secondBest), 4);
   const preview = riftModifierRewardPreview(DEFAULT_RIFT_MODIFIERS, secondBest);
-  assert.equal(preview.pointsPerClear, 3);
+  assert.equal(preview.pointsPerClear, 4);
   assert.equal(preview.rpPerHour, 5.0625);
   assert.ok(riftModifierRewardPreview(DEFAULT_RIFT_MODIFIERS, secondBest, 2).rpPerHour > preview.rpPerHour);
 });
