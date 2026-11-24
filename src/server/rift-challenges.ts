@@ -190,6 +190,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
       : [],
     lastGameOpenedAt: safeInteger(value.lastGameOpenedAt, now),
     kudosSinceLastOpen: safeInteger(value.kudosSinceLastOpen),
+    kudosDisplaySinceLastOpen: safeInteger(value.kudosDisplaySinceLastOpen),
     riftPerkLevels,
   };
   archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
@@ -298,7 +299,7 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
     challengeAvailable: riftChallengeIsAvailable(mainProgress),
     kudosStats: {
       last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
-      sinceLastOpen: archive.kudosSinceLastOpen,
+      sinceLastOpen: archive.kudosDisplaySinceLastOpen + archive.kudosSinceLastOpen,
     },
   };
 }
@@ -336,6 +337,7 @@ export async function markRiftGameOpened(): Promise<{ openedAt: number }> {
     const archive = await readArchive();
     accrueRiftProgress(archive, now);
     archive.lastGameOpenedAt = now;
+    archive.kudosDisplaySinceLastOpen = archive.kudosSinceLastOpen;
     archive.kudosSinceLastOpen = 0;
     await writeArchive(archive);
     return { openedAt: now };
