@@ -189,6 +189,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
     }
 
     switch (path) {
+      case '/api/rift-challenges/modifiers':
+        return jsonResponse(await riftChallenges.updateRiftModifiers(body.modifierSettings, body.challengeToggles));
       case '/api/rift-challenges/start':
         return jsonResponse(await riftChallenges.startRiftChallenge(body.challengeId));
       case '/api/rift-challenges/roll':
