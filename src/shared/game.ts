@@ -1131,6 +1131,8 @@ export interface PlayerState {
   riftSession?: RiftPlayerSession;
   /** Runtime-only flag returned on the roll that completes a Rift challenge. */
   riftRunComplete?: boolean;
+  /** Runtime identity that lets the client distinguish a completed Rift response from the restored main save. */
+  riftSaveContext?: string;
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
   stateRevision?: number;
