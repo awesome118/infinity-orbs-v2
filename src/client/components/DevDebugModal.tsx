@@ -49,6 +49,7 @@ interface DevDebugModalProps {
   onRefresh: () => Promise<void>;
   onForceRollResult?: (res: RollResponse) => void;
   onForceFrenzyPopup?: () => void;
+  onForceFrenzyShardPopup?: () => void;
   onForceNotificationPopup?: () => void;
   onForceJoinSubredditPopup?: () => void;
   onPopupConfigChanged?: (config: PopupConfig) => void;
@@ -268,6 +269,10 @@ const ADMIN_CONSOLE_SECTIONS: AdminConsoleSection[] = [
   ] },
   { id: 'combat', label: 'Combat', target: 'io-combat-tools', tools: [
     { id: 'combat-tools', label: 'Combat Admin Tools', target: 'io-combat-tools' },
+  ] },
+  // Keep Rift tools registered here. The menu, search, and jump navigation are derived from this registry.
+  { id: 'rift', label: 'Rift Administration', target: 'io-rift-admin-group', tools: [
+    { id: 'rift-admin', label: 'Rift Player Controls', target: 'io-tool-rift-admin' },
   ] },
   { id: 'destructive', label: 'Destructive Testing', target: 'io-destructive-group', tools: [
     { id: 'destructive-tools', label: 'Destructive Testing', target: 'io-destructive-group' },
@@ -526,6 +531,7 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   onRefresh,
   onForceRollResult,
   onForceFrenzyPopup,
+  onForceFrenzyShardPopup,
   onForceNotificationPopup,
   onForceJoinSubredditPopup,
   onPopupConfigChanged,
@@ -543,6 +549,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [popupStatsLoading, setPopupStatsLoading] = useState(false);
   const [popupStatsError, setPopupStatsError] = useState<string | null>(null);
   const [popupStatsUpdatedAt, setPopupStatsUpdatedAt] = useState<number | null>(null);
+  const [riftAdminUsername, setRiftAdminUsername] = useState('');
+  const [riftAdminData, setRiftAdminData] = useState<Record<string, any> | null>(null);
+  const [riftAdminLoading, setRiftAdminLoading] = useState(false);
+  const [riftAdminPoints, setRiftAdminPoints] = useState('0');
+  const [riftAdminMinutes, setRiftAdminMinutes] = useState('0');
   const [alignmentChoiceStats, setAlignmentChoiceStats] = useState<{
     total: number;
     choices: { starseeker: number; goldenOrbit: number; clockwork: number };
@@ -726,6 +737,39 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadRiftAdmin = async () => {
+    const username = riftAdminUsername.trim().replace(/^u\\//i, '');
+    if (!username) {
+      setMessage('Enter a Reddit username to inspect its Rift archive.');
+      return;
+    }
+    setRiftAdminLoading(true);
+    try {
+      const response = await fetch('/api/dev/rift/status?username=' + encodeURIComponent(username), { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not inspect Rift progression.');
+      setRiftAdminData(data);
+      setMessage('Loaded Rift archive for u/' + username + '.');
+    } catch (error) {
+      setMessage('Error: ' + (error instanceof Error ? error.message : 'Could not inspect Rift progression.'));
+    } finally {
+      setRiftAdminLoading(false);
+    }
+  };
+
+  const grantRiftAdminProgress = async () => {
+    const username = riftAdminUsername.trim().replace(/^u\\//i, '');
+    const points = Math.max(0, Math.floor(Number(riftAdminPoints) || 0));
+    const minutes = Math.max(0, Math.floor(Number(riftAdminMinutes) || 0));
+    if (!username || (points === 0 && minutes === 0)) {
+      setMessage('Enter a username and a positive Rift Point or minute amount.');
+      return;
+    }
+    const result = await sendAdminAction('/api/dev/rift/grant', { username, points, minutes }, false,
+      'Granted ' + points.toLocaleString() + ' Rift Points and ' + minutes.toLocaleString() + ' minutes of Rift progress to u/' + username + '.');
+    if (result) await loadRiftAdmin();
   };
 
   const loadPopupAnalytics = async (silent = false) => {
@@ -5821,17 +5865,19 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
 
         <section className={`${panelBase} border border-teal-500/30`}>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-200"><Bell className="w-4 h-4" /> Popup Testing & Analytics</div>
-          <p className="text-[11px] leading-relaxed text-slate-400">Toggle each player-facing popup and track displays, acceptances, dismissals, and acceptance rate. Admin previews and u/shadow_fen's gameplay are excluded.</p>
+          <p className="text-[11px] leading-relaxed text-slate-400">Toggle each player-facing popup and track displays, acceptances, dismissals, and acceptance rate. The Frenzy Shard popup appears after a player receives the Frenzy owner Shard reward. Its preview button is cosmetic only: it grants no Shards and records no metrics. Admin previews and u/shadow_fen's gameplay are excluded.</p>
           {popupStatsError && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200">Popup analytics refresh failed: {popupStatsError}. The numbers below may be stale.</div>}
           <div className="flex flex-wrap gap-2">
             <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceFrenzyPopup?.(); }} className={`${buttonBase} bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/30 text-purple-300 px-3 py-2`}><Flame className="inline w-3.5 h-3.5 mr-1" /> Force Frenzy Popup</button>
+            <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceFrenzyShardPopup?.(); }} className={`${buttonBase} bg-fuchsia-500/10 hover:bg-fuchsia-500/20 border-fuchsia-500/30 text-fuchsia-200 px-3 py-2`}><Sparkles className="inline w-3.5 h-3.5 mr-1" /> Preview Frenzy Shard Popup</button>
             <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceNotificationPopup?.(); }} className={`${buttonBase} bg-teal-500/10 hover:bg-teal-500/20 border-teal-500/30 text-teal-200 px-3 py-2`}><Bell className="inline w-3.5 h-3.5 mr-1" /> Preview Notification Popup</button>
             <button type="button" disabled={loading} onClick={() => { sound.playClick(); onForceJoinSubredditPopup?.(); }} className={`${buttonBase} bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-200 px-3 py-2`}><Users className="inline w-3.5 h-3.5 mr-1" /> Preview Join Popup</button>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
             {([
               { id: 'notification', label: 'Notification prompt' },
               { id: 'frenzy', label: 'Daily Frenzy prompt' },
+              { id: 'frenzyShard', label: 'Frenzy Shard reward notice' },
               { id: 'joinSubreddit', label: 'Join subreddit reward' },
             ] as const).map(item => {
               const metric = popupStats?.[item.id];
@@ -5946,6 +5992,63 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
         </section>
 
         </div>
+        </details>
+
+        <details id="io-moderation-group" open={activeAdminSection === 'players'} hidden={activeAdminSection !== 'players'} className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-slate-300">
+            <span>Players & Moderation</span><span className="text-[10px] text-slate-600">Expand</span>
+          </summary>
+        </details>
+
+        <details id="io-rift-admin-group" open={activeAdminSection === 'rift'} hidden={activeAdminSection !== 'rift'} className="scroll-mt-4 rounded-2xl border border-violet-500/25 bg-slate-950/50 p-3">
+          <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-xs font-black uppercase tracking-wider text-violet-200">
+            <span>Rift Administration</span><span className="text-[10px] text-slate-600">Expand</span>
+          </summary>
+          {renderAdminToolBar('rift')}
+          <section id="io-tool-rift-admin" hidden={activeAdminTool !== 'rift-admin'} className={panelBase + ' mt-3 border-violet-500/25'}>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-violet-200">
+              <Sparkles className="h-4 w-4" /> Rift Player Controls
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-400">Inspect a player's isolated Rift archive, recent Kudos, hourly progress rate, and active challenge. Grants apply to Rift progression only. Main-game currency and saves are not touched.</p>
+            <div className="flex flex-wrap gap-2">
+              <input value={riftAdminUsername} onChange={event => setRiftAdminUsername(event.target.value)} placeholder="Reddit username" className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white placeholder:text-slate-500" />
+              <button type="button" disabled={riftAdminLoading || !riftAdminUsername.trim()} onClick={() => void loadRiftAdmin()} className={buttonBase + ' border-violet-500/30 bg-violet-500/10 px-3 py-2 text-violet-100'}>
+                {riftAdminLoading ? 'Loading…' : 'Inspect Rift'}
+              </button>
+            </div>
+            {riftAdminData && (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    { label: 'Rift Points', value: formatNumber(riftAdminData.archive?.riftPoints ?? 0) },
+                    { label: 'Progress / hour', value: shortNumber(riftAdminData.archive?.riftRatePerHour ?? 1, 2) + ' RP' },
+                    { label: 'Completed runs', value: formatNumber(riftAdminData.archive?.totalCompletedRuns ?? 0) },
+                    { label: 'Kudos · 24h', value: formatNumber(riftAdminData.kudosStats?.last24Hours ?? 0) },
+                    { label: 'Kudos · Since open', value: formatNumber(riftAdminData.kudosStats?.sinceLastOpen ?? 0) },
+                    { label: 'Total clear types', value: formatNumber(riftAdminData.archive?.completedChallengeIds?.length ?? 0) },
+                    { label: 'Rift progress', value: (Math.max(0, Number(riftAdminData.archive?.riftProgress) || 0) * 100).toFixed(1) + '%' },
+                    { label: 'Active challenge', value: riftAdminData.archive?.activeRun?.challengeId ?? 'None' },
+                  ].map(item => (
+                    <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{item.label}</div>
+                      <div className="mt-1 break-words text-sm font-black text-white">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Add Rift Points
+                    <input type="number" min="0" max="1000000" value={riftAdminPoints} onChange={event => setRiftAdminPoints(event.target.value)} className="mt-1 block w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                  </label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Add progress minutes
+                    <input type="number" min="0" max="1000000" value={riftAdminMinutes} onChange={event => setRiftAdminMinutes(event.target.value)} className="mt-1 block w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                  </label>
+                </div>
+                <button type="button" disabled={loading || riftAdminLoading} onClick={() => void grantRiftAdminProgress()} className={buttonBase + ' border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-100'}>
+                  Grant Rift Progress
+                </button>
+              </>
+            )}
+          </section>
         </details>
 
         <details id="io-moderation-group" open={activeAdminSection === 'players'} hidden={activeAdminSection !== 'players'} className="scroll-mt-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
