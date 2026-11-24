@@ -7699,9 +7699,7 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
     if (pendingPatcherRarity !== 0) {
       throw new Error(Number.isSafeInteger(pendingPatcherRarity) &&
         pendingPatcherRarity >= 2 && pendingPatcherRarity <= MAX_ORB_RARITY
-        ? s.adminGuaranteedRollQueued === true
-          ? 'Use the queued guaranteed manual roll before re-enabling Auto Roll.'
-          : 'Use the charged Chain Patcher with one manual roll before re-enabling Auto Roll.'
+        ? 'Use the charged Chain Patcher with one manual roll before re-enabling Auto Roll.'
         : 'Chain Patcher save data is invalid; repair it before enabling Auto Roll.');
     }
   }
