@@ -295,6 +295,9 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
     if (archive.activeRun?.status === 'active') {
       throw new Error('You already have an active challenge. Resume it or abandon it before starting another.');
     }
+    const previousCompletedRunId = archive.activeRun?.status === 'completed'
+      ? archive.activeRun.runId
+      : null;
     const now = Date.now();
     const state = createInitialState(now);
     const seedCoins = archive.riftPerkLevels.riftStartCoins * 100;
@@ -322,6 +325,11 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       gameState: state,
     };
     await writeArchive(archive);
+    if (previousCompletedRunId) {
+      await deleteRiftCodexForRun(previousCompletedRunId).catch(error => {
+        console.error('[Rift Challenges] Replaced run Codex cleanup failed:', error);
+      });
+    }
     return snapshot(archive, mainProgress);
   });
 }
