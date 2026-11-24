@@ -15,6 +15,9 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   const sharedGame = read('src/shared/game.ts');
   const server = read('src/server/rift-challenges.ts');
   const game = read('src/server/game.ts');
+  const adminApi = read('src/pages/admin-api.ts');
+  const adminDebug = read('src/server/debug.ts');
+  const adminUi = read('src/client/components/DevDebugModal.tsx');
 
   assert.match(build, /root: clientRoot/);
   assert.match(build, /main\.tsx/);
@@ -39,6 +42,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /const mainProgress = archive\.activeRun\?\.gameState/);
   assert.match(game, /state\.riftRunComplete = true/);
   assert.match(game, /riftCodexOwnerId\(userId, session\.runId\)/);
+  assert.match(game, /if \(usingChainPatcher\) s\.adminGuaranteedRollQueued = false/);
+  assert.match(game, /s\.adminGuaranteedRollQueued === true/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
   assert.match(game, /challengeCoinMultiplier/);
   assert.match(game, /Auto Roll is disabled in The First Spark/);
@@ -53,6 +58,13 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(client, /tab === 'challenges' && !riftChallengesMode/);
   assert.match(client, /state\?\.riftRunComplete/);
   assert.match(client, /currentState\?\.riftSaveContext/);
+  assert.match(adminApi, /case '\/queue-force-roll'/);
+  assert.match(adminDebug, /debugRouter\.post\('\/queue-force-roll'/);
+  assert.match(adminApi, /state\.chainPatcherNextRarity = forcedRarity/);
+  assert.match(adminDebug, /s\.chainPatcherNextRarity = forcedRarity/);
+  assert.match(adminUi, /handleQueueGuaranteedRoll/);
+  assert.match(adminUi, /Queue Next/);
+  assert.match(client, /Number\(stateForRoll\.chainPatcherNextRarity \?\? 0\) === 0/);
   assert.match(client, /onEnterGame=\{\(\) =>/);
   assert.match(client, /renderNavItem\('reddit-simulator', 'Reddit Simulator', MessageSquare\)/);
   assert.match(client, /renderNavItem\('challenges', 'Rift Progression', Compass\)/);
