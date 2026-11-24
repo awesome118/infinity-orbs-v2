@@ -114,6 +114,9 @@ const GlobalChatWindowComponent: React.FC<GlobalChatWindowProps> = ({
   const isDocumentVisible = (): boolean => document.visibilityState === 'visible';
 
   const refreshChat = async (queueIfBusy = false) => {
+    // The API rejects chat reads outside a registered Game/Frenzy context.
+    // Do not poll it while availability is unknown or explicitly disabled.
+    if (chatAvailable !== true) return;
     if (document.visibilityState === 'hidden') return;
     if (!isDocumentVisible()) return;
     if (refreshInFlightRef.current) {
