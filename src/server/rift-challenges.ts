@@ -13,6 +13,7 @@ import {
   getRiftChallengeDefinition,
   normalizeRiftMainProgress,
   riftChallengeIsAvailable,
+  riftChallengeUnlockStatus,
   riftChallengeMechanicUnlocks,
   riftChallengeUpgradeCost,
   riftPerkCost,
@@ -276,27 +277,25 @@ function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): v
   run.coins = Math.max(0, Number(state.coins) || 0);
   run.totalRolls = safeInteger(state.totalRolls);
   run.bestRarity = Math.max(2, Number(state.highestRarity) || 2);
-  run.mainProgressAtStart = progressFromGameState(state);
-  run.mechanicUnlocks = riftChallengeMechanicUnlocks(run.mainProgressAtStart);
+  run.mechanicUnlocks = riftChallengeMechanicUnlocks(progressFromGameState(state));
   run.updatedAt = now;
 }
 
 function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChallengeMainProgress): RiftChallengeSnapshot {
-  const storedRun = archive.activeRun?.gameState ? archive.activeRun : null;
   const activeRun = archive.activeRun?.status === 'active' ? archive.activeRun : null;
   if (activeRun) syncRunSummaryFromGameState(activeRun);
-  const mainProgress = storedRun?.gameState
-    ? progressFromGameState(storedRun.gameState)
-    : archive.riftPlayerProgress ?? currentMainProgress;
+  const mechanicProgress = activeRun?.gameState
+    ? progressFromGameState(activeRun.gameState)
+    : currentMainProgress;
   return {
     challenge: RIFT_FIRST_SPARK,
     challenges: RIFT_CHALLENGES,
     archive,
-    mainProgress,
+    mainProgress: currentMainProgress,
     mechanicUnlocks: activeRun?.gameState
-      ? riftChallengeMechanicUnlocks(mainProgress)
-      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
-    challengeAvailable: riftChallengeIsAvailable(mainProgress),
+      ? riftChallengeMechanicUnlocks(mechanicProgress)
+      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mechanicProgress),
+    challengeAvailable: riftChallengeIsAvailable(currentMainProgress),
     kudosStats: {
       last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
       sinceLastOpen: archive.kudosDisplaySinceLastOpen + archive.kudosSinceLastOpen,
@@ -322,11 +321,9 @@ export async function getRiftChallengeStatus(): Promise<RiftChallengeSnapshot> {
     const archive = await readArchive();
     accrueRiftProgress(archive);
     if (archive.activeRun?.status === 'active') syncRunSummaryFromGameState(archive.activeRun);
+    const mainProgress = await readMainProgress();
     await writeArchive(archive);
-    if (archive.activeRun?.status === 'active') {
-      return snapshot(archive, archive.activeRun.mainProgressAtStart);
-    }
-    return snapshot(archive, await readMainProgress());
+    return snapshot(archive, mainProgress);
   });
 }
 
@@ -570,18 +567,17 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
   return withPlayerMutationLock(async () => {
     const archive = await readArchive();
     accrueRiftProgress(archive);
-    const mainProgress = archive.activeRun?.gameState
-      ? progressFromGameState(archive.activeRun.gameState)
-      : archive.riftPlayerProgress ?? await readMainProgress();
-    if (mainProgress.level < challenge.requiredMainLevel) {
-      throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in ' + (challenge.prerequisiteId ? 'the previous Rift run' : 'the main game') + ' to unlock ' + challenge.name + '.');
-    }
-    if (challenge.prerequisiteId && !archive.completedChallengeIds.includes(challenge.prerequisiteId)) {
-      const prerequisite = getRiftChallengeDefinition(challenge.prerequisiteId);
-      throw new Error('Complete ' + (prerequisite?.name ?? 'the previous Rift Challenge') + ' first.');
-    }
     if (archive.activeRun?.status === 'active') {
       throw new Error('You already have an active challenge. Resume it or abandon it before starting another.');
+    }
+    const mainProgress = await readMainProgress();
+    const unlock = riftChallengeUnlockStatus(challenge, mainProgress, archive.completedChallengeIds);
+    if (!unlock.levelReady) {
+      throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in the main game to unlock ' + challenge.name + '.');
+    }
+    if (!unlock.prerequisiteCleared) {
+      const prerequisite = getRiftChallengeDefinition(challenge.prerequisiteId);
+      throw new Error('Complete ' + (prerequisite?.name ?? 'the previous Rift Challenge') + ' first.');
     }
     const previousCompletedRunId = archive.activeRun?.status === 'completed'
       ? archive.activeRun.runId
@@ -611,7 +607,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       bestRarity: Math.max(2, state.highestRarity),
       nextRollAt: 0,
       upgradeLevels: { fortune: 0, speed: 0, prosperity: 0, critical: 0 },
-      mainProgressAtStart: riftProgress,
+      mainProgressAtStart: mainProgress,
       mechanicUnlocks: riftChallengeMechanicUnlocks(riftProgress),
       lastRoll: null,
       gameState: state,
@@ -663,7 +659,7 @@ export async function buyRiftChallengeUpgrade(
     run.upgradeLevels[upgradeId] = currentLevel + 1;
     syncRunSummaryFromGameState(run);
     await writeArchive(archive);
-    return snapshot(archive, run.mainProgressAtStart);
+    return snapshot(archive, await readMainProgress());
   });
 }
 
@@ -689,10 +685,7 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
     }
     archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
     await writeArchive(archive);
-    const mainProgress = archive.activeRun?.status === 'active' && archive.activeRun.gameState
-      ? progressFromGameState(archive.activeRun.gameState)
-      : await readMainProgress();
-    return snapshot(archive, mainProgress);
+    return snapshot(archive, await readMainProgress());
   });
 }
 
