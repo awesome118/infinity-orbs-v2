@@ -2959,7 +2959,7 @@ export function predictRollActivation(
   const lifetimeRollsBeforeBatch = s.totalRolls;
 
   for (let i = 0; i < rollCount; i++) {
-    const isGuaranteedThirdBall = lifetimeRollsBeforeBatch + i === 2;
+    const isGuaranteedThirdBall = !s.riftSession && lifetimeRollsBeforeBatch + i === 2;
     const isCrit = !isGuaranteedThirdBall && rng() < critChance;
     let effectiveCm = cm;
 
