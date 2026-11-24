@@ -4089,7 +4089,7 @@ async function saveActiveRiftPlayerState(
               runId: session.runId,
               completedAt: now,
               ownerId: userId,
-              ownerUsername: String(context.username ?? state.username ?? 'Redditor').trim().replace(/^u\\//i, '').slice(0, 32) || 'Redditor',
+              ownerUsername: String(context.username ?? state.username ?? 'Redditor').trim().replace(/^u[/]/i, '').slice(0, 32) || 'Redditor',
             };
           }
           delete state.riftSession;
