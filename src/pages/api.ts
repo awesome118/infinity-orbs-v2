@@ -5,8 +5,6 @@ import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
 import * as riftChallenges from '../server/rift-challenges.js';
 import { context } from './devvit-client.js';
-import { handlePagesAdminRequest } from './admin-api.js';
-import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -67,27 +65,13 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
   const path = url.pathname;
 
   if (path.startsWith('/api/dev/')) {
-    return handlePagesAdminRequest(url, method, body);
+    return jsonResponse({ error: 'Developer-only controls are not available in the browser Pages build.' }, 404);
   }
   if (path.startsWith('/api/payments/')) {
     return jsonResponse({ error: 'Payments are unavailable in the GitHub Pages test build.' }, 404);
   }
 
   try {
-    const requestedFeatures = globalFeaturesForRequest(method, path);
-    if (requestedFeatures.length) {
-      const controls = await Promise.all(requestedFeatures.map(feature => game.getGlobalFeatureControl(feature)));
-      const disabled = controls.find(control => !control.enabled);
-      if (disabled) {
-        return jsonResponse({
-          error: disabled.reason || 'This feature has been disabled by the developer.',
-          feature: disabled.feature,
-          featureDisabled: true,
-          reason: disabled.reason,
-        }, 403);
-      }
-    }
-
     if (method === 'GET') {
       switch (path) {
         case '/api/rift-challenges':
