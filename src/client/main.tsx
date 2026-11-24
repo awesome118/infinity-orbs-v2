@@ -2352,6 +2352,7 @@ function App() {
         stateForRoll.stateRevision === expectedPredictionRevision &&
         (isAutoRoll || (stateForRoll.freeRolls ?? 0) <= 0) &&
         !useTimeEnergy &&
+        Number(stateForRoll.chainPatcherNextRarity ?? 0) === 0 &&
         !isRiftSaveForRoll,
       );
       if (canShowPrediction && prediction) {
@@ -5015,6 +5016,15 @@ function App() {
             setShowJoinSubredditPrompt(true);
           }}
           onPopupConfigChanged={setPopupConfig}
+          onForceRollQueued={(queuedState, targetRarity) => {
+            changeTab('roll');
+            setFrenzyArmed(false);
+            applyPlayerState(queuedState);
+            showToast(
+              `Guaranteed 1/${formatRarity(targetRarity)} roll queued. Press Roll to use it.`,
+              'success',
+            );
+          }}
           onForceRollResult={res => {
             changeTab('roll');
             applyPlayerState(res.state);
