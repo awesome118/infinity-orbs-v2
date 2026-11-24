@@ -375,6 +375,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const nowTs = Date.now();
     const isSilentSonar = hasSonarUpgrade && sound.sonarMode;
     const bestBefore = bestRarityForSoundRef.current;
+    const isRiftSave = Boolean(state.riftSession || state.riftSaveContext?.startsWith('rift:'));
     const isNewBest = lastOrb.isInfinity === true
       ? !bestWasInfinityRef.current
       : !bestWasInfinityRef.current && lastOrb.rarity > bestBefore;
@@ -384,7 +385,9 @@ export const RollSection: React.FC<RollSectionProps> = ({
     const isWithinTenfold = !isNewBest && rarityProgress >= 0.1 && rarityProgress < 1;
     const isWithinHundredfold = !isNewBest && rarityProgress >= 0.01 && rarityProgress < 1;
 
-    if ((isNewBest || isWithinHundredfold) && !reducedMotion) {
+    // Rift records are acknowledged with particles only. They never shake the
+    // roll surface or delay input, even when the player is already chaining rolls.
+    if ((isNewBest || isWithinHundredfold) && !reducedMotion && !(isRiftSave && isNewBest)) {
       setIsShaking(true);
       setShakeIntensity(isNewBest ? 1 : Math.sqrt(rarityProgress));
       shakeTimer = window.setTimeout(() => {
@@ -398,11 +401,16 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
     if ((isNewBest || isWithinTenfold) && !reducedMotion) {
       confetti({
-        particleCount: isNewBest ? 110 : 48,
-        spread: isNewBest ? 82 : 58,
-        ticks: 320,
+        particleCount: isNewBest ? (isRiftSave ? 52 : 110) : 48,
+        spread: isNewBest ? (isRiftSave ? 62 : 82) : 58,
+        startVelocity: isRiftSave ? 19 : 45,
+        gravity: isRiftSave ? 0.88 : 1,
+        scalar: isRiftSave ? 0.72 : 1,
+        ticks: isRiftSave ? 185 : 320,
         origin: { y: 0.6 },
-        colors: ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
+        colors: isRiftSave
+          ? ['#f3e8ff', '#d8b4fe', '#c4a1ff', '#a78bfa', '#8b5cf6', '#6d28d9']
+          : ['#a855f7', '#ec4899', '#38bdf8', '#fbbf24'],
       });
     }
 
@@ -416,7 +424,11 @@ export const RollSection: React.FC<RollSectionProps> = ({
 
     // The long record fanfare takes precedence over the short near-best ping.
     // Both special alerts intentionally bypass Silent Sonar mode.
-    if (hasSonarUpgrade && isNewBest) {
+    if (isRiftSave && isNewBest) {
+      // Keep the roll's ordinary sound; the Rift's smaller particle burst is the
+      // entire record acknowledgement, not a main-game-style fanfare.
+      sound.playRollNormal();
+    } else if (hasSonarUpgrade && isNewBest) {
       lastFanfareTimeRef.current = nowTs;
       sound.playNewBestFanfare();
     } else if (sonarOrb) {
