@@ -11,6 +11,7 @@ import {
   getRiftChallengeDefinition,
   riftRatePerHour,
   type RiftChallengeArchive,
+  type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
 
 const notifications = (notificationsModule as any).notifications;
@@ -4028,6 +4029,13 @@ async function saveActiveRiftPlayerState(
         const firstClear = !completedIds.includes(challenge.id);
         if (firstClear) completedIds.push(challenge.id);
         archive.completedChallengeIds = completedIds;
+        archive.riftPlayerProgress = {
+          level: Math.max(1, safeNonNegativeInteger(storedState.level)),
+          totalRolls: safeNonNegativeInteger(storedState.totalRolls),
+          totalCrits: safeNonNegativeInteger(storedState.totalCrits),
+          highestRarity: Math.max(2, Number(storedState.highestRarity) || 2),
+          masteryPoints: safeNonNegativeInteger(storedState.masteryPoints),
+        } satisfies RiftChallengeMainProgress;
         const reward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
