@@ -121,7 +121,7 @@ import { withPlayerMutationLock } from './player-lock.js';
 import { beginServerRequest, recordUpgradeBatchDiagnostic } from './server-monitor.js';
 import { auditKnownRedisStorage } from './redis-storage-audit.js';
 import * as devvitServer from '@devvit/web/server';
-import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
+import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, bestCodexChain, codexDevotionLuckPercent, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
@@ -350,6 +350,15 @@ export function createApp() {
       copy.chainPatcherSuggestedRarity = pendingPatcherRarity >= 2
         ? pendingPatcherRarity
         : nextCodexChainRarity(sourceCollection);
+      // Preserve compact Codex Devotion projections before removing the large collection.
+      const codexChain = bestCodexChain(sourceCollection);
+      copy.codexChain = codexChain.length;
+      copy.codexChainStart = codexChain.start;
+      copy.codexChainEnd = codexChain.end;
+      copy.codexDevotionLuckPercent = codexDevotionLuckPercent(
+        copy.masterySkills?.celestialSurge ?? 0,
+        codexChain.length,
+      );
       copy.collection = {};
       copy.collectionCount = Object.keys(sourceCollection).length;
       return copy;
