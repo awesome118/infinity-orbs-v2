@@ -1149,6 +1149,11 @@ export interface RiftPlayerSession {
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  luckSuppressionMultiplier: number;
+  secondBest: boolean;
+  noAutomation: boolean;
+  noCriticals: boolean;
+  noShards: boolean;
 }
 
 export interface PlayerState {
@@ -1158,6 +1163,8 @@ export interface PlayerState {
   riftRunComplete?: boolean;
   /** Runtime identity that lets the client distinguish a completed Rift response from the restored main save. */
   riftSaveContext?: string;
+  /** Selected Orb rarity used by modifier rules such as Second-best. Never persisted in the player save. */
+  riftSelectedBestRarity?: number;
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
   stateRevision?: number;
