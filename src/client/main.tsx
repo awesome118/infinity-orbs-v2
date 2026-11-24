@@ -495,7 +495,7 @@ function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
-  const riftChallengesMode = tab === 'challenges';
+  const riftChallengesMode = tab === 'challenges' && !state?.riftSession;
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
   const standalonePageMode = combatMode || riftChallengesMode;
   const combatModeRef = useRef(standalonePageMode);
@@ -839,6 +839,15 @@ function App() {
     const nextServerRevision = Number(nextState.stateRevision);
     const nextServerGeneration = Number(nextState.saveGeneration);
     const currentState = stateRef.current;
+    const currentRiftRunId = currentState?.riftSession?.runId ?? null;
+    const nextRiftRunId = nextState.riftSession?.runId ?? null;
+    if (currentState && currentRiftRunId !== nextRiftRunId) {
+      // Main and Rift saves have independent revision counters.
+      appliedServerGenerationRef.current = nextServerGeneration;
+      appliedServerRevisionRef.current = -1;
+      rollTicketRef.current = null;
+      rollTicketRequestRef.current = null;
+    }
 
     // Normal reads reject balance changes at an unchanged durable revision.
     // Upgrade recovery is the narrow exception: a rejected optimistic purchase
@@ -952,9 +961,14 @@ function App() {
       rollTicketRequestRef.current = tracked;
     }
 
+    const requestedRiftRunId = stateRef.current?.riftSession?.runId ?? null;
     const ticket = await rollTicketRequestRef.current;
     if (requestSessionEpoch !== authSessionEpochRef.current) {
       throw new Error('REDDIT_LOGIN_REQUIRED');
+    }
+    if (requestedRiftRunId !== (stateRef.current?.riftSession?.runId ?? null)) {
+      rollTicketRef.current = null;
+      throw new Error('The active game save changed while preparing a roll. Refresh and try again.');
     }
     rollTicketRef.current = ticket;
     return ticket;
@@ -1027,7 +1041,7 @@ function App() {
       return;
     }
     const targetIsCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
-    const targetIsRiftChallengesMode = nextTab === 'challenges';
+    const targetIsRiftChallengesMode = nextTab === 'challenges' && !stateRef.current?.riftSession;
     const targetIsStandalonePageMode = targetIsCombatMode || targetIsRiftChallengesMode;
     if (targetIsStandalonePageMode && rollActionLockRef.current) {
       showToast(targetIsRiftChallengesMode ? 'Finish the current roll before opening Rift Challenges.' : 'Finish the current roll before entering Combat.', 'info');
@@ -1297,6 +1311,16 @@ function App() {
       console.error('Refresh error:', e);
     }
   }, [applyPlayerState, refreshGuildData, refreshLeaderboards, splashEntered]);
+
+  useEffect(() => {
+    if (!state?.riftRunComplete) return;
+    setTab('challenges');
+    setMoreNavOpen(false);
+    setAutoRoll(false);
+    // The winning roll response contains the finished Rift save. Load the
+    // original account save after the server has closed the Rift run.
+    void refreshAll({ allowSameRevisionBalanceChanges: true });
+  }, [state?.riftRunComplete, refreshAll]);
 
   // Admin discovery must not delay the game or community panels. A brief
   // status outage retries with backoff while preserving any confirmed access.
@@ -4207,7 +4231,11 @@ function App() {
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
         ) : riftChallengesMode ? (
-          <RiftChallengesSection />
+          <RiftChallengesSection
+            onEnterGame={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+          />
         ) : redditSimulatorMode ? (
           <RedditPostSimulator
             state={state}
@@ -4257,6 +4285,14 @@ function App() {
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onActivateTurbo={handleActivateTurbo}
             busy={false}
+          />
+        )}
+
+        {tab === 'challenges' && !riftChallengesMode && (
+          <RiftChallengesSection
+            onEnterGame={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
         )}
 
