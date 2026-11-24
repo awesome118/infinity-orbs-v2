@@ -1203,6 +1203,8 @@ export interface PlayerState {
   runeTemporalMomentum?: number;
   /** If positive, the next accepted roll is exactly one orb of this rarity. */
   chainPatcherNextRarity?: number;
+  /** True when the pending exact-rarity Chain Patcher slot was queued by the admin console. */
+  adminGuaranteedRollQueued?: boolean;
   /** Server-calculated Codex target shown before purchase; null means no extension exists. */
   chainPatcherSuggestedRarity?: number | null;
   /** Absolute timestamp when the next Chain Patcher purchase is allowed. */
@@ -2221,6 +2223,7 @@ export function createInitialState(now = Date.now()): PlayerState {
     runeConstellationCharge: 0,
     runeTemporalMomentum: 0,
     chainPatcherNextRarity: 0,
+    adminGuaranteedRollQueued: false,
     chainPatcherCooldownUntil: 0,
     lastRollAt: null,
     timeEnergy: 0,
