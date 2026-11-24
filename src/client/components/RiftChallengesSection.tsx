@@ -328,6 +328,7 @@ export const RiftChallengesSection: React.FC<{
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
                 Set each modifier independently, then combine them with optional challenge rules. The configuration is saved to your Rift archive and locked for the duration of a run.
               </p>
+              <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">Every run starts with +1 free Multiball.</p>
             </div>
             <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
               <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Difficulty score</div>
