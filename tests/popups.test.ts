@@ -16,6 +16,11 @@ test('Frenzy and notification popups render with dedicated styling and admin pre
   assert.match(main, /showFrenzyPrompt && \(/);
   assert.match(main, /className="io-modal-card io-frenzy-prompt/);
   assert.match(main, /Post today’s Frenzy/);
+  assert.match(main, /frenzyShardPopupPending/);
+  assert.match(main, /className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400\/35/);
+  assert.match(admin, /Preview Frenzy Shard Popup/);
+  assert.match(admin, /frenzyShard: true/);
+  assert.match(admin, /no Shards and records no metrics/);
 
   assert.match(main, /showNotificationPrompt && \(notificationPromptPreview \|\| !notificationsEnabled\) && \(/);
   assert.match(main, /className="io-modal-card io-notification-prompt/);
@@ -87,6 +92,12 @@ test('popup metrics persist real popup events for shadow_fen while admin preview
     assert.equal(developerResult.recorded, true);
     assert.equal(developerResult.excluded, undefined);
     assert.equal(afterDeveloper.notification.shown, afterNormal.notification.shown + 1);
+
+    const shardBefore = await getPopupStats();
+    const shardShown = await recordPopupEvent('frenzyShard', 'shown');
+    const shardAfter = await getPopupStats();
+    assert.equal(shardShown.recorded, true);
+    assert.equal(shardAfter.frenzyShard.shown, shardBefore.frenzyShard.shown + 1);
 
     const main = read('src/client/main.tsx');
     assert.match(main, /if \(notificationPromptPreview\)[\s\S]*?return;[\s\S]*?trackPopupEvent\('notification', 'dismissed'\)/);
