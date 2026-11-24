@@ -83,3 +83,5 @@ Pages validation retry: include the queued guaranteed-roll callback in the DevDe
 Pages admin fix: raise the Admin Console overlay above the Rift header and every game dialog so its controls remain clickable.
 
 Deploy latest GitHub Pages test branch after integrating the current save-reset and Rift fixes.
+
+Deploy regression fix: prevent read-only player migrations from racing saves and use main-game level requirements for later Rift challenges.
