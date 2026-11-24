@@ -80,7 +80,6 @@ import {
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
-import { RIFT_CHALLENGES } from '../shared/rift-challenges.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
 import {
   DEFAULT_LIVE_BALANCE_CONFIG,
@@ -120,7 +119,6 @@ import './experience-200.css';
 import './mobile-experience.css';
 import './rift-theme.css';
 
-const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 function optimisticShardSpend(
   state: PlayerState,
@@ -4604,8 +4602,6 @@ function App() {
             readyAt={readyAt}
             busy={isRolling || Boolean(riftCompletionReveal)}
             autoRoll={autoRoll}
-            riftCompletionReveal={riftCompletionReveal}
-            onRiftCompletionRevealComplete={finishRiftCompletionReveal}
             onBuyUpgrade={handleBuyUpgrade}
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onOpenUpgrades={() => changeTab('upgrades')}
