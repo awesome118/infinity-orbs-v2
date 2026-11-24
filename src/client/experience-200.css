@@ -1014,3 +1014,8 @@ html:fullscreen .io-rarity-modal .io-rarity-orb-icon--compact {
   .io-ui .io-reddit-simulator-page-head { flex-direction: column; padding: 14px; }
   .io-ui .io-reddit-simulator-page-head>strong { align-self: flex-start; }
 }
+
+
+/* Rift is a full-width progression page, with its own navigation beside Combat. */
+.io-ui .io-app-main-rift { max-width: 1480px; }
+.io-ui .io-nav-rift .io-nav-combat-list { justify-content: flex-start; }
