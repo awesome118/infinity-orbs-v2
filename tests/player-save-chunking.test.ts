@@ -176,3 +176,11 @@ test('read-only Redis storage audit runs from the production AppUpgrade trigger'
   assert.match(app, /subredditName !== 'infinityorbs'/);
   assert.doesNotMatch(app, /clearAllDiagnosticLogs/);
 });
+
+test('read-only player loads cannot persist save migrations without the player lock', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /const canPersistMigrations = options\.persistMigrations !== false && getActivePlayerMutationLock\(userId\) !== null/);
+  assert.match(game, /if \(canPersistMigrations\) await migrateLegacyCodex\(userId, generation, restoredCollection\)/);
+  assert.match(game, /if \(canPersistMigrations\) await deleteLegacyCodexShards\(userId, generation\)/);
+  assert.match(game, /if \(canPersistMigrations && \(levelExpansionMigration \|\| needsCodexMigration\)\)/);
+});
