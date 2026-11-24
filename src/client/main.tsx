@@ -4232,7 +4232,16 @@ function App() {
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
         ) : riftChallengesMode ? (
           <RiftChallengesSection
-            onEnterGame={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onEnterGame={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
             onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
             onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
@@ -4290,7 +4299,16 @@ function App() {
 
         {tab === 'challenges' && !riftChallengesMode && (
           <RiftChallengesSection
-            onEnterGame={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            onEnterGame={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
             onExit={() => { setTab('roll'); setMoreNavOpen(false); void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
             onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
