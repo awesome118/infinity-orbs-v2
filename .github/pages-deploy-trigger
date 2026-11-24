@@ -53,3 +53,5 @@ Deploy prompt: validated live balance settings, runtime reward/cooldown tuning, 
 Pages validation retry: manual cooldown regression test now expects the live balance config parameter.
 
 Pages update: expanded Admin CLI feature controls, server-side granular route gating, and read-only mode.
+
+Rift restoration: integrate the current challenge system into the modern Pages game while preserving current Pages balance, admin, mobile, and Frenzy features.

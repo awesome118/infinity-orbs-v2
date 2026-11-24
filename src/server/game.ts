@@ -7,6 +7,12 @@ import { compressStorageString, decompressStorageString } from './storage-compre
 import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, codexShardKey, legacyCodexShardKey, groupCodexFields, normalizeCodexCollection } from '../shared/collection-storage.js';
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
+import {
+  getRiftChallengeDefinition,
+  riftRatePerHour,
+  type RiftChallengeArchive,
+  type RiftChallengeMainProgress,
+} from '../shared/rift-challenges.js';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
@@ -4157,14 +4163,311 @@ export async function refundPurchasedPack(userId: string, sku: string, orderId: 
     throw new Error('Could not safely process the refund.');
   });
 }
-export async function loadRaw(options: { registerActivity?: boolean } = {}): Promise<PlayerState> {
+const RIFT_ARCHIVE_KEY_PREFIX = 'io:rift-challenge:v1:';
+
+interface ActiveRiftRunContext {
+  runId: string;
+  challengeId: string;
+  targetRarity: number;
+  baseCooldownMs: number;
+  riftLuckPerkLevel: number;
+  riftSpeedPerkLevel: number;
+  challengeCoinMultiplier: number;
+  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+  gameState: PlayerState;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext | null> {
+  const raw = await redis.get(RIFT_ARCHIVE_KEY_PREFIX + userId);
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const archive = JSON.parse(raw) as Record<string, unknown>;
+    const run = isPlainRecord(archive.activeRun) ? archive.activeRun : null;
+    if (!run || run.status !== 'active' || typeof run.runId !== 'string') return null;
+    const challenge = getRiftChallengeDefinition(run.challengeId);
+    if (!challenge) return null;
+    const levels = isPlainRecord(run.upgradeLevels) ? run.upgradeLevels : {};
+    let gameState: PlayerState;
+    if (isPlainRecord(run.gameState)) {
+      gameState = run.gameState as unknown as PlayerState;
+    } else {
+      // Migrate an in-progress legacy challenge without importing any main-save variables.
+      gameState = createInitialState(safeNonNegativeTimestamp(run.startedAt) || Date.now());
+      gameState.username = String(context.username ?? '').slice(0, 100) || undefined;
+      gameState.coins = Math.max(50, Number(run.coins) || 0);
+      gameState.lifetimeCoins = gameState.coins;
+      gameState.totalRolls = safeNonNegativeInteger(run.totalRolls);
+      gameState.highestRarity = Math.max(0, Number(run.bestRarity) || 0);
+      gameState.saveGeneration = 0;
+      gameState.stateRevision = 0;
+    }
+    const riftPerks = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+    const runId = run.runId.slice(0, 120);
+    const codexOwnerId = riftCodexOwnerId(userId, runId);
+    const inlineCollection = isValidCollection(gameState.collection)
+      ? normalizeCodexCollection(gameState.collection)
+      : {};
+    const storedCollection = await readCodexShards(codexOwnerId, 0);
+    if (Object.keys(storedCollection).length === 0 && Object.keys(inlineCollection).length > 0) {
+      await migrateLegacyCodex(codexOwnerId, 0, inlineCollection);
+      gameState.collection = inlineCollection;
+    } else {
+      gameState.collection = storedCollection;
+    }
+    gameState.collectionStorageVersion = CODEX_STORAGE_VERSION;
+    return {
+      runId,
+      challengeId: challenge.id,
+      targetRarity: challenge.targetRarity,
+      baseCooldownMs: challenge.baseCooldownMs,
+      riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
+      riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
+      challengeCoinMultiplier: challenge.coinMultiplier,
+      upgradeLevels: {
+        fortune: safeNonNegativeInteger(levels.fortune),
+        speed: safeNonNegativeInteger(levels.speed),
+        prosperity: safeNonNegativeInteger(levels.prosperity),
+        critical: safeNonNegativeInteger(levels.critical),
+      },
+      gameState,
+    };
+  } catch (error) {
+    console.error('[Rift Save] Could not read the active Rift archive.', error);
+    throw new Error('Your active Rift save could not be read safely. Your main save has not been changed.');
+  }
+}
+
+function riftCodexOwnerId(userId: string, runId: string): string {
+  return userId + ':rift:' + runId;
+}
+
+function safeNonNegativeInteger(value: unknown): number {
+  const number = Number(value);
+  return Number.isSafeInteger(number) ? Math.max(0, number) : 0;
+}
+
+function safeNonNegativeTimestamp(value: unknown): number {
+  return safeNonNegativeInteger(value);
+}
+
+function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number): void {
+  const completed = Array.isArray(archive.completedChallengeIds)
+    ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const levels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+  const rate = riftRatePerHour(completed, levels as never);
+  const last = archive.riftLastAccruedAt == null ? now : safeNonNegativeInteger(archive.riftLastAccruedAt);
+  const progress = Number(archive.riftProgress);
+  const accrued = Math.max(0, Number.isFinite(progress) ? progress : 0) + Math.max(0, now - last) / 3_600_000 * rate;
+  const whole = Math.floor(accrued);
+  const points = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + whole);
+  const earned = Math.max(0, points - safeNonNegativeInteger(archive.riftPoints));
+  archive.riftPoints = points;
+  archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + earned);
+  archive.riftProgress = points >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accrued - whole);
+  archive.riftRatePerHour = rate;
+  archive.riftLastAccruedAt = now;
+}
+
+function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerState {
+  const stored: Record<string, unknown> = { ...state, stateRevision: revision, saveGeneration: 0 };
+  delete stored.collection;
+  delete stored.riftSession;
+  delete stored.riftRunComplete;
+  delete stored.riftSaveContext;
+  delete stored.gameBan;
+  delete stored.onlinePlayers;
+  delete stored.guildPerks;
+  delete stored.guildCombo;
+  delete stored.globalBoosters;
+  delete stored.dailyStreakCommunity;
+  delete stored.codexChain;
+  delete stored.codexDevotionLuckPercent;
+  return JSON.parse(JSON.stringify(stored)) as PlayerState;
+}
+
+export async function deleteRiftCodexForRun(runId: string): Promise<void> {
+  const ownerId = riftCodexOwnerId(currentUserId(), String(runId ?? '').slice(0, 120));
+  await Promise.all(Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) =>
+    redis.del(codexShardKey(ownerId, 0, shard)),
+  ));
+}
+
+async function saveActiveRiftPlayerState(
+  state: PlayerState,
+  allExtraWrites: SaveExtraWrite[],
+): Promise<void> {
+  const session = state.riftSession;
+  if (!session) throw new Error('RIFT_SESSION_MISSING');
+  if (session.challengeId === 'first-spark') {
+    state.shards = 0;
+    state.lifetimeShards = 0;
+    state.freeShardsEarnedToday = 0;
+    state.shardPityRolls = 0;
+  }
   const userId = currentUserId();
+  const expectedTicketKey = rollTicketKey(userId, session.runId);
+  const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
+  const unsupportedRequiredWrites = allExtraWrites.filter(write => write.key !== expectedTicketKey && !write.optional);
+  if (ticketWrites.length > 1 || unsupportedRequiredWrites.length > 0) {
+    throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
+  }
+
+  state.codexChain = highestCodexChain(state.collection);
+  state.codexDevotionLuckPercent = codexDevotionLuckPercent(
+    state.masterySkills?.celestialSurge ?? 0,
+    state.codexChain,
+  );
+  const keyName = RIFT_ARCHIVE_KEY_PREFIX + userId;
+  const codexOwnerId = riftCodexOwnerId(userId, session.runId);
+  const dirtyCodexKeys = pendingCodexRarityWrites.get(state) ?? new Set<string>();
+  const codexWrites = state.collectionStorageVersion === CODEX_STORAGE_VERSION && dirtyCodexKeys.size > 0
+    ? groupCodexFields(Array.from(dirtyCodexKeys, rarityKey => [rarityKey, Number(state.collection?.[rarityKey] ?? 0)] as const))
+    : [];
+  const codexWriteKeys = codexWrites.map(write => codexShardKey(codexOwnerId, 0, write.shard));
+  const now = Date.now();
+  await touchPlayerActivity(userId, String(state.username ?? context.username ?? userId));
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(keyName, ...ticketWrites.map(write => write.key), ...codexWriteKeys);
+    let transactionClosed = false;
+    try {
+      const [raw, ...ticketRawValues] = await Promise.all([
+        redis.get(keyName),
+        ...ticketWrites.map(write => redis.get(write.key)),
+      ]);
+      if (typeof raw !== 'string' || !raw) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_ENDED');
+      }
+      const archive = JSON.parse(raw) as Record<string, unknown>;
+      const run = isPlainRecord(archive.activeRun) ? archive.activeRun : null;
+      if (!run || run.status !== 'active' || run.runId !== session.runId) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_ENDED');
+      }
+      const challenge = getRiftChallengeDefinition(run.challengeId);
+      if (!challenge || challenge.id !== session.challengeId) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('RIFT_RUN_MISMATCH');
+      }
+
+      for (let index = 0; index < ticketWrites.length; index += 1) {
+        const actual = ticketRawValues[index] == null ? null : String(ticketRawValues[index]);
+        if (actual !== ticketWrites[index].expectedValue) {
+          await txn.unwatch();
+          transactionClosed = true;
+          throw new Error('Roll ticket changed before the Rift save. Please refresh and try again.');
+        }
+      }
+      const latestGameState = isPlainRecord(run.gameState)
+        ? run.gameState as unknown as PlayerState
+        : null;
+      const latestRevision = safeNonNegativeInteger(latestGameState?.stateRevision);
+      const expectedRevision = safeNonNegativeInteger(state.stateRevision);
+      if (latestGameState && latestRevision !== expectedRevision) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('Rift player state changed in another tab. Refresh before continuing.');
+      }
+      const nextRevision = latestRevision + 1;
+      if (!Number.isSafeInteger(nextRevision)) {
+        await txn.unwatch();
+        transactionClosed = true;
+        throw new Error('Rift player save reached its revision limit.');
+      }
+
+      const storedState = serializeRiftPlayerState(state, nextRevision);
+      run.gameState = storedState;
+      run.coins = storedState.coins;
+      run.totalRolls = storedState.totalRolls;
+      const riftBestRarity = Math.max(2, Number(storedState.highestRarity) || 2);
+      run.bestRarity = riftBestRarity;
+      run.updatedAt = now;
+      archive.version = 3;
+      advanceStoredRiftProgress(archive, now);
+
+      let completed = false;
+      if (riftBestRarity >= challenge.targetRarity) {
+        completed = true;
+        run.status = 'completed';
+        run.completedAt = now;
+        archive.totalCompletedRuns = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalCompletedRuns) + 1);
+        const completedIds = Array.isArray(archive.completedChallengeIds)
+          ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
+          : [];
+        const firstClear = !completedIds.includes(challenge.id);
+        if (firstClear) completedIds.push(challenge.id);
+        archive.completedChallengeIds = completedIds;
+        archive.riftPlayerProgress = {
+          level: Math.max(1, safeNonNegativeInteger(storedState.level)),
+          totalRolls: safeNonNegativeInteger(storedState.totalRolls),
+          totalCrits: safeNonNegativeInteger(storedState.totalCrits),
+          highestRarity: Math.max(2, Number(storedState.highestRarity) || 2),
+          masteryPoints: safeNonNegativeInteger(storedState.masteryPoints),
+        } satisfies RiftChallengeMainProgress;
+        const reward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
+        archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
+        const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
+        bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, riftBestRarity);
+        archive.bestRarityByChallenge = bestByChallenge;
+        archive.riftRatePerHour = riftRatePerHour(completedIds, (isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {}) as never);
+      }
+
+      await txn.multi();
+      await txn.set(keyName, JSON.stringify(archive));
+      for (let index = 0; index < codexWrites.length; index += 1) {
+        await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
+      }
+      for (const write of ticketWrites) {
+        if (write.expiration) await txn.set(write.key, write.nextValue, { expiration: write.expiration });
+        else await txn.set(write.key, write.nextValue);
+      }
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) {
+        state.stateRevision = nextRevision;
+        state.saveGeneration = 0;
+        pendingSaveExtraWrites.delete(state);
+        pendingCodexRarityWrites.delete(state);
+        pendingSavePostCommitActions.delete(state);
+        state.riftSaveContext = 'rift:' + session.runId;
+        if (completed) {
+          state.riftRunComplete = true;
+          delete state.riftSession;
+          void deleteRiftCodexForRun(session.runId).catch(error => {
+            console.error('[Rift Save] Completed challenge Codex cleanup failed:', error);
+          });
+        }
+        return;
+      }
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Rift save changed too frequently. Please retry.');
+}
+
+export async function loadRaw(options: { registerActivity?: boolean; persistMigrations?: boolean; source?: 'active' | 'main' } = {}): Promise<PlayerState> {
+  const userId = currentUserId();
+  const activeRiftRun = options.source === 'main' ? null : await readActiveRiftRun(userId);
+  const isRiftSave = activeRiftRun !== null;
   const playerKey = key();
   const generationKey = saveGenerationKeyFor(userId);
-  const generationRaw = await redis.get(generationKey);
-  const generation = Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
-  const storedRaw = await redis.get(playerKey);
-  const raw = await readStoredPlayerSave(userId, storedRaw);
+  const generationRaw = isRiftSave ? '0' : await redis.get(generationKey);
+  const generation = isRiftSave
+    ? safeNonNegativeInteger(activeRiftRun.gameState.saveGeneration)
+    : Math.max(0, Number.parseInt(String(generationRaw ?? '0'), 10) || 0);
+  const storedRaw = isRiftSave ? null : await redis.get(playerKey);
+  const raw = isRiftSave ? activeRiftRun.gameState : await readStoredPlayerSave(userId, storedRaw);
   const username = context.username ?? `reddit-user-${userId.slice(-8)}`;
   // Passive post previews may read player-specific eligibility without registering
   // an activity visit. Normal gameplay reads preserve the default registration.
@@ -4233,9 +4536,13 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
 
   const base = createInitialState();
   const storedCodexVersion = Number(parsed.collectionStorageVersion ?? 0);
-  const needsCodexMigration = storedCodexVersion !== CODEX_STORAGE_VERSION;
+  const needsCodexMigration = !isRiftSave && storedCodexVersion !== CODEX_STORAGE_VERSION;
   let restoredCollection: Record<string, number>;
-  if (storedCodexVersion === CODEX_STORAGE_VERSION) {
+  if (isRiftSave) {
+    // Rift collections are stored inline in the challenge save, not in the
+    // user's main Codex shard namespace.
+    restoredCollection = normalizeCodexCollection(isValidCollection(parsed.collection) ? parsed.collection : {});
+  } else if (storedCodexVersion === CODEX_STORAGE_VERSION) {
     restoredCollection = await readCodexShards(userId, generation);
     await deleteLegacyCodexShards(userId, generation);
   } else if (storedCodexVersion === 1) {
@@ -4398,15 +4705,31 @@ export async function loadRaw(options: { registerActivity?: boolean } = {}): Pro
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
-    globalBoosters,
-    dailyStreakCommunity,
+    globalBoosters: activeRiftRun ? createInitialState().globalBoosters : globalBoosters,
+    dailyStreakCommunity: activeRiftRun ? createInitialState().dailyStreakCommunity : dailyStreakCommunity,
   };
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
   // enforces the safe-integer storage boundary for the Number-based save.
   playerGuildScopes.set(restored, guildId);
+  if (activeRiftRun) {
+    const isolatedDefaults = createInitialState();
+    restored.guildPerks = isolatedDefaults.guildPerks;
+    restored.guildCombo = isolatedDefaults.guildCombo;
+    restored.riftSaveContext = 'rift:' + activeRiftRun.runId;
+    restored.riftSession = {
+      runId: activeRiftRun.runId,
+      challengeId: activeRiftRun.challengeId,
+      targetRarity: activeRiftRun.targetRarity,
+      baseCooldownMs: activeRiftRun.baseCooldownMs,
+      riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
+      riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
+      challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
+      upgradeLevels: { ...activeRiftRun.upgradeLevels },
+    };
+  }
   // Persist one-time migrations rather than only changing the read view.
   const levelExpansionMigration = restoredLevel > parsedLevel;
-  if (levelExpansionMigration || needsCodexMigration) {
+  if (options.persistMigrations !== false && (levelExpansionMigration || needsCodexMigration)) {
     try {
       await save(restored);
     } catch (error) {
@@ -4456,16 +4779,19 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
     throw new Error('Daily Streak count reached its supported limit; no reward was granted.');
   }
 
-  // Prepare/validate the shared event before touching player rewards. If this
-  // separate shared record is corrupt or out of range, the attempt must leave
-  // the local streak, Shards, Coins and free rolls untouched.
-  const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
-  stageSaveExtraWrite(s, {
-    key: communityUpdate.key,
-    expectedValue: communityUpdate.expectedValue,
-    nextValue: communityUpdate.nextValue,
-    conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
-  });
+  // Prepare/validate shared community progress only for the main account.
+  // The Rift carries its own player streak but never writes to the shared event.
+  let communityEvent = s.dailyStreakCommunity ?? createInitialState().dailyStreakCommunity!;
+  if (!s.riftSession) {
+    const communityUpdate = await prepareDailyStreakCommunityProgress(nextStreakCount);
+    stageSaveExtraWrite(s, {
+      key: communityUpdate.key,
+      expectedValue: communityUpdate.expectedValue,
+      nextValue: communityUpdate.nextValue,
+      conflictMessage: 'Daily Streak community progress changed while claiming. Please retry.',
+    });
+    communityEvent = communityUpdate.event;
+  }
 
   const day = ((nextStreakCount - 1) % 7) + 1;
   const rewardCoins = day * 100;
@@ -4477,7 +4803,7 @@ async function claimDailyStreakFromState(s: PlayerState): Promise<{ rewardCoins:
   s.streak.lastClaimDate = today;
   s.freeRolls = (s.freeRolls ?? 0) + rewardFreeRolls;
   addCoins(s, rewardCoins);
-  s.dailyStreakCommunity = communityUpdate.event;
+  s.dailyStreakCommunity = communityEvent;
   return { rewardCoins, rewardShards, rewardFreeRolls, day, community: s.dailyStreakCommunity };
 }
 
@@ -4744,8 +5070,10 @@ interface RollTicket {
 
 const ROLL_PREDICTION_COUNT = 5;
 
-function rollTicketKey(userId = currentUserId()): string {
-  return ROLL_TICKET_KEY_PREFIX + userId;
+function rollTicketKey(userId = currentUserId(), riftRunId?: string): string {
+  return riftRunId
+    ? ROLL_TICKET_KEY_PREFIX + userId + ':rift:' + riftRunId
+    : ROLL_TICKET_KEY_PREFIX + userId;
 }
 
 function randomUint32(): number {
@@ -4825,7 +5153,8 @@ export async function getRollTicket(): Promise<{
   // snapshot. Preview simulation is presentation-only and must never hold up
   // real rolls, upgrades, or other player mutations.
   const prepared = await withPlayerMutationLock(async () => {
-    const ticketKey = rollTicketKey();
+    const state = await loadRaw();
+    const ticketKey = rollTicketKey(currentUserId(), state.riftSession?.runId);
     const now = Date.now();
 
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -4881,7 +5210,6 @@ export async function getRollTicket(): Promise<{
           if (committed === null) continue;
         }
 
-        const state = await loadRaw();
         return { ticket, state };
       } finally {
         if (!transactionClosed) await txn.unwatch().catch(() => undefined);
@@ -4916,8 +5244,9 @@ async function loadRollTicketForUse(
   ticketId: string,
   ticketIndex: number,
   requestedSeed?: string,
+  riftRunId?: string,
 ): Promise<{ ticket: RollTicket; raw: string }> {
-  const raw = await redis.get(rollTicketKey());
+  const raw = await redis.get(rollTicketKey(currentUserId(), riftRunId));
   const ticket = parseStoredJson<RollTicket>(raw);
 
   if (!raw || !ticket) throw new Error('Roll prediction ticket is unavailable. Refresh the game.');
@@ -5026,6 +5355,10 @@ export async function save(
     ...(pendingSaveExtraWrites.get(s) ?? []),
     ...explicitWrites,
   ];
+  if (s.riftSession) {
+    await saveActiveRiftPlayerState(s, allExtraWrites);
+    return;
+  }
   // Optional side projections (for example shared World Event progress) are
   // best-effort. Keeping them out of the player transaction prevents unrelated
   // players from invalidating a critical balance/progression save.
@@ -5476,8 +5809,37 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo),
+    guildComboCritChanceBonus(s.guildCombo) +
+    (s.riftSession?.upgradeLevels.critical ?? 0) * 0.015,
   );
+}
+
+async function readRiftMainGameMultipliers(userId: string): Promise<{ luckMultiplier: number; coinMultiplier: number; xpMultiplier: number }> {
+  const fallback = { luckMultiplier: 1, coinMultiplier: 1, xpMultiplier: 1 };
+  // These cross-game perks intentionally do not bypass challenge-specific
+  // Sealed Progression modifiers. Rift-only perks remain active in a run.
+  if (!userId) return fallback;
+  try {
+    const raw = await redis.get('io:rift-challenge:v1:' + userId);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as { riftPerkLevels?: Record<string, unknown> };
+    const levels = parsed?.riftPerkLevels && typeof parsed.riftPerkLevels === 'object'
+      ? parsed.riftPerkLevels
+      : {};
+    const level = (id: string) => {
+      const value = Number(levels[id]);
+      return Number.isFinite(value) ? Math.max(0, Math.min(10, Math.floor(value))) : 0;
+    };
+    return {
+      luckMultiplier: 1 + level('mainLuck') * 0.02,
+      coinMultiplier: 1 + level('mainCoins') * 0.05,
+      xpMultiplier: 1 + level('mainXp') * 0.05,
+    };
+  } catch (error) {
+    // Rift progression is an optional bonus. A damaged side record must never block a normal roll.
+    console.error('[Rift Perks] Could not read main-game bonuses; rolling without them.', error);
+    return fallback;
+  }
 }
 
 export async function applyRolls(
@@ -5511,6 +5873,9 @@ export async function applyRolls(
   const liveBalance = await getLiveBalanceConfig();
   const now = Date.now();
   const spyUserId = currentUserId();
+  const riftMultipliers = s.riftSession
+    ? { luckMultiplier: 1, coinMultiplier: 1, xpMultiplier: 1 }
+    : await readRiftMainGameMultipliers(spyUserId);
   const spyBefore = {
     totalRolls: s.totalRolls,
     totalCrits: s.totalCrits ?? 0,
@@ -5574,8 +5939,8 @@ export async function applyRolls(
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
-    getGlobalBoosters(),
-    getCommunityEvent().catch(error => {
+    s.riftSession ? Promise.resolve(createInitialState().globalBoosters!) : getGlobalBoosters(),
+    (s.riftSession ? Promise.resolve(null) : getCommunityEvent()).catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
       // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
       // but don't brick a player's roll because an admin-maintained side record
@@ -5583,8 +5948,8 @@ export async function applyRolls(
       console.error('[Community Event] Read failed; rolling without the event bonus.', error);
       return null;
     }),
-    getFakeCcuBonus(),
-    redis.get('infinity-orbs:combat:' + spyUserId).catch((error: unknown) => {
+    s.riftSession ? Promise.resolve(0) : getFakeCcuBonus(),
+    (s.riftSession ? Promise.resolve(null) : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
       console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
@@ -5593,7 +5958,7 @@ export async function applyRolls(
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
-  const communityLuck = worldEvent?.buffMultiplier ?? 1;
+  const communityLuck = s.riftSession ? 1 : (worldEvent?.buffMultiplier ?? 1);
   let combatBossesBeaten = 0;
   let runeBonuses = combatRuneBonuses([], []);
   let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
@@ -5611,12 +5976,20 @@ export async function applyRolls(
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
-  const luckCcu = Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
-  const luckState = luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
+  const luckCcu = s.riftSession
+    ? 1
+    : Math.max(1, Math.floor((s.onlinePlayers ?? 1) + fakeCcuBonus));
+  const luckState = s.riftSession
+    ? { ...s, onlinePlayers: 1 }
+    : luckCcu === (s.onlinePlayers ?? 1) ? s : { ...s, onlinePlayers: luckCcu };
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
-  const baseLuckCandidate = luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus;
+  const challengeLuckMultiplier =
+    (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
+    (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05);
+  const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
+    riftMultipliers.luckMultiplier * challengeLuckMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
@@ -5701,10 +6074,9 @@ export async function applyRolls(
     const currentRuneSpec = isBaseSample ? undefined : runeBonusRollSpecs[i - batchPlan.simulatedBaseCount];
     const echoDepth = currentRuneSpec?.echoDepth ?? 0;
     const suppressOtherRuneProcs = currentRuneSpec?.skipAllProcs === true || currentRuneSpec?.echoOnly === true;
-    // New-player hype: the third Orb this account ever rolls is guaranteed
-    // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
-    // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
+    // Main-game onboarding only: the third Orb in a normal account is guaranteed
+    // to land in the 1/101 through 1/120 range. Rift runs deliberately skip it.
+    const isGuaranteedThirdBall = !s.riftSession && forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
 
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
     const critEligible = !isGuaranteedThirdBall && !(exactRarity && forcedRarity != null && i === 0);
@@ -6086,7 +6458,8 @@ export async function applyRolls(
     const xpBonusMul =
       (1 + (s.upgrades.xpBonus ?? 0) * 0.20) *
       levelBenefits.xpMultiplier *
-      (1 + runeBonuses.xpGainPct / 100);
+      (1 + runeBonuses.xpGainPct / 100) *
+      riftMultipliers.xpMultiplier;
     const xpForBaseOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(rewardRarity + 1) * 12)) * xpBonusMul);
     const xpForCriticalOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(criticalRewardRarity + 1) * 12)) * xpBonusMul);
     const xpForSupernovaOrb = Math.round(Math.min(300, 12 + Math.floor(Math.log10(supernovaRewardRarity + 1) * 12)) * xpBonusMul);
@@ -6110,6 +6483,7 @@ export async function applyRolls(
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
+    const shardDropsDisabled = s.riftSession?.challengeId === 'first-spark';
     const shardTitheChance = Math.min(0.000125, Math.max(0, runeAbilityEffects.shardTithePerRoll) * 0.5);
     // Dry-Streak Refinery converts its former fractional drip into a reduced chance for one whole Shard.
     const dryRefineryChance = Math.min(0.000125, Math.floor(Math.max(0, dryStreakForBatchProcs) / 100) * Math.max(0, runeAbilityEffects.dryStreakRefineryRate) * 0.5);
@@ -6150,6 +6524,7 @@ export async function applyRolls(
       }
     }
 
+    if (shardDropsDisabled) earnedShards = 0;
     shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + earnedShards);
     xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + balancedEarnedXp);
 
@@ -6217,7 +6592,8 @@ export async function applyRolls(
     criticalDividendMultiplier(s, criticalRollsInBatch / Math.max(1, rollCount)) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (1 + runeBonuses.coinGainPct / 100);
+    (1 + runeBonuses.coinGainPct / 100) *
+    (1 + (s.riftSession?.upgradeLevels.prosperity ?? 0) * 0.20);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = lowRarityCoinsEstimate;
@@ -6253,8 +6629,12 @@ export async function applyRolls(
     coinsGained = Math.round(coinsGained * (1 + (s.prestigeUpgrades.offlineOverdrive * 0.50)));
   }
 
+  // Persistent Rift perks multiply the complete Coin payout, including filtered and transmuted bonuses.
+  coinsGained = normalizeCoinAmount(Math.round(
+    coinsGained * riftMultipliers.coinMultiplier * (s.riftSession?.challengeCoinMultiplier ?? 1),
+  ));
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * liveBalance['rewards.coinMultiplier']));
-  if (!previewOnly) {
+  if (!previewOnly && !s.riftSession) {
     const pendingGuildWrite = getPendingSaveExtraWrite(s, 'io:guilds');
     const rareOrbCount = countGuildTaskRareOrbs(rarities, rarityWeights);
     let guildEffects: Awaited<ReturnType<typeof prepareGuildRollEffects>>;
@@ -6302,7 +6682,7 @@ export async function applyRolls(
   advanceQuestProgress(s, 'value', totalVal);
   advanceQuestProgress(s, 'unique', uniqueGained);
 
-  if (!previewOnly) {
+  if (!previewOnly && !s.riftSession) {
     const pendingCommunityWrite = getPendingSaveExtraWrite(s, 'io:community_event');
     try {
       const communityUpdate = await prepareCommunityRolls(rollCount, pendingCommunityWrite);
@@ -6940,7 +7320,18 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   resetFreeShardBudgetIfNeeded(s, now);
   // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
-  s.globalBoosters = await getGlobalBoosters();
+  s.globalBoosters = s.riftSession
+    ? createInitialState().globalBoosters
+    : await getGlobalBoosters();
+
+  // First Spark explicitly disables offline progression and every automation.
+  // Resetting the local vault also clears any legacy migrated backlog.
+  if (s.riftSession?.challengeId === 'first-spark') {
+    s.offlineRolls = 0;
+    s.autoRollEnabled = false;
+    s.lastSeenAt = now;
+    return s;
+  }
 
   // Old saves may outlive a lower current vault cap after prestige/upgrades change.
   // Normalize before looking at lastSeenAt, so a recent/future timestamp cannot
@@ -7254,7 +7645,7 @@ export async function getMe(): Promise<PlayerState> {
   }
   // Refresh the Reddit flair on game entry so existing members receive the
   // guild label even before their next roll/save.
-  void syncRarityFlair(s);
+  if (!s.riftSession) void syncRarityFlair(s);
   return s;
 }
 
@@ -7266,6 +7657,9 @@ export async function checkOffline(): Promise<PlayerState> {
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (enabled && s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Auto Roll is disabled in The First Spark.');
+  }
   if ((s.upgrades.auto ?? 0) <= 0) {
     s.autoRollEnabled = false;
     await save(s);
@@ -7306,12 +7700,13 @@ export async function roll(
       | { ticket: RollTicket; raw: string; index: number; nextValue: string }
       | undefined;
 
+    const loadedState = await loadRaw();
     if (ticketId != null || ticketIndex != null) {
       const requestedTicketIndex = Number(ticketIndex);
       if (!ticketId || !Number.isSafeInteger(requestedTicketIndex)) {
         throw new Error('Invalid roll prediction ticket.');
       }
-      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex, ticketSeed);
+      const loaded = await loadRollTicketForUse(ticketId, requestedTicketIndex, ticketSeed, loadedState.riftSession?.runId);
       const nextTicket: RollTicket = {
         ...loaded.ticket,
         nextIndex: loaded.ticket.nextIndex + 1,
@@ -7327,9 +7722,11 @@ export async function roll(
     const ticketRandom = ticketUse
       ? createRollRandomSource(ticketUse.ticket.seeds[ticketUse.index])
       : null;
-    const loadedState = await loadRaw();
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
+    if (isAuto && s.riftSession?.challengeId === 'first-spark') {
+      throw new Error('Auto Roll is disabled in The First Spark.');
+    }
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
     }
@@ -7402,7 +7799,7 @@ export async function roll(
     let rollCount = 0;
     let remainingActivations = activations;
     const ballsPerActivation = Math.max(1, rollsPerActivation(s));
-    const timeEnergyProgressUserId = usingTimeEnergy && safeProgressAttemptId ? currentUserId() : '';
+    const timeEnergyProgressUserId = usingTimeEnergy && safeProgressAttemptId && !s.riftSession ? currentUserId() : '';
     const timeEnergyProgressTotal = freeRollActivations * ballsPerActivation;
     let lastTimeEnergyProgressWriteAt = 0;
     if (timeEnergyProgressUserId && safeProgressAttemptId) {
@@ -7485,7 +7882,7 @@ export async function roll(
       s,
       ticketUse
         ? {
-            key: rollTicketKey(),
+            key: rollTicketKey(currentUserId(), s.riftSession?.runId),
             expectedValue: ticketUse.raw,
             nextValue: ticketUse.nextValue,
           }
@@ -7502,9 +7899,11 @@ export async function roll(
       );
     }
 
-    void recordLeaderboard(s).catch(error => {
-      console.error('[Leaderboard] Background update failed:', error);
-    });
+    if (!s.riftSession) {
+      void recordLeaderboard(s).catch(error => {
+        console.error('[Leaderboard] Background update failed:', error);
+      });
+    }
     void appendPlayerSpyLog('roll-activation', {
       mode: isAuto ? 'auto' : 'manual',
       processedRolls: rollCount,
@@ -7665,6 +8064,7 @@ export async function claimFollowReward(): Promise<{
     if (await redis.get(rewardKey)) throw new Error('FOLLOW_REWARD_ALREADY_CLAIMED');
 
     const s = await settleOffline(await loadRaw());
+    if (s.riftSession) throw new Error('Follow rewards are tied to your main account and cannot be claimed inside a Rift run.');
     const effectiveLevel = Math.max(1, Math.floor(Number(s.level) || 1), calculateLevelFromXp(Number(s.xp) || 0).level);
     if (effectiveLevel < 5) throw new Error('FOLLOW_REWARD_LEVEL_REQUIRED');
 
@@ -7743,6 +8143,9 @@ export async function claimOffline(): Promise<RollResponse> {
     skipAutoOfflineClaim: true,
     skipOfflineNotifications: true,
   });
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Offline rolls are disabled in The First Spark.');
+  }
   if (!Number.isSafeInteger(s.offlineRolls) || s.offlineRolls < 0) {
     throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
   }
@@ -7772,9 +8175,11 @@ export async function claimOffline(): Promise<RollResponse> {
   ]).catch(error => {
     console.error('[Offline Claim] Reminder cleanup failed after save:', error);
   });
-  await recordLeaderboard(s).catch(error => {
-    console.error('[Leaderboard] Offline-claim projection failed after save:', error);
-  });
+  if (!s.riftSession) {
+    await recordLeaderboard(s).catch(error => {
+      console.error('[Leaderboard] Offline-claim projection failed after save:', error);
+    });
+  }
 
   return {
     orb: bestOrb,
@@ -8769,6 +9174,9 @@ export async function activateGlobalBooster(
   });
 
   const s = await settleOffline(await loadRaw());
+  if (s.riftSession) {
+    throw new Error('Global Boosters are outside this isolated Rift run.');
+  }
 
   await appendGlobalBoosterDebugLog('player:loaded-state', {
     userId,
@@ -8811,6 +9219,9 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
 export async function buyAutomation(id: AutomationId): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Automation is disabled in The First Spark.');
+  }
   const info = AUTOMATIONS[id];
   if (!info) throw new Error('Unknown automation.');
   if (s.automations?.[id]) throw new Error(info.name + ' is already unlocked.');
@@ -8887,6 +9298,7 @@ export async function startOrbFrenzy(options: {
 } = {}): Promise<RollResponse & { postId: string; url: string; rarity: number }> {
   return withPlayerMutationLock(async () => {
     const loadedState = await loadRaw();
+    if (loadedState.riftSession) throw new Error('Frenzy publishing is unavailable inside an isolated Rift run.');
     const performFrenzyStart = async () => {
       const s = await settleOffline(loadedState);
     const now = Date.now();
@@ -9694,7 +10106,7 @@ export async function reserveShareCooldown(s: PlayerState): Promise<void> {
 export async function recordShareQuestProgress(s: PlayerState): Promise<void> {
   advanceQuestProgress(s, 'share', 1);
   await save(s);
-  void recordLeaderboard(s).catch(error => {
+  if (!s.riftSession) void recordLeaderboard(s).catch(error => {
     console.error('[Leaderboard] Share update failed:', error);
   });
 }
@@ -9707,7 +10119,7 @@ export async function recordShareAction(s: PlayerState) {
   s.lastShareAt = now;
   advanceQuestProgress(s, 'share', 1);
   await save(s);
-  void recordLeaderboard(s).catch(error => {
+  if (!s.riftSession) void recordLeaderboard(s).catch(error => {
     console.error('[Leaderboard] Share update failed:', error);
   });
 }

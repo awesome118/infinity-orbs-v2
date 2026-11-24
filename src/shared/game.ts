@@ -446,11 +446,13 @@ function addShardsWithinSafeIntegerLimit(s: PlayerState, requested: number): num
 }
 
 export function grantFreeShards(s: PlayerState, requested: number, _now = Date.now()): number {
+  if (s.riftSession?.challengeId === 'first-spark') return 0;
   // Free rewards use the same whole-Shard normalization and numeric safety as roll rewards.
   return addShardsWithinSafeIntegerLimit(s, requested);
 }
 
 export function grantRollShards(s: PlayerState, requested: number, now = Date.now()): number {
+  if (s.riftSession?.challengeId === 'first-spark') return 0;
   resetFreeShardBudgetIfNeeded(s, now);
   const rawEarnedToday = s.freeShardsEarnedToday;
   // This field is telemetry only now: malformed values are repaired, not used to
@@ -465,6 +467,9 @@ export function grantRollShards(s: PlayerState, requested: number, now = Date.no
 }
 
 export function spendShards(s: PlayerState, requested: number): number {
+  if (s.riftSession?.challengeId === 'first-spark') {
+    throw new Error('Shards are disabled in The First Spark.');
+  }
   if (!Number.isFinite(requested)) throw new Error('Invalid Shards amount.');
   const amount = Math.max(0, Math.floor(requested));
   if (!Number.isSafeInteger(amount)) throw new Error('Invalid Shards amount.');
@@ -1135,7 +1140,24 @@ export interface PopupMetric { shown: number; accepted: number; dismissed: numbe
 export type PopupStats = Record<GamePopupId, PopupMetric>;
 export const DEFAULT_POPUP_CONFIG: PopupConfig = { notification: true, frenzy: true, joinSubreddit: true };
 
+export interface RiftPlayerSession {
+  runId: string;
+  challengeId: string;
+  targetRarity: number;
+  baseCooldownMs: number;
+  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+  riftLuckPerkLevel: number;
+  riftSpeedPerkLevel: number;
+  challengeCoinMultiplier: number;
+}
+
 export interface PlayerState {
+  /** Runtime-only marker that routes all normal game reads and writes to the active Rift save. */
+  riftSession?: RiftPlayerSession;
+  /** Runtime-only flag returned on the roll that completes a Rift challenge. */
+  riftRunComplete?: boolean;
+  /** Runtime identity that lets the client distinguish a completed Rift response from the restored main save. */
+  riftSaveContext?: string;
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
   stateRevision?: number;
@@ -2724,10 +2746,14 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   );
   const directCooldownReduction =
     permReduction + steadyHandsReduction + temporalCompressionReduction;
-  let cd = Math.max(
-    floor,
-    (liveBalance?.['roll.baseCooldownMs'] ?? BASE_COOLDOWN_MS) - coinReduction - directCooldownReduction,
-  );
+  // An active Rift owns its own base cadence. Normal Speed/Prestige modifiers
+  // still work on that cadence, but the player's main-save cooldown is never used.
+  let cd = s.riftSession
+    ? Math.max(500, s.riftSession.baseCooldownMs - coinReduction - directCooldownReduction - (s.riftSession.upgradeLevels.speed * 90))
+    : Math.max(
+        floor,
+        (liveBalance?.['roll.baseCooldownMs'] ?? BASE_COOLDOWN_MS) - coinReduction - directCooldownReduction,
+      );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
     cd *= 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
@@ -2768,7 +2794,8 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
   cd *= Math.pow(0.95, chronoFlowLevel);
-  return Number.isFinite(cd) ? Math.max(0, Math.round(cd)) : 0;
+  if (s.riftSession) cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
+  return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false, liveBalance?: LiveBalanceConfig): number {
@@ -3135,7 +3162,7 @@ export function predictRollActivation(
   const lifetimeRollsBeforeBatch = s.totalRolls;
 
   for (let i = 0; i < rollCount; i++) {
-    const isGuaranteedThirdBall = lifetimeRollsBeforeBatch + i === 2;
+    const isGuaranteedThirdBall = !s.riftSession && lifetimeRollsBeforeBatch + i === 2;
     const isCrit = !isGuaranteedThirdBall && rng() < critChance;
     let effectiveCm = cm;
 

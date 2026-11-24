@@ -3,6 +3,7 @@ import { configureDevvitRuntime, redis, reddit, scheduler } from '../server/devv
 import * as game from '../server/game.js';
 import * as social from '../server/social.js';
 import * as combat from '../server/combat.js';
+import * as riftChallenges from '../server/rift-challenges.js';
 import { context } from './devvit-client.js';
 import { handlePagesAdminRequest } from './admin-api.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
@@ -34,6 +35,13 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function errorResponse(error: unknown, status = 400): Response {
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown local test error.');
+  if (message === 'CHALLENGE_RUN_MISMATCH') {
+    return jsonResponse({ error: 'This challenge run changed in another tab. Refresh before continuing.' }, 409);
+  }
+  if (message.startsWith('RIFT_CHALLENGE_COOLDOWN:')) {
+    const retryAfterMs = Math.max(0, Number(message.slice('RIFT_CHALLENGE_COOLDOWN:'.length)) || 0);
+    return jsonResponse({ error: 'Your challenge roll is not ready yet.', retryAfterMs }, 429);
+  }
   return jsonResponse({ error: message }, status);
 }
 
@@ -169,6 +177,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         }
         case '/api/products':
           return jsonResponse([]);
+        case '/api/rift-challenges':
+          return jsonResponse(await riftChallenges.getRiftChallengeStatus());
         default:
           return jsonResponse({ error: 'Unknown GitHub Pages test API endpoint: ' + path }, 404);
       }
@@ -179,6 +189,16 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
     }
 
     switch (path) {
+      case '/api/rift-challenges/start':
+        return jsonResponse(await riftChallenges.startRiftChallenge(body.challengeId));
+      case '/api/rift-challenges/roll':
+        return jsonResponse(await riftChallenges.rollRiftChallenge(body.runId));
+      case '/api/rift-challenges/upgrade':
+        return jsonResponse(await riftChallenges.buyRiftChallengeUpgrade(body.upgradeId, body.runId));
+      case '/api/rift-challenges/perk':
+        return jsonResponse(await riftChallenges.buyRiftPerk(body.perkId));
+      case '/api/rift-challenges/abandon':
+        return jsonResponse(await riftChallenges.abandonRiftChallenge(body.runId));
       case '/api/roll': {
         const result = await game.roll(
           body.auto === true,

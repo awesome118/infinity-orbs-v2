@@ -125,6 +125,7 @@ import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromX
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1133,6 +1134,112 @@ export function createApp() {
       const targetCooldown=message.startsWith('ARENA_OPPONENT_COOLDOWN:');
       const status=message==='REDDIT_LOGIN_REQUIRED'?401:message==='ARENA_SELF_CHALLENGE'?400:message==='ARENA_OPPONENT_UNAVAILABLE'?404:message.startsWith('ARENA_COOLDOWN:')||targetCooldown?429:message==='Combat state changed repeatedly. Please retry.'?503:500;
       res.status(status).json({error:message.startsWith('ARENA_COOLDOWN:')?'Your next Arena challenge is not ready yet.':targetCooldown?'This opponent was challenged recently. Choose another opponent.':message,...(message.startsWith('ARENA_COOLDOWN:')?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_COOLDOWN:'.length))||0)}:targetCooldown?{retryAfterMs:Math.max(0,Number(message.slice('ARENA_OPPONENT_COOLDOWN:'.length))||0)}:{})});
+    }
+  });
+
+  app.get('/api/rift-challenges', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await getRiftChallengeStatus());
+    } catch (error: any) {
+      const message = error?.message || 'Could not load Rift Challenges.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : transientContentionError(error) ? 503 : 500)
+        .json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/start', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await startRiftChallenge(req.body?.challengeId));
+    } catch (error: any) {
+      const message = error?.message || 'Could not start this challenge.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message.includes('Reach Level') || message.includes('Complete ') ||
+          message.includes('already have an active challenge') || message.includes('valid Rift Challenge') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/roll', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The challenge run ID is missing. Refresh and try again.' });
+      }
+      res.json(await rollRiftChallenge(runId));
+    } catch (error: any) {
+      const message = error?.message || 'Challenge roll failed.';
+      if (message.startsWith('RIFT_CHALLENGE_COOLDOWN:')) {
+        const retryAfterMs = Math.max(0, Number(message.slice('RIFT_CHALLENGE_COOLDOWN:'.length)) || 0);
+        return res.status(429).json({ error: 'Your challenge roll is not ready yet.', retryAfterMs });
+      }
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
+    }
+  });
+
+  app.post('/api/rift-challenges/upgrade', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const upgradeId = req.body?.upgradeId;
+      if (typeof upgradeId !== 'string' || upgradeId.length > 40) {
+        return res.status(400).json({ error: 'Choose a valid challenge upgrade.' });
+      }
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The challenge run ID is missing. Refresh and try again.' });
+      }
+      res.json(await buyRiftChallengeUpgrade(upgradeId, runId));
+    } catch (error: any) {
+      const message = error?.message || 'Challenge upgrade failed.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : message.startsWith('Need ') || message.startsWith('Main-game requirement') ||
+          message.includes('already at maximum') || message.includes('valid challenge upgrade') ||
+          message.includes('There is no active Rift Challenge') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
+    }
+  });
+
+  app.post('/api/rift-challenges/perk', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const perkId = req.body?.perkId;
+      if (typeof perkId !== 'string' || perkId.length > 40) {
+        return res.status(400).json({ error: 'Choose a valid Rift perk.' });
+      }
+      res.json(await buyRiftPerk(perkId));
+    } catch (error: any) {
+      const message = error?.message || 'Rift perk purchase failed.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message.startsWith('Need ') || message.includes('already at maximum') ||
+          message.includes('valid Rift perk') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/abandon', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The challenge run ID is missing. Refresh and try again.' });
+      }
+      res.json(await abandonRiftChallenge(runId));
+    } catch (error: any) {
+      const message = error?.message || 'Could not abandon this challenge.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : message.includes('There is no active challenge') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
     }
   });
 
