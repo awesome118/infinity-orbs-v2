@@ -91,3 +91,5 @@ Deploy full session log snapshot diagnostics: capture UI, API, state reconciliat
 Retry Pages deployment with per-attempt artifact names to prevent duplicate artifact lookup during workflow retries.
 
 Deploy using the matching per-attempt artifact upload and deploy configuration.
+
+Pages save reset fix: atomically advance the player save generation and clear player, combat, Rift archive, and roll-ticket state without passing a fresh revision-zero save through ordinary save CAS.
