@@ -5688,7 +5688,7 @@ export async function applyRolls(
     // New-player hype: the third Orb this account ever rolls is guaranteed
     // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
     // guarantee is the exact advertised range.
-    const isGuaranteedThirdBall = forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
+    const isGuaranteedThirdBall = !s.riftSession && forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
 
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
     const critEligible = !isGuaranteedThirdBall && !(exactRarity && forcedRarity != null && i === 0);
