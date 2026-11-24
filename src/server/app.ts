@@ -1129,7 +1129,6 @@ export function createApp() {
       }
       const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
         : message === 'CHALLENGE_RUN_MISMATCH' ? 409
-        : message.startsWith('Start The First Spark') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
     }
