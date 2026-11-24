@@ -5685,9 +5685,8 @@ export async function applyRolls(
     const currentRuneSpec = isBaseSample ? undefined : runeBonusRollSpecs[i - batchPlan.simulatedBaseCount];
     const echoDepth = currentRuneSpec?.echoDepth ?? 0;
     const suppressOtherRuneProcs = currentRuneSpec?.skipAllProcs === true || currentRuneSpec?.echoOnly === true;
-    // New-player hype: the third Orb this account ever rolls is guaranteed
-    // to land in the 1/101 through 1/120 range. It cannot crit upward, so the
-    // guarantee is the exact advertised range.
+    // Main-game onboarding only: the third Orb in a normal account is guaranteed
+    // to land in the 1/101 through 1/120 range. Rift runs deliberately skip it.
     const isGuaranteedThirdBall = !s.riftSession && forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
 
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
