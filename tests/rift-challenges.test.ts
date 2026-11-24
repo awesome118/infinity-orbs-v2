@@ -102,6 +102,10 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftLastAccruedAt: 1234,
     totalRiftPointsEarned: 0,
     riftPlayerProgress: null,
+    kudosReceivedAt: [],
+    lastGameOpenedAt: 1234,
+    kudosSinceLastOpen: 0,
+    kudosDisplaySinceLastOpen: 0,
     riftPerkLevels: {
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
