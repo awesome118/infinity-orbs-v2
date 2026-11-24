@@ -189,6 +189,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
           .slice(-1000)
       : [],
     lastGameOpenedAt: safeInteger(value.lastGameOpenedAt, now),
+    kudosSinceLastOpen: safeInteger(value.kudosSinceLastOpen),
     riftPerkLevels,
   };
   archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
@@ -297,7 +298,7 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
     challengeAvailable: riftChallengeIsAvailable(mainProgress),
     kudosStats: {
       last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
-      sinceLastOpen: archive.kudosReceivedAt.filter(timestamp => timestamp >= archive.lastGameOpenedAt).length,
+      sinceLastOpen: archive.kudosSinceLastOpen,
     },
   };
 }
@@ -335,6 +336,7 @@ export async function markRiftGameOpened(): Promise<{ openedAt: number }> {
     const archive = await readArchive();
     accrueRiftProgress(archive, now);
     archive.lastGameOpenedAt = now;
+    archive.kudosSinceLastOpen = 0;
     await writeArchive(archive);
     return { openedAt: now };
   });
@@ -513,6 +515,7 @@ export async function awardRiftCompletionKudos(postIdValue?: unknown): Promise<{
     archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + earned);
     archive.riftProgress = nextBalance >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accumulated - whole);
     archive.kudosReceivedAt = [...archive.kudosReceivedAt.filter(timestamp => timestamp >= now - RIFT_KUDOS_HISTORY_MS), now].slice(-1000);
+    archive.kudosSinceLastOpen = Math.min(Number.MAX_SAFE_INTEGER, archive.kudosSinceLastOpen + 1);
 
     const giverState = await loadRaw({ source: 'main' });
     const shardsGrantedToYou = grantFrenzyOwnerShards(giverState, RIFT_KUDOS_REWARD_SHARDS);
