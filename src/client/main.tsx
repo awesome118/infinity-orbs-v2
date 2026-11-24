@@ -4816,6 +4816,10 @@ function App() {
             setJoinSubredditPreview(true);
             setShowJoinSubredditPrompt(true);
           }}
+          onForceFrenzyShardPopup={() => {
+            setShowDevModal(false);
+            setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true });
+          }}
           onPopupConfigChanged={setPopupConfig}
           onForceRollResult={res => {
             changeTab('roll');
