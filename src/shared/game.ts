@@ -1115,7 +1115,19 @@ export interface PopupMetric { shown: number; accepted: number; dismissed: numbe
 export type PopupStats = Record<GamePopupId, PopupMetric>;
 export const DEFAULT_POPUP_CONFIG: PopupConfig = { notification: true, frenzy: true, joinSubreddit: true };
 
+export interface RiftPlayerSession {
+  runId: string;
+  challengeId: string;
+  targetRarity: number;
+  baseCooldownMs: number;
+  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+}
+
 export interface PlayerState {
+  /** Runtime-only marker that routes all normal game reads and writes to the active Rift save. */
+  riftSession?: RiftPlayerSession;
+  /** Runtime-only flag returned on the roll that completes a Rift challenge. */
+  riftRunComplete?: boolean;
   username?: string;
   // Monotonic save version used to reject stale full-state writes.
   stateRevision?: number;
@@ -2523,10 +2535,14 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   );
   const directCooldownReduction =
     permReduction + steadyHandsReduction + temporalCompressionReduction;
-  let cd = Math.max(
-    floor,
-    BASE_COOLDOWN_MS - coinReduction - directCooldownReduction,
-  );
+  // An active Rift owns its own base cadence. Normal Speed/Prestige modifiers
+  // still work on that cadence, but the player's main-save cooldown is never used.
+  let cd = s.riftSession
+    ? Math.max(500, s.riftSession.baseCooldownMs - coinReduction - directCooldownReduction - (s.riftSession.upgradeLevels.speed * 90))
+    : Math.max(
+        floor,
+        BASE_COOLDOWN_MS - coinReduction - directCooldownReduction,
+      );
 
   if (isAuto && (s.prestigeUpgrades?.autoOverclock ?? 0) > 0) {
     cd *= 1 - (s.prestigeUpgrades.autoOverclock * 0.05);
@@ -2566,7 +2582,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false): number {
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
   cd *= Math.pow(0.95, chronoFlowLevel);
-  return Number.isFinite(cd) ? Math.max(0, Math.round(cd)) : 0;
+  return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
 export function cooldownMs(s: PlayerState, isAuto = false): number {
