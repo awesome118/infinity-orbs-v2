@@ -6,6 +6,7 @@ import * as combat from '../server/combat.js';
 import * as riftChallenges from '../server/rift-challenges.js';
 import { handlePagesAdminRequest } from './admin-api.js';
 import { context } from './devvit-client.js';
+import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 
 type JsonRecord = Record<string, any>;
 
@@ -74,6 +75,20 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
   }
 
   try {
+    const requestedFeatures = globalFeaturesForRequest(method, path);
+    if (requestedFeatures.length) {
+      const controls = await Promise.all(requestedFeatures.map(feature => game.getGlobalFeatureControl(feature)));
+      const disabled = controls.find(control => !control.enabled);
+      if (disabled) {
+        return jsonResponse({
+          error: disabled.reason || 'This feature has been disabled by the developer.',
+          feature: disabled.feature,
+          featureDisabled: true,
+          reason: disabled.reason,
+        }, 403);
+      }
+    }
+
     if (method === 'GET') {
       switch (path) {
         case '/api/rift-challenges':
@@ -120,6 +135,10 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
           return jsonResponse(await game.getFollowRewardStatus());
         case '/api/developer-announcement':
           return jsonResponse(await game.getDeveloperAnnouncement());
+        case '/api/menu-control':
+          return jsonResponse(await game.getGlobalMenuControl());
+        case '/api/live-balance':
+          return jsonResponse(await game.getLiveBalanceSnapshot());
         case '/api/health':
           return jsonResponse({ status: 'ok', runtime: 'github-pages-test' });
         case '/api/version':
@@ -175,6 +194,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
     switch (path) {
       case '/api/frenzy/shard-popup/ack':
         return jsonResponse({ state: await game.acknowledgeFrenzyShardPopup() });
+      case '/api/frenzy/offline-reward/ack':
+        return jsonResponse({ state: await game.acknowledgeFrenzyOfflineReward() });
       case '/api/rift-challenges/mark-opened':
         return jsonResponse(await riftChallenges.markRiftGameOpened());
       case '/api/rift-completion/kudos':

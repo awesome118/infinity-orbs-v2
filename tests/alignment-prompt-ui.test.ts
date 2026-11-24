@@ -70,10 +70,11 @@ test('Clockwork applies through the Auto Roll request, server cooldown, and live
 
   assert.ok(client.includes('auto: isAutoRoll'));
   assert.ok(app.includes('req.body?.auto === true'));
-  assert.ok(rollHandler.includes('const cd = cooldownMs(s, isAuto)'));
+  assert.ok(rollHandler.includes('const cd = cooldownMs(s, isAuto, liveBalance)'));
   assert.ok(rollHandler.includes('rollsRemainingUntilNext: cd'));
-  assert.ok(client.includes('const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true)'));
-  assert.ok(client.includes('setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current))'));
+  assert.ok(client.includes('const nextReadyAt = autoRollReadyAt('));
+  assert.ok(client.includes('cooldownMs(latest, true, liveBalance)'));
+  assert.ok(client.includes('setReadyAt(manualRollReadyAt(lastRollAt, cooldownMs(timingState, false, liveBalance)))'));
 });
 
 test('Alignment has no post-claim popup and the active duration is a live Roll-screen countdown', () => {
@@ -101,7 +102,7 @@ test('Sonar Ping selects near-record or new-best triggers and has a Celestial Al
   assert.match(roll, /setSonarAlignmentSoundsAllowed/);
   assert.match(sound, /setSonarAlertMode/);
   assert.match(sound, /setSonarAlignmentSoundsAllowed/);
-  assert.match(sound, /this\.withAudio\(\(ctx, now\) => \{[\s\S]*?\}, this\.sonarAlignmentSoundsAllowed\)/);
+  assert.match(sound, /this\.playSample\(SOUND_ASSETS\.alignment, 0\.14, this\.sonarAlignmentSoundsAllowed\)/);
   assert.doesNotMatch(main, /sonarStarseekerAlerts/);
   assert.doesNotMatch(main, /choice === 'starseeker'[\s\S]{0,240}playSonarPing/);
 });

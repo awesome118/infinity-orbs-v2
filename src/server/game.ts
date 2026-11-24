@@ -16,6 +16,16 @@ import {
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
+import { GLOBAL_FEATURES, type GlobalFeatureId, type ParsedAdminCliCommand } from '../shared/admin-cli.js';
+import { normalizeLastRollTimestamp } from '../shared/auto-roll-timing.js';
+import {
+  DEFAULT_LIVE_BALANCE_CONFIG,
+  LIVE_BALANCE_SETTINGS,
+  getLiveBalanceSetting,
+  normalizeLiveBalanceConfig,
+  validateLiveBalanceValue,
+  type LiveBalanceConfig,
+} from '../shared/live-balance.js';
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
 import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
@@ -99,6 +109,9 @@ import {
   frenzyClaimCountForRarity,
   grantFrenzyOwnerShards,
   FRENZY_OWNER_SHARD_REWARD,
+  FRENZY_CLAIMS_PER_DAY,
+  frenzyClaimsUsedToday,
+  frenzyClaimsRemainingToday,
   frenzyCooldownRemaining,
   frenzyClaimCooldownRemaining,
   frenzyPostExpiresAt,
@@ -118,6 +131,7 @@ import {
   MASTERY_SKILLS,
   masterySkillCost,
   getLevelBenefits,
+  estimateQuestCoinsPerMinute,
   levelAdjustedXpReward,
   highestCodexChain,
   recordRollingSessionActivity,
@@ -557,6 +571,9 @@ const FAKE_CCU_KEY_PREFIX = 'io:fake-ccu:';
 const SAVE_GENERATION_KEY_PREFIX = 'player-generation:';
 const PLAYER_REGISTRY_KEY = 'io:player-registry';
 const DEVELOPER_ANNOUNCEMENT_KEY = 'io:developer-announcement';
+const GLOBAL_MENU_CONTROL_KEY = 'io:global-menu-control:v1';
+const GLOBAL_FEATURE_CONTROL_KEY_PREFIX = 'io:global-feature-control:v1:';
+const LIVE_BALANCE_CONFIG_KEY = 'io:live-balance-config:v1';
 const GLOBAL_BOOSTER_ANNOUNCEMENT_KEY = 'io:global-booster-announcement';
 const OFFLINE_FULL_NOTIFICATION_PREFIX = 'io:offline-full-notified:';
 const NOTIFICATION_PREFERENCES_PREFIX = 'io:notification-preferences:v1:';
@@ -1100,6 +1117,347 @@ export interface DeveloperAnnouncement {
   updatedBy: string;
 }
 export const DEFAULT_DEVELOPER_ANNOUNCEMENT = '';
+
+export interface GlobalMenuControl {
+  enabled: boolean;
+  reason: string;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+const DEFAULT_GLOBAL_MENU_CONTROL: GlobalMenuControl = {
+  enabled: true,
+  reason: '',
+  updatedAt: 0,
+  updatedBy: '',
+};
+
+export async function getGlobalMenuControl(): Promise<GlobalMenuControl> {
+  const raw = await redis.get(GLOBAL_MENU_CONTROL_KEY);
+  if (!raw) return { ...DEFAULT_GLOBAL_MENU_CONTROL };
+  const parsed = parseStoredJson<Partial<GlobalMenuControl>>(raw);
+  if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_GLOBAL_MENU_CONTROL };
+  return {
+    enabled: parsed.enabled !== false,
+    reason: String(parsed.reason ?? '').slice(0, 300),
+    updatedAt: Number.isFinite(Number(parsed.updatedAt)) ? Math.max(0, Number(parsed.updatedAt)) : 0,
+    updatedBy: String(parsed.updatedBy ?? '').slice(0, 100),
+  };
+}
+
+export async function setGlobalMenuControl(
+  enabled: boolean,
+  reason: string,
+  updatedBy: string,
+): Promise<GlobalMenuControl> {
+  const next: GlobalMenuControl = {
+    enabled: enabled === true,
+    reason: enabled === true
+      ? ''
+      : String(reason ?? '').trim().slice(0, 300) || 'The developer has disabled the menus.',
+    updatedAt: Date.now(),
+    updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
+  };
+  await redis.set(GLOBAL_MENU_CONTROL_KEY, JSON.stringify(next));
+  return next;
+}
+
+
+export interface GlobalFeatureControl {
+  feature: GlobalFeatureId;
+  enabled: boolean;
+  reason: string;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+export async function getGlobalFeatureControl(feature: GlobalFeatureId): Promise<GlobalFeatureControl> {
+  const definition = GLOBAL_FEATURES.find(item => item.id === feature);
+  if (!definition) throw new Error('Unknown global feature control.');
+  const fallback: GlobalFeatureControl = { feature, enabled: true, reason: '', updatedAt: 0, updatedBy: '' };
+  const raw = await redis.get(GLOBAL_FEATURE_CONTROL_KEY_PREFIX + feature);
+  if (!raw) return fallback;
+  const parsed = parseStoredJson<Partial<GlobalFeatureControl>>(raw);
+  if (!parsed || typeof parsed !== 'object') return fallback;
+  return {
+    feature,
+    enabled: parsed.enabled !== false,
+    reason: String(parsed.reason ?? '').slice(0, 300),
+    updatedAt: Number.isFinite(Number(parsed.updatedAt)) ? Math.max(0, Number(parsed.updatedAt)) : 0,
+    updatedBy: String(parsed.updatedBy ?? '').slice(0, 100),
+  };
+}
+
+export async function getGlobalFeatureControls(): Promise<Record<GlobalFeatureId, GlobalFeatureControl>> {
+  const controls = await Promise.all(GLOBAL_FEATURES.map(item => getGlobalFeatureControl(item.id)));
+  return Object.fromEntries(controls.map(control => [control.feature, control])) as Record<GlobalFeatureId, GlobalFeatureControl>;
+}
+
+export async function setGlobalFeatureControl(
+  feature: GlobalFeatureId,
+  enabled: boolean,
+  reason: string,
+  updatedBy: string,
+): Promise<GlobalFeatureControl> {
+  const definition = GLOBAL_FEATURES.find(item => item.id === feature);
+  if (!definition) throw new Error('Unknown global feature control.');
+  const next: GlobalFeatureControl = {
+    feature,
+    enabled: enabled === true,
+    reason: enabled === true
+      ? ''
+      : String(reason ?? '').trim().slice(0, 300) || 'The developer has disabled ' + definition.label.toLowerCase() + '.',
+    updatedAt: Date.now(),
+    updatedBy: String(updatedBy ?? context.username ?? 'Developer').slice(0, 100),
+  };
+  await redis.set(GLOBAL_FEATURE_CONTROL_KEY_PREFIX + feature, JSON.stringify(next));
+  return next;
+}
+
+
+export interface LiveBalanceHistoryEntry {
+  revision: number;
+  action: 'set' | 'reset' | 'reset-all' | 'rollback';
+  key: string | null;
+  before: LiveBalanceConfig;
+  after: LiveBalanceConfig;
+  updatedAt: number;
+  updatedBy: string;
+  rollbackOf?: number;
+}
+
+export interface LiveBalanceState {
+  revision: number;
+  values: LiveBalanceConfig;
+  history: LiveBalanceHistoryEntry[];
+}
+
+export interface LiveBalanceSnapshot {
+  revision: number;
+  values: LiveBalanceConfig;
+  updatedAt: number;
+  updatedBy: string;
+}
+
+const LIVE_BALANCE_HISTORY_LIMIT = 30;
+
+function normalizeLiveBalanceHistory(value: unknown): LiveBalanceHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-LIVE_BALANCE_HISTORY_LIMIT).flatMap(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const entry = item as Record<string, unknown>;
+    const revision = Number(entry.revision);
+    const action = entry.action;
+    const updatedAt = Number(entry.updatedAt);
+    if (
+      !Number.isSafeInteger(revision) || revision < 1 ||
+      !['set', 'reset', 'reset-all', 'rollback'].includes(String(action)) ||
+      !Number.isFinite(updatedAt) || updatedAt < 0
+    ) return [];
+    return [{
+      revision,
+      action: action as LiveBalanceHistoryEntry['action'],
+      key: typeof entry.key === 'string' ? entry.key.slice(0, 100) : null,
+      before: normalizeLiveBalanceConfig(entry.before),
+      after: normalizeLiveBalanceConfig(entry.after),
+      updatedAt,
+      updatedBy: String(entry.updatedBy ?? '').slice(0, 100),
+      ...(Number.isSafeInteger(Number(entry.rollbackOf)) && Number(entry.rollbackOf) > 0
+        ? { rollbackOf: Number(entry.rollbackOf) }
+        : {}),
+    }];
+  });
+}
+
+function normalizeLiveBalanceState(value: unknown): LiveBalanceState {
+  const candidate = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const revision = Number(candidate.revision);
+  return {
+    revision: Number.isSafeInteger(revision) && revision >= 0 ? revision : 0,
+    values: normalizeLiveBalanceConfig(candidate.values),
+    history: normalizeLiveBalanceHistory(candidate.history),
+  };
+}
+
+export async function getLiveBalanceState(): Promise<LiveBalanceState> {
+  const raw = await redis.get(LIVE_BALANCE_CONFIG_KEY);
+  return normalizeLiveBalanceState(parseStoredJson<unknown>(raw));
+}
+
+export async function getLiveBalanceConfig(): Promise<LiveBalanceConfig> {
+  return (await getLiveBalanceState()).values;
+}
+
+export async function getLiveBalanceSnapshot(): Promise<LiveBalanceSnapshot> {
+  const state = await getLiveBalanceState();
+  const latest = state.history[state.history.length - 1];
+  return {
+    revision: state.revision,
+    values: state.values,
+    updatedAt: latest?.updatedAt ?? 0,
+    updatedBy: latest?.updatedBy ?? '',
+  };
+}
+
+async function mutateLiveBalanceState(
+  action: LiveBalanceHistoryEntry['action'],
+  key: string | null,
+  updatedBy: string,
+  transform: (current: LiveBalanceConfig, history: LiveBalanceHistoryEntry[]) => LiveBalanceConfig,
+  rollbackOf?: number,
+): Promise<{ state: LiveBalanceState; changed: boolean }> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const txn = await redis.watch(LIVE_BALANCE_CONFIG_KEY);
+    let transactionClosed = false;
+    try {
+      const raw = await redis.get(LIVE_BALANCE_CONFIG_KEY);
+      const current = normalizeLiveBalanceState(parseStoredJson<unknown>(raw));
+      const nextValues = normalizeLiveBalanceConfig(transform(current.values, current.history));
+      const before = current.values;
+      if (LIVE_BALANCE_SETTINGS.every(setting => before[setting.key] === nextValues[setting.key])) {
+        await txn.unwatch();
+        transactionClosed = true;
+        return { state: current, changed: false };
+      }
+      if (current.revision >= Number.MAX_SAFE_INTEGER) {
+        throw new Error('Live balance revision limit reached. No change was applied.');
+      }
+      const nextRevision = current.revision + 1;
+      const entry: LiveBalanceHistoryEntry = {
+        revision: nextRevision,
+        action,
+        key,
+        before: { ...before },
+        after: { ...nextValues },
+        updatedAt: Date.now(),
+        updatedBy: String(updatedBy || context.username || 'Developer').slice(0, 100),
+        ...(rollbackOf ? { rollbackOf } : {}),
+      };
+      const nextState: LiveBalanceState = {
+        revision: nextRevision,
+        values: nextValues,
+        history: [...current.history, entry].slice(-LIVE_BALANCE_HISTORY_LIMIT),
+      };
+      await txn.multi();
+      await txn.set(LIVE_BALANCE_CONFIG_KEY, JSON.stringify(nextState));
+      const committed = await txn.exec();
+      transactionClosed = true;
+      if (committed !== null) return { state: nextState, changed: true };
+    } finally {
+      if (!transactionClosed) await txn.unwatch().catch(() => undefined);
+    }
+  }
+  throw new Error('Live balance configuration changed repeatedly. No update was committed; retry the command.');
+}
+
+export async function executeLiveBalanceCommand(
+  command: Extract<ParsedAdminCliCommand, { kind: 'balance' }>,
+  updatedBy = context.username ?? 'Developer',
+): Promise<Record<string, unknown>> {
+  const state = await getLiveBalanceState();
+  if (command.action === 'list') {
+    return {
+      action: 'list',
+      revision: state.revision,
+      settings: LIVE_BALANCE_SETTINGS.map(setting => ({
+        ...setting,
+        value: state.values[setting.key],
+        isDefault: state.values[setting.key] === setting.defaultValue,
+      })),
+    };
+  }
+  if (command.action === 'history') {
+    return {
+      action: 'history',
+      revision: state.revision,
+      history: state.history.map(entry => ({
+        revision: entry.revision,
+        action: entry.action,
+        key: entry.key,
+        updatedAt: entry.updatedAt,
+        updatedBy: entry.updatedBy,
+        rollbackOf: entry.rollbackOf ?? null,
+      })),
+    };
+  }
+  if (command.action === 'get' || command.action === 'preview') {
+    const setting = getLiveBalanceSetting(command.key);
+    if (!setting) throw new Error('Unknown balance setting "' + command.key + '".');
+    return {
+      action: command.action,
+      revision: state.revision,
+      setting: {
+        ...setting,
+        value: state.values[setting.key],
+        ...(command.action === 'preview'
+          ? {
+              proposedValue: validateLiveBalanceValue(setting.key, command.value),
+              changed: state.values[setting.key] !== command.value,
+            }
+          : {}),
+      },
+    };
+  }
+  if (command.action === 'set') {
+    const value = validateLiveBalanceValue(command.key, command.value);
+    const result = await mutateLiveBalanceState('set', command.key, updatedBy, current => ({
+      ...current,
+      [command.key]: value,
+    }));
+    return {
+      action: 'set',
+      changed: result.changed,
+      revision: result.state.revision,
+      key: command.key,
+      previousValue: state.values[command.key as keyof LiveBalanceConfig],
+      value: result.state.values[command.key as keyof LiveBalanceConfig],
+      updatedAt: result.state.history[result.state.history.length - 1]?.updatedAt ?? 0,
+    };
+  }
+  if (command.action === 'reset') {
+    const setting = getLiveBalanceSetting(command.key);
+    if (!setting) throw new Error('Unknown balance setting "' + command.key + '".');
+    const result = await mutateLiveBalanceState('reset', setting.key, updatedBy, current => ({
+      ...current,
+      [setting.key]: setting.defaultValue,
+    }));
+    return {
+      action: 'reset',
+      changed: result.changed,
+      revision: result.state.revision,
+      key: setting.key,
+      value: result.state.values[setting.key],
+    };
+  }
+  if (command.action === 'reset-all') {
+    const result = await mutateLiveBalanceState('reset-all', null, updatedBy, () => ({
+      ...DEFAULT_LIVE_BALANCE_CONFIG,
+    }));
+    return {
+      action: 'reset-all',
+      changed: result.changed,
+      revision: result.state.revision,
+      values: result.state.values,
+    };
+  }
+  if (command.action === 'rollback') {
+    const target = state.history.find(entry => entry.revision === command.revision);
+    if (!target) throw new Error('Balance revision ' + command.revision + ' is not in the retained history.');
+    const result = await mutateLiveBalanceState('rollback', null, updatedBy, () => ({
+      ...target.before,
+    }), command.revision);
+    return {
+      action: 'rollback',
+      changed: result.changed,
+      revision: result.state.revision,
+      rolledBackRevision: command.revision,
+      values: result.state.values,
+    };
+  }
+  throw new Error('Unsupported balance command.');
+}
 
 export async function getDeveloperAnnouncement(): Promise<DeveloperAnnouncement> {
   const raw = await redis.get(DEVELOPER_ANNOUNCEMENT_KEY);
@@ -2473,7 +2831,7 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
     const s = await settleOffline(await loadRaw());
     const now = Date.now();
     if (isFrenzyPostRecordExpired(data, now)) throw new Error('This Frenzy has expired.');
-    const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+    const claimsUsedToday = frenzyClaimsUsedToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
     const isOwner = data.ownerId === viewerId;
     const selfClaimTest =
       isOwner &&
@@ -2481,8 +2839,8 @@ export async function armOrbFrenzyClaim(): Promise<{ armed: true; postId: string
       isFrenzyTestAdmin(s.username);
 
     if (isOwner && !selfClaimTest) throw new Error('You cannot claim your own Orb Frenzy.');
-    if (claimCooldown > 0 && !selfClaimTest) {
-      throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+    if (claimsUsedToday >= FRENZY_CLAIMS_PER_DAY && !selfClaimTest) {
+      throw new Error('You have used all ' + FRENZY_CLAIMS_PER_DAY + ' Frenzy claims available today.');
     }
 
     const handoffExpiresAt = Date.now() + FRENZY_HANDOFF_TTL_MS;
@@ -2522,9 +2880,10 @@ export async function prepareFrenzyOwnerRewardWrites(
 
   const ownerKey = playerKeyFor(safeOwnerId);
   const ownerGenerationKey = saveGenerationKeyFor(safeOwnerId);
-  const [raw, generationRaw] = await Promise.all([
+  const [raw, generationRaw, registryRaw] = await Promise.all([
     redis.get(ownerKey),
     redis.get(ownerGenerationKey),
+    redis.hGet(PLAYER_REGISTRY_KEY, safeOwnerId),
   ]);
   if (raw == null) throw new Error('Frenzy owner save was not found.');
   const ownerSave = await readStoredPlayerSave(safeOwnerId, raw);
@@ -3274,7 +3633,7 @@ function isValidQuestList(value: unknown): value is QuestItem[] {
       typeof quest.desc === 'string' &&
       Number.isSafeInteger(quest.target) && Number(quest.target) > 0 &&
       Number.isSafeInteger(quest.progress) && Number(quest.progress) >= 0 &&
-      Number.isSafeInteger(quest.rewardCoins) && Number(quest.rewardCoins) >= 0 &&
+      typeof quest.rewardCoins === 'number' && Number.isFinite(quest.rewardCoins) && Number.isInteger(quest.rewardCoins) && quest.rewardCoins >= 0 &&
       typeof quest.claimed === 'boolean' &&
       (quest.unlocked === undefined || typeof quest.unlocked === 'boolean') &&
       optionalRewardIsValid('rewardShards') &&
@@ -4287,6 +4646,13 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
     lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
     lastFrenzyClaimAt: normalizeCooldownTimestamp(parsed.lastFrenzyClaimAt, base.lastFrenzyClaimAt ?? 0),
+    frenzyClaimsToday: (() => {
+      const rawCount = Number(parsed.frenzyClaimsToday);
+      if (Number.isSafeInteger(rawCount) && rawCount >= 0) return Math.min(FRENZY_CLAIMS_PER_DAY, rawCount);
+      return String(parsed.lastFrenzyClaimDate ?? '') === new Date().toISOString().slice(0, 10) ? 1 : 0;
+    })(),
+    pendingFrenzyOfflineClaimCount: finiteNonNegativeInteger(parsed.pendingFrenzyOfflineClaimCount, 0),
+    pendingFrenzyOfflineShards: finiteNonNegativeInteger(parsed.pendingFrenzyOfflineShards, 0),
     timeEnergy: Math.min(TIME_ENERGY_MAX_MS, finiteNonNegativeInteger(parsed.timeEnergy, base.timeEnergy ?? 0)),
     alignmentNextAt: finiteNonNegativeInteger(parsed.alignmentNextAt, base.alignmentNextAt ?? 0),
     alignmentPendingAt: finiteNonNegativeInteger(parsed.alignmentPendingAt, base.alignmentPendingAt ?? 0),
@@ -4296,6 +4662,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     alignmentActiveChoice: ['starseeker', 'goldenOrbit', 'clockwork'].includes(String(parsed.alignmentActiveChoice))
       ? parsed.alignmentActiveChoice as CelestialAlignmentChoice : null,
     lastShareAt: normalizeCooldownTimestamp(parsed.lastShareAt, base.lastShareAt ?? 0),
+    lastRollAt: normalizeLastRollTimestamp(parsed.lastRollAt),
     level: restoredLevel,
     xp: finiteNonNegativeInteger(parsedXp, base.xp),
     levelXpFloor,
@@ -4512,7 +4879,8 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
       throw new Error('Saved offline roll count is invalid; no rolls were claimed.');
     }
     const batches = Math.min(offlineRollCap(s), s.offlineRolls);
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+    const liveBalance = await getLiveBalanceConfig();
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
     s.offlineRolls = 0;
     if (batches > 0) {
       await applyRolls(s, batches, undefined, 'offline');
@@ -4538,7 +4906,8 @@ async function processAutomation(s: PlayerState, options: { skipAutoOfflineClaim
       ]);
       if (subredditName) {
         const cap = offlineRollCap(s);
-        const tickMs = effectiveOfflineTickMs(s);
+        const liveBalance = await getLiveBalanceConfig();
+        const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
         await scheduleOfflineFullNotification(
           userId,
           subredditName,
@@ -5404,19 +5773,20 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
   for (const q of s.dailyQuests) {
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('rolls')) q.progress = Math.min(q.target, q.progress + amount);
-    if (type === 'rare' && q.id.includes('rare') && amount >= 100) q.progress = Math.min(q.target, q.progress + 1);
+    if (type === 'rare' && q.id.includes('rare') && amount >= Math.max(2, Math.floor(Number(q.minRarity ?? 100) || 100))) q.progress = Math.min(q.target, q.progress + 1);
     if (type === 'unique' && q.id.includes('unique')) q.progress = Math.min(q.target, q.progress + Math.max(0, amount));
     if (type === 'social' && q.id.includes('social')) q.progress = Math.min(q.target, q.progress + 1);
   }
   for (const q of s.weeklyQuests) {
-    if (type === 'rare' && amount >= 100) {
+    if (type === 'rare') {
       const shareQuest = s.weeklyQuests.find(weekly => weekly.id === 'weekly-share');
-      if (shareQuest) shareQuest.unlocked = true;
+      const unlockRarity = Math.max(2, Math.floor(Number(shareQuest?.unlockRarity ?? 100) || 100));
+      if (shareQuest && amount >= unlockRarity) shareQuest.unlocked = true;
     }
     if (q.unlocked === false) continue;
     if (q.claimed) continue;
     if (type === 'roll' && q.id.includes('grind')) q.progress = Math.min(q.target, q.progress + amount);
-    if (type === 'rare' && q.id.includes('epic') && amount >= 1000) q.progress = Math.min(q.target, q.progress + 1);
+    if (type === 'rare' && q.id.includes('epic') && amount >= Math.max(2, Math.floor(Number(q.minRarity ?? 1000) || 1000))) q.progress = Math.min(q.target, q.progress + 1);
     if (type === 'value' && q.id.includes('guild')) q.progress = Math.min(q.target, q.progress + amount);
     // Only a genuine server-created share advances the share quest.
     if (type === 'share' && q.id.includes('share')) q.progress = Math.min(q.target, q.progress + 1);
@@ -5425,14 +5795,15 @@ function advanceQuestProgress(s: PlayerState, type: 'roll' | 'rare' | 'value' | 
 
 function checkPeriodicResets(s: PlayerState, now: number) {
   const today = new Date(now).toISOString().slice(0, 10);
+  const coinsPerMinute = estimateQuestCoinsPerMinute(s);
   if (s.lastDailyReset !== today) {
-    s.dailyQuests = createInitialDailyQuests();
+    s.dailyQuests = createInitialDailyQuests(s.highestRarity, coinsPerMinute);
     s.lastDailyReset = today;
   }
   const currentWeek = weekKey(now);
   const lastWeek = s.lastWeeklyReset ? weekKey(new Date(s.lastWeeklyReset).getTime()) : -1;
   if (currentWeek !== lastWeek) {
-    s.weeklyQuests = createInitialWeeklyQuests();
+    s.weeklyQuests = createInitialWeeklyQuests(s.highestRarity, coinsPerMinute);
     s.lastWeeklyReset = today;
     // Community rewards are weekly. A new week starts the claim ladder over at Tier 1.
     s.communityRewardClaimedTier = 0;
@@ -5510,6 +5881,7 @@ export async function applyRolls(
   let extraCoinsEstimate = 0;
   let lowRarityCoinsEstimate = 0;
   let rollCount = rollCountOverride ?? (rollsPerActivation(s) * activationCount);
+  const liveBalance = await getLiveBalanceConfig();
   const now = Date.now();
   const spyUserId = currentUserId();
   const riftMultipliers = s.riftSession
@@ -6115,6 +6487,10 @@ export async function applyRolls(
         xpForSupernovaOrb * groupSupernovaCount -
         xpForTopBaseline + xpForGroupMaximum,
     );
+    const balancedEarnedXp = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.round(earnedXp * liveBalance['rewards.xpMultiplier']),
+    );
 
     // High rarity is not a guaranteed Shard source. All repeatable Orb earnings are proc-based.
     let earnedShards = 0;
@@ -6131,7 +6507,8 @@ export async function applyRolls(
       (s.guildPerks?.shardRank ?? 0) * 0.0005 +
       (s.prestigeUpgrades?.shardResonator ?? 0) * 0.0025 +
       levelBenefits.shardChance +
-      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025
+      Math.min(100, runeBonuses.shardChancePct) / 100) * 0.025 *
+      liveBalance['rewards.shardChanceMultiplier']
     );
     if (sampleWeight > 1) {
       const combinedShardChance = 1 -
@@ -6160,7 +6537,7 @@ export async function applyRolls(
 
     if (shardDropsDisabled) earnedShards = 0;
     shardsGained = Math.min(Number.MAX_SAFE_INTEGER, shardsGained + earnedShards);
-    xpGained += earnedXp;
+    xpGained = Math.min(Number.MAX_SAFE_INTEGER, xpGained + balancedEarnedXp);
 
     // Shard Constellation retains charge between activations and pays only once per activation.
     if (runeAbilityEffects.shardConstellationPct > 0) {
@@ -6288,7 +6665,10 @@ export async function applyRolls(
   shardsGained = grantRollShards(s, shardsGained);
 
   // Ascension increases XP by 10× while preserving the existing level logic.
-  const effectiveXpGained = isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained;
+  const effectiveXpGained = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.round(isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained),
+  );
   s.xp += effectiveXpGained;
   xpGained = effectiveXpGained;
 
@@ -6841,7 +7221,8 @@ export async function processOfflineFullNotification(
 
   const cap = offlineRollCap(s);
   const now = Date.now();
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const lastSeenAt = s.lastSeenAt || now;
   const elapsed = Math.max(0, now - lastSeenAt);
   const earned = Math.floor(elapsed / tickMs);
@@ -6916,9 +7297,37 @@ export async function processOfflineFullNotification(
   });
 }
 
+function rescaleQuestList(
+  existing: PlayerState['dailyQuests'],
+  scaled: PlayerState['dailyQuests'],
+  highestRarity: number,
+): PlayerState['dailyQuests'] {
+  const previous = new Map(existing.map(quest => [quest.id, quest]));
+  return scaled.map(quest => {
+    const old = previous.get(quest.id);
+    const unlockedByRarity = quest.unlockRarity != null && highestRarity >= quest.unlockRarity;
+    return {
+      ...quest,
+      progress: Math.max(0, Number.isFinite(Number(old?.progress)) ? Math.floor(Number(old?.progress)) : 0),
+      claimed: old?.claimed === true,
+      ...(quest.unlocked === false
+        ? { unlocked: old?.unlocked === true || unlockedByRarity }
+        : old?.unlocked === undefined ? {} : { unlocked: old.unlocked }),
+    };
+  });
+}
+
+function rescaleQuestsForHighestRarity(s: PlayerState): void {
+  const highest = Math.max(2, Number(s.highestRarity) || 2);
+  const coinsPerMinute = estimateQuestCoinsPerMinute(s);
+  s.dailyQuests = rescaleQuestList(s.dailyQuests ?? [], createInitialDailyQuests(highest, coinsPerMinute), highest);
+  s.weeklyQuests = rescaleQuestList(s.weeklyQuests ?? [], createInitialWeeklyQuests(highest, coinsPerMinute), highest);
+}
+
 export async function settleOffline(s: PlayerState, options: { skipAutoOfflineClaim?: boolean; skipOfflineNotifications?: boolean; skipAutoStreakClaim?: boolean; skipAutoQuestClaim?: boolean; skipAutoCommunityClaim?: boolean; previewOnly?: boolean } = {}): Promise<PlayerState> {
   const now = Date.now();
   checkPeriodicResets(s, now);
+  rescaleQuestsForHighestRarity(s);
   resetFreeShardBudgetIfNeeded(s, now);
   // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
@@ -6948,7 +7357,8 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   }
   s.offlineRolls = Math.min(offlineCap, savedOfflineRolls);
 
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const diff = now - (s.lastSeenAt || now);
   if (diff >= tickMs) {
     const earned = Math.floor(diff / tickMs);
@@ -7163,6 +7573,7 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   // These are presentation-only projections. They are intentionally not saved.
   // The next real mutation settles and persists the authoritative state.
   checkPeriodicResets(s, now);
+  rescaleQuestsForHighestRarity(s);
   resetFreeShardBudgetIfNeeded(s, now);
   s.onlinePlayers = options.registerActivity === false
     ? await getOnlinePlayers()
@@ -7170,7 +7581,8 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   s.globalBoosters = await getGlobalBoosters();
 
   // Show currently accumulated offline rolls without consuming/persisting them.
-  const tickMs = effectiveOfflineTickMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const tickMs = Math.max(1_000, effectiveOfflineTickMs(s) / liveBalance['offline.generationMultiplier']);
   const diff = now - (s.lastSeenAt || now);
   if (diff >= tickMs) {
     const earned = Math.floor(diff / tickMs);
@@ -7373,8 +7785,9 @@ export async function roll(
     const availableFreeRolls = Math.max(0, Math.floor(Number(s.freeRolls ?? 0) || 0));
     // A charged Chain Patcher must resolve as one deliberate, exact orb. It
     // does not consume or batch any accumulated Free Rolls.
-    const cd = cooldownMs(s, isAuto);
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, isAuto);
+    const liveBalance = await getLiveBalanceConfig();
+    const cd = cooldownMs(s, isAuto, liveBalance);
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, isAuto, liveBalance);
     if (useTimeEnergy && (isAuto || usingChainPatcher)) {
       throw new Error('Time Energy can only power a manual, non-patched activation.');
     }
@@ -7773,7 +8186,8 @@ export async function claimOffline(): Promise<RollResponse> {
   const offlineCap = offlineRollCap(s);
   const batches = Math.min(offlineCap, s.offlineRolls);
   if (batches <= 0) throw new Error('No offline rolls waiting.');
-  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
   s.offlineRolls = 0;
   const { bestOrb, batch, totalVal, coinsGained, shardsGained, xpGained, rollCount } = await applyRolls(s, batches, undefined, 'offline');
   grantCooldownReclaimerTimeEnergy(s, batches, reclaimedPerActivation);
@@ -7810,7 +8224,7 @@ export async function claimOffline(): Promise<RollResponse> {
     shardsGained,
     xpGained,
     state: s,
-    rollsRemainingUntilNext: cooldownMs(s),
+    rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
     rollsProcessed: rollCount,
     dramaticReveal: bestOrb.rarity >= 100,
   };
@@ -8937,7 +9351,8 @@ export async function startOrbFrenzy(options: {
     const forcedRarity = options.forcedRarity == null
       ? undefined
       : Math.max(2, Math.floor(Number(options.forcedRarity)));
-    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+    const liveBalance = await getLiveBalanceConfig();
+    const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
     const result = await applyRolls(s, 1, forcedRarity, 'online', 1);
 
     const subredditName = String(context.subredditName ?? '').trim();
@@ -9104,7 +9519,7 @@ export async function startOrbFrenzy(options: {
       coinsGained: result.coinsGained,
       shardsGained: result.shardsGained,
       xpGained: result.xpGained,
-      rollsRemainingUntilNext: cooldownMs(s),
+      rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
       rollsProcessed: result.rollCount,
       dramaticReveal: rarity >= 100,
     };
@@ -9199,6 +9614,8 @@ export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTes
   expired: boolean;
   consumed: boolean;
   claimedToday: boolean;
+  claimsRemainingToday: number;
+  claimLimitPerDay: number;
   claimCooldownRemainingMs: number;
   claimCooldownEndsAt: number;
   isOwner: boolean;
@@ -9242,9 +9659,8 @@ export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTes
   const alreadyClaimedByViewer = claimedReceipt != null || data.consumedBy === viewerId;
   // Preview rendering must not invoke the ordinary player-state read, which touches online presence.
   const s = await loadRaw({ registerActivity: false });
-  const claimCooldownRemainingMs = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
-  const claimCooldownEndsAt = claimCooldownRemainingMs > 0 ? now + claimCooldownRemainingMs : 0;
-  const claimedToday = claimCooldownRemainingMs > 0;
+  const claimsRemainingToday = frenzyClaimsRemainingToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
+  const claimedToday = claimsRemainingToday <= 0;
   const isOwner = data.ownerId === currentUserId();
   const selfClaimTest =
     isOwner &&
@@ -9274,10 +9690,12 @@ export async function getOrbFrenzyInfo(options: { postId?: string; allowAdminTes
     // only this viewer's durable receipt (or legacy consumedBy) marks it claimed to them.
     consumed: alreadyClaimedByViewer,
     claimedToday,
-    claimCooldownRemainingMs,
-    claimCooldownEndsAt,
+    claimsRemainingToday,
+    claimLimitPerDay: FRENZY_CLAIMS_PER_DAY,
+    claimCooldownRemainingMs: 0,
+    claimCooldownEndsAt: 0,
     isOwner,
-    canClaim: !expired && !alreadyClaimedByViewer && (claimCooldownRemainingMs <= 0 || selfClaimTest) && (!isOwner || selfClaimTest),
+    canClaim: !expired && !alreadyClaimedByViewer && (claimsRemainingToday > 0 || selfClaimTest) && (!isOwner || selfClaimTest),
     selfClaimTest,
     postId,
     claimCount: claimers.count,
@@ -9389,7 +9807,7 @@ export async function claimOrbFrenzy(options: {
   const loadedState = await loadRaw();
   const performClaim = async () => {
   const s = await settleOffline(loadedState);
-  const claimCooldown = frenzyClaimCooldownRemaining(s.lastFrenzyClaimAt, now);
+  const claimsUsedToday = frenzyClaimsUsedToday(s.lastFrenzyClaimDate, s.frenzyClaimsToday, now);
   const ownerSelfClaimAllowed =
     isOwner &&
     data.adminTest === true &&
@@ -9400,12 +9818,13 @@ export async function claimOrbFrenzy(options: {
   }
 
   const selfClaimTest = isOwner && ownerSelfClaimAllowed;
-  if (claimCooldown > 0 && !selfClaimTest) {
-    throw new Error('Frenzy claim is on cooldown for ' + Math.ceil(claimCooldown / 1000) + ' more seconds.');
+  if (claimsUsedToday >= FRENZY_CLAIMS_PER_DAY && !selfClaimTest) {
+    throw new Error('You have used all ' + FRENZY_CLAIMS_PER_DAY + ' Frenzy claims available today.');
   }
 
   const frenzyRollsPerActivation = rollsPerActivation(s);
-  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s);
+  const liveBalance = await getLiveBalanceConfig();
+  const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs(s, false, liveBalance);
   const count = frenzyClaimCountForRarity(
     data.rarity,
     frenzyRollsPerActivation,
@@ -9484,6 +9903,7 @@ export async function claimOrbFrenzy(options: {
 
   grantCooldownReclaimerTimeEnergy(s, frenzyActivations, reclaimedPerActivation);
   s.lastFrenzyClaimDate = new Date(now).toISOString().slice(0, 10);
+  s.frenzyClaimsToday = selfClaimTest ? claimsUsedToday : Math.min(FRENZY_CLAIMS_PER_DAY, claimsUsedToday + 1);
   s.lastFrenzyClaimAt = now;
 
   let ownerRewardShards = 0;
@@ -9559,7 +9979,7 @@ export async function claimOrbFrenzy(options: {
     shardsGained: shardsGained + (isOwner ? ownerRewardShards : 0),
     xpGained,
     state: s,
-    rollsRemainingUntilNext: cooldownMs(s),
+    rollsRemainingUntilNext: cooldownMs(s, false, liveBalance),
     dramaticReveal: bestOrb.rarity >= 100,
     frenzyCount: processedCount,
   };
@@ -9571,6 +9991,16 @@ export async function claimOrbFrenzy(options: {
   });
 }
 
+
+export async function acknowledgeFrenzyOfflineReward(): Promise<PlayerState> {
+  return withPlayerMutationLock(async () => {
+    const s = await loadRaw();
+    s.pendingFrenzyOfflineClaimCount = 0;
+    s.pendingFrenzyOfflineShards = 0;
+    await save(s);
+    return s;
+  });
+}
 
 export async function postFrenzyThankYouComment(
   text: string,

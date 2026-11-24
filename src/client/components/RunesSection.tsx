@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Coins, Gem, RefreshCw, Sparkles, Star, ShieldCheck } from 'lucide-react';
+import { sound } from '../sound.js';
 import type { CombatRune, CombatRuneRarity, CombatRuneStat, CombatSnapshot } from '../../shared/combat.js';
 import {
   COMBAT_RUNE_RARITIES,
@@ -105,8 +106,13 @@ export const RunesSection:React.FC=()=>{
   const mutate=async(url:string,body:unknown,runeId:string,success:string)=>{
     if(!beginAction())return;
     setBusyRune(runeId);setError('');setNotice('');
-    try{const result=await request<CombatSnapshot>(url,'POST',body);snapshotRequestSequenceRef.current+=1;setSnapshot(result);setNotice(success);}
-    catch(e){setError(e instanceof Error?e.message:'Rune update failed.');}
+    try{
+      const result=await request<CombatSnapshot>(url,'POST',body);
+      snapshotRequestSequenceRef.current+=1;setSnapshot(result);setNotice(success);
+      if(url==='/api/combat/runes/equip')sound.playEquip();
+      else if(url==='/api/combat/runes/sacrifice')sound.playSacrificeSound();
+    }
+    catch(e){sound.playError();setError(e instanceof Error?e.message:'Rune update failed.');}
     finally{setBusyRune(null);endAction();}
   };
   const equippedRunes=state?(state.equippedRunes.map(id=>state.runes.find(rune=>rune.id===id)).filter((rune):rune is CombatRune=>Boolean(rune))):[];
@@ -126,7 +132,7 @@ export const RunesSection:React.FC=()=>{
   const statCards=[
     {label:'Orb Luck',value:pct(bonuses.luckPct),icon:<Sparkles size={16}/>},
     {label:'Coin gain',value:pct(bonuses.coinGainPct),icon:<Coins size={16}/>},
-    {label:'Shard chance',value:pct(bonuses.shardChancePct,3),icon:<Gem size={16}/>},
+    {label:'Shard chance',value:pct(bonuses.shardChancePct * 0.025,5),icon:<Gem size={16}/>},
     {label:'XP gain',value:pct(bonuses.xpGainPct),icon:<BookOpen size={16}/>},
   ];
   const sacrifice=async(targetId:string,donorId:string)=>{
@@ -289,16 +295,16 @@ export const RunesSection:React.FC=()=>{
                 <strong>{rune.name}</strong><span className="io-runes-tooltip-level">Level {fmt(level)} · Rune XP {fmt(levelXp)} / {fmt(nextXp)} · Found at depth {rune.sourceDepth+1}</span>
                 <div className="io-runes-xp-track" role="progressbar" aria-label={rune.name+' progress toward level '+fmt(level+1)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(xpProgress)} aria-valuetext={Math.round(xpProgress)+' percent toward level '+fmt(level+1)}><span style={{width:xpProgress+'%'}}/></div>
                 <p className="io-runes-tooltip-value">{combatRuneEffectText(rune)}</p>
-                <p>{rune.stat==='luckPct'?'Improves rarity odds on normal orb rolls.':rune.stat==='coinGainPct'?'Increases Coins earned from normal orb rolls.':rune.stat==='shardChancePct'?'Adds its existing percentage-point chance to find a Shard; Rune levels do not alter this stat.':'Increases XP earned from normal orb rolls.'}</p>
+                <p>{rune.stat==='luckPct'?'Improves rarity odds on normal orb rolls.':rune.stat==='coinGainPct'?'Increases Coins earned from normal orb rolls.':rune.stat==='shardChancePct'?'Adds the effective Shard chance shown above; Rune levels do not alter this stat.':'Increases XP earned from normal orb rolls.'}</p>
                 {rune.majorAbility&&<div className="io-runes-major-card"><span>✦ MAIN-GAME MAJOR ABILITY</span><strong>{rune.majorAbility.name} · RARITY + LEVEL-SCALING EFFECT</strong><p>{combatRuneMajorAbilitySummary(rune.majorAbility,level,rune.rarity)}</p></div>}
                 <div className="io-runes-tooltip-actions">
-                  <button type="button" className="io-runes-button" disabled={operationPending||busyRune===rune.id||(!isEquipped&&!canEquip)||Boolean(strengthenTargetId)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')}>{busyRune===rune.id?'Saving…':isEquipped?'Unequip':'Equip'}</button>
                   {strengthenTargetId===rune.id
                     ?<button type="button" className="io-runes-button" disabled={operationPending||sacrificing} onClick={()=>{setStrengthenTargetId('');setNotice('Strengthen selection cancelled.');}}>Cancel Strengthen</button>
                     :<button type="button" className="io-runes-button io-runes-strengthen-button" disabled={operationPending||sacrificing||autoSacrificeBusy} onClick={()=>{setStrengthenTargetId(rune.id);setSacrificeDonorId('');setError('');setNotice('Strengthen '+rune.name+': choose a donor Rune from the selector above.');}}>Strengthen</button>}
                 </div>
                 {!isEquipped&&!canEquip&&<div className="io-runes-muted">All Rune slots are full.</div>}
               </div>
+              <button type="button" className={isEquipped?'io-runes-button io-runes-equip-button is-equipped':'io-runes-button io-runes-equip-button'} disabled={operationPending||sacrificing||autoSacrificeBusy||busyRune===rune.id||Boolean(strengthenTargetId)||(!isEquipped&&!canEquip)} onClick={()=>void mutate('/api/combat/runes/equip',{runeId:rune.id,equip:!isEquipped},rune.id,isEquipped?'Rune unequipped.':'Rune equipped.')} aria-label={(isEquipped?'Unequip ':'Equip ')+rune.name}>{busyRune===rune.id?'Saving…':isEquipped?'Unequip':'Equip'}</button>
             </article>;
           })}</div>
           }

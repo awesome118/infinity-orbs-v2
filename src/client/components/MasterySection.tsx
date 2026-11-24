@@ -217,12 +217,25 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
           {filteredSkills.map(([skillId, skill]) => {
             const currentLevel = state.masterySkills?.[skillId] ?? 0;
             const isCodexDevotion = skillId === 'celestialSurge';
-            const codexChain = isCodexDevotion ? bestCodexChain(state.collection) : { start: 0, end: 0, length: 0 };
+            const localCodexChain = isCodexDevotion ? bestCodexChain(state.collection) : { start: 0, end: 0, length: 0 };
+            // The server strips the full Codex from ordinary player-state responses.
+            // Use its compact chain projection instead of treating that empty collection as zero.
+            const codexChainLength = isCodexDevotion
+              ? Number.isFinite(Number(state.codexChain))
+                ? Math.max(0, Math.floor(Number(state.codexChain)))
+                : localCodexChain.length
+              : 0;
+            const codexChainStart = isCodexDevotion && Number.isFinite(Number(state.codexChainStart))
+              ? Math.max(0, Number(state.codexChainStart))
+              : localCodexChain.start;
+            const codexChainEnd = isCodexDevotion && Number.isFinite(Number(state.codexChainEnd))
+              ? Math.max(0, Number(state.codexChainEnd))
+              : localCodexChain.end;
             const codexLuckPercent = isCodexDevotion
-              ? codexDevotionLuckPercent(currentLevel, codexChain.length)
+              ? codexDevotionLuckPercent(currentLevel, codexChainLength)
               : 0;
             const nextCodexLuckPercent = isCodexDevotion
-              ? codexDevotionLuckPercent(Math.min(skill.maxLevel, currentLevel + 1), codexChain.length)
+              ? codexDevotionLuckPercent(Math.min(skill.maxLevel, currentLevel + 1), codexChainLength)
               : 0;
             const isAftershock = skillId === 'aftershock';
             const isConstellationAtlas = skillId === 'constellationAtlas';
@@ -288,13 +301,15 @@ export const MasterySection: React.FC<MasterySectionProps> = ({
                           Longest Codex Chain
                         </span>
                         <span className="text-sm font-black font-mono text-white">
-                          {codexChain.length}
+                          {codexChainLength}
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-[10px] text-slate-500">
-                          {codexChain.length > 0
-                            ? `1/${formatRarity(codexChain.start)} → 1/${formatRarity(codexChain.end)}`
+                          {codexChainLength > 0
+                            ? codexChainStart > 0 && codexChainEnd > 0
+                              ? `1/${formatRarity(codexChainStart)} → 1/${formatRarity(codexChainEnd)}`
+                              : 'Longest consecutive rarity chain in your saved Codex'
                             : 'Collect consecutive rarities to build a chain'}
                         </span>
                         <span className="text-[10px] font-bold text-slate-400">+0.3% per chain rarity / level</span>

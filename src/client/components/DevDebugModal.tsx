@@ -266,6 +266,7 @@ const ADMIN_CONSOLE_SECTIONS: AdminConsoleSection[] = [
     { id: 'player-list', label: 'Player List', target: 'io-tool-player-list' },
     { id: 'stat-spy', label: 'Stat Spy', target: 'io-tool-stat-spy' },
     { id: 'player-spy', label: 'Player Spy', target: 'io-tool-player-spy' },
+    { id: 'admin-cli', label: 'Command Line', target: 'io-tool-admin-cli' },
     { id: 'guild-chat', label: 'Guild Administration & Chat', target: 'io-tool-guild-chat' },
   ] },
   { id: 'combat', label: 'Combat', target: 'io-combat-tools', tools: [
@@ -566,6 +567,11 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
   const [alignmentChoiceStatsError, setAlignmentChoiceStatsError] = useState<string | null>(null);
 
   const [targetUser, setTargetUser] = useState('');
+  const [executeAsUsername, setExecuteAsUsername] = useState('');
+  const [executeAsCommands, setExecuteAsCommands] = useState('');
+  const [cliHistory, setCliHistory] = useState<Array<{ command: string; output: string; ok: boolean; at: number }>>([]);
+  const [executeAsResult, setExecuteAsResult] = useState('');
+  const [executeAsLoading, setExecuteAsLoading] = useState(false);
   const [pendingWipe, setPendingWipe] = useState<{ action: 'wipe-game' | 'wipe-and-ban' | 'wipe-and-unban'; username: string } | null>(null);
   const [banDuration, setBanDuration] = useState('permanent');
   const [banReason, setBanReason] = useState('Infinity Orbs admin action');
@@ -1377,6 +1383,196 @@ export const DevDebugModal: React.FC<DevDebugModalProps> = ({
       setPlayerSpyUserId('');
     } finally {
       setPlayerSpyLoading(false);
+    }
+  };
+
+  const appendCliHistory = (command: string, output: string, ok: boolean) => {
+    setExecuteAsResult(output);
+    setCliHistory(previous => [...previous.slice(-29), { command, output, ok, at: Date.now() }]);
+  };
+
+  const runAdminCli = async () => {
+    const command = executeAsCommands.trim();
+    if (!command) {
+      appendCliHistory('', 'Enter a command.', false);
+      return;
+    }
+
+    if (/^(?:target\s+clear|clear\s+target|as\s+off)$/i.test(command)) {
+      setExecuteAsUsername('');
+      appendCliHistory(command, 'One-shot player target cleared.', true);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    const arm = /^(?:as|target)\s+(.+)$/i.exec(command);
+    if (arm) {
+      const username = arm[1]!.trim().replace(/^u\//i, '');
+      if (!/^[A-Za-z0-9_-]{1,20}$/.test(username)) {
+        appendCliHistory(command, 'Invalid Reddit username. Use letters, numbers, underscores, or hyphens.', false);
+        setExecuteAsCommands('');
+        return;
+      }
+      setExecuteAsUsername(username);
+      appendCliHistory(command, 'Armed u/' + username + '. The next player command will run against that account, then the target will clear.', true);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    if (/^(?:help|\?)$/i.test(command)) {
+      appendCliHistory(command, [
+        'as <username>                 Arm the next player command for one account',
+        'target clear                  Disarm the player target',
+        'give coins|shards|dust|offline|rolls <amount>',
+        'set <path> <JSON value>       Example: set coins 1e50',
+        'add|subtract <path> <amount>  Example: add shards 100',
+        'delete <path>                 Example: delete activeBoosters.fortune',
+        'upgrade <id> <level>          Example: upgrade speed 20',
+        'mastery <id> <level>          Example: mastery continuumLuck 50',
+        'prestige-upgrade <id> <level>',
+        'boost <fortune|hyperdrive|barrage|prosperity|ascension> <minutes>',
+        'offline add|set <amount>      cooldown ready',
+        'menus disable [reason]        menus enable',
+        'maintenance on [reason]     maintenance off',
+        'read-only on [reason]       read-only off',
+        'features                       List global feature switches',
+        'feature <name> disable [reason]',
+        'feature <name> enable',
+        'feature gameplay disable [reason] stops all mapped game actions',
+        'feature player-actions disable blocks writes but keeps reads available',
+        'Feature switches include bulk upgrades, Chain Patcher, Altar, Prestige upgrades,',
+        'combat tactics/gear/runes, guild actions, Frenzy setup/rewards, and presence.',
+        'announce <message>            announce clear',
+        'balance list                  Show all live balance settings',
+        'balance get <key>             Read one value',
+        'balance preview <key> <value> Preview without changing it',
+        'balance set <key> <value>     Apply immediately for everyone',
+        'balance reset <key|all>       Restore default value(s)',
+        'balance history               Show retained audit revisions',
+        'balance rollback <revision>   Restore the configuration before that revision',
+        '',
+        'Player commands require an armed target. The target is consumed on the next player command, including a failed attempt.',
+        'Global menu, feature, read-only, announcement, and balance commands never run as a player.',
+        'Only registered commands are accepted. JavaScript and shell commands are not executed.',
+      ].join('\n'), true);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    if (/^clear$/i.test(command)) {
+      setCliHistory([]);
+      setExecuteAsResult('');
+      setExecuteAsCommands('');
+      return;
+    }
+
+    const isGlobal = /^(?:menus?|announce(?:ment)?|features?|maintenance|read-only|balance)\b/i.test(command);
+    const target = executeAsUsername.trim().replace(/^u\//i, '');
+    if (isGlobal && target) {
+      appendCliHistory(command, 'A player target is armed. Run a player command first or enter "target clear" before using a global command.', false);
+      setExecuteAsCommands('');
+      return;
+    }
+    if (!isGlobal && !target) {
+      appendCliHistory(command, 'No player target is armed. Enter "as <username>" before a player command.', false);
+      setExecuteAsCommands('');
+      return;
+    }
+
+    if (!window.confirm(
+      isGlobal
+        ? 'Run this global Admin CLI command?'
+        : 'Run the next command as u/' + target + '? The one-shot target will clear after this attempt.',
+    )) return;
+
+    setExecuteAsLoading(true);
+    setExecuteAsCommands('');
+    if (!isGlobal) setExecuteAsUsername('');
+    try {
+      const response = await fetch('/api/dev/cli/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, ...(isGlobal ? {} : { username: target }) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Admin CLI command failed.');
+
+      let output = '';
+      if (data.localOnly) output = 'GitHub Pages simulation only. This does not change the live Devvit game.\n';
+      if (data.scope === 'everyone') {
+        if (data.balance) {
+          const balance = data.balance;
+          const formatValue = (value: unknown, unit: string) => {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? String(Number(numeric.toFixed(4))) + unit : String(value ?? '?');
+          };
+          if (balance.action === 'list') {
+            output += 'Live balance settings · revision ' + balance.revision + '\n' +
+              (balance.settings ?? []).map((setting: any) =>
+                setting.key + ' = ' + formatValue(setting.value, setting.unit) +
+                ' (default ' + formatValue(setting.defaultValue, setting.unit) +
+                ', range ' + setting.min + '–' + setting.max + ')\n  ' + setting.description,
+              ).join('\n');
+          } else if (balance.action === 'history') {
+            output += 'Live balance history · current revision ' + balance.revision + '\n' +
+              (balance.history?.length
+                ? balance.history.map((entry: any) =>
+                    '#' + entry.revision + ' ' + entry.action +
+                    (entry.key ? ' ' + entry.key : '') +
+                    ' by ' + (entry.updatedBy || 'unknown') +
+                    (entry.rollbackOf ? ' (rollback of #' + entry.rollbackOf + ')' : '') +
+                    ' · ' + new Date(entry.updatedAt).toLocaleString(),
+                  ).join('\n')
+                : 'No balance changes have been made.');
+          } else if (balance.setting) {
+            const setting = balance.setting;
+            output += setting.key + ' = ' + formatValue(setting.value, setting.unit);
+            if (balance.action === 'preview') {
+              output += '\nProposed: ' + formatValue(setting.proposedValue, setting.unit);
+              output += '\n' + (setting.changed ? 'No changes applied.' : 'This is already the active value.');
+            }
+          } else if (balance.action === 'set') {
+            output += balance.changed
+              ? 'Updated ' + balance.key + ': ' + formatValue(balance.previousValue, '') + ' → ' + formatValue(balance.value, '') + '.\nRevision ' + balance.revision + '.'
+              : balance.key + ' is already ' + formatValue(balance.value, '') + '. No new revision created.';
+          } else if (balance.action === 'reset') {
+            output += balance.changed
+              ? 'Reset ' + balance.key + ' to ' + formatValue(balance.value, '') + '. Revision ' + balance.revision + '.'
+              : balance.key + ' already has its default value.';
+          } else if (balance.action === 'reset-all') {
+            output += 'All live balance settings reset to defaults. Revision ' + balance.revision + '.';
+          } else if (balance.action === 'rollback') {
+            output += 'Restored the configuration from before revision #' + balance.rolledBackRevision + '. New revision: ' + balance.revision + '.';
+          } else {
+            output += JSON.stringify(balance, null, 2);
+          }
+          if (balance.action === 'set' || balance.action === 'reset' || balance.action === 'reset-all' || balance.action === 'rollback') {
+            window.dispatchEvent(new Event('io-live-balance-updated'));
+          }
+        } else output += data.menuControl
+          ? data.menuControl.enabled
+            ? 'Menus enabled for everyone.'
+            : 'Menus disabled for everyone.\nDeveloper reason: ' + data.menuControl.reason
+          : data.featureControl
+            ? data.featureControl.feature + (data.featureControl.enabled ? ' enabled for everyone.' : ' disabled for everyone.\nDeveloper reason: ' + data.featureControl.reason)
+            : data.featureControls
+              ? 'Global feature switches:\n' + Object.values(data.featureControls).map((control: any) =>
+                  (control.enabled ? 'ON  ' : 'OFF ') + control.feature + (control.enabled ? '' : ' | ' + control.reason),
+                ).join('\n')
+              : data.announcement?.message
+                ? 'Developer announcement updated.'
+                : 'Developer announcement cleared.';
+      } else {
+        output += 'Executed ' + (data.results?.length ?? 0) + ' save operation(s) as u/' + (data.username ?? target) + '.';
+        output += '\nSave revision: ' + String(data.stateRevision ?? '?');
+        if (data.invalidatedRollTicket) output += '\nThe player’s pending roll ticket was invalidated.';
+        output += '\n\n' + JSON.stringify(data.results ?? [], null, 2);
+      }
+      appendCliHistory(command, output, true);
+    } catch (error: any) {
+      appendCliHistory(command, 'Command failed: ' + (error?.message || 'Unknown Admin CLI error.'), false);
+    } finally {
+      setExecuteAsLoading(false);
     }
   };
 
@@ -4434,7 +4630,7 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
 
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+    <div className="fixed inset-0 z-[120] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
       <div className="bg-slate-900 border border-emerald-500/50 rounded-3xl p-4 sm:p-6 max-w-5xl w-full space-y-4 shadow-2xl relative max-h-[94vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
           <div className="flex items-center gap-2">
@@ -6755,6 +6951,112 @@ const result = await request<any>('/api/dev/force-roll', { rarity: 9, randomValu
         </section>
           </div>
         </details>
+
+        <section id="io-tool-admin-cli" hidden={activeAdminTool !== 'admin-cli'} className={panelBase + ' border border-rose-500/30'}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-200">
+                <Wand2 className="w-4 h-4" /> Admin Command Line
+              </div>
+              <p className="mt-1 text-[10px] leading-4 text-slate-400">
+                Arm a player with <code>as username</code>. Exactly the next player command runs against that account, then the target clears automatically. Global commands operate on everyone.
+              </p>
+            </div>
+            <div className={'rounded-lg border px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider ' + (
+              executeAsUsername
+                ? 'border-amber-400/40 bg-amber-400/10 text-amber-200'
+                : 'border-slate-700 bg-slate-900 text-slate-500'
+            )}>
+              {executeAsUsername ? 'Armed · u/' + executeAsUsername : 'No player target'}
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-black/30 p-3 space-y-2">
+            <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Examples</div>
+            <pre className="whitespace-pre-wrap break-words text-[10px] leading-5 font-mono text-slate-300">{'as shadow_fen\n' +
+              'give coins 1000000\n' +
+              'upgrade speed 20\n' +
+              'set masterySkills.continuumLuck 50\n' +
+              'cooldown ready\n\n' +
+              'menus disable "The developer has disabled the menus."\n' +
+              'menus enable\n' +
+              'announce "Maintenance is complete."\n' +
+              'announce clear'}</pre>
+            <p className="text-[9px] leading-4 text-slate-500">
+              Also supports set, add, subtract, delete, give shards/dust/offline/rolls, mastery, prestige-upgrade, boost, and offline set/add. Up to 50 save commands per batch.
+            </p>
+            <p className="text-[9px] leading-4 text-amber-300/80">
+              Player commands edit the target’s persisted game state using that account’s save lock. They do not impersonate Reddit or send arbitrary API requests. Global commands cannot be run while a player target is armed.
+            </p>
+          </div>
+          <textarea
+            value={executeAsCommands}
+            onChange={event => setExecuteAsCommands(event.target.value)}
+            onKeyDown={event => {
+              if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                event.preventDefault();
+                void runAdminCli();
+              }
+            }}
+            rows={4}
+            spellCheck={false}
+            placeholder={'Enter a command, then press Run Command…\nas shadow_fen'}
+            aria-label="Admin CLI command input"
+            className="w-full rounded-xl border border-slate-700 bg-black/50 p-3 text-[11px] leading-5 font-mono text-slate-100 resize-y"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button"
+              disabled={executeAsLoading || !executeAsCommands.trim()}
+              onClick={() => void runAdminCli()}
+              className={buttonBase + ' bg-rose-600 hover:bg-rose-500 border-rose-500 text-white px-4 py-2'}
+            >
+              <Wand2 className="inline w-3.5 h-3.5 mr-1" /> {executeAsLoading ? 'Executing…' : 'Run Command'}
+            </button>
+            <button type="button"
+              disabled={executeAsLoading || !executeAsUsername}
+              onClick={() => { setExecuteAsUsername(''); appendCliHistory('target clear', 'One-shot player target cleared.', true); }}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 px-3 py-2'}
+            >
+              Clear Target
+            </button>
+            <button type="button"
+              disabled={executeAsLoading || cliHistory.length === 0}
+              onClick={() => { setCliHistory([]); setExecuteAsResult(''); }}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 px-3 py-2'}
+            >
+              Clear History
+            </button>
+            <button type="button"
+              disabled={executeAsLoading}
+              onClick={() => { setExecuteAsCommands('help'); }}
+              className={buttonBase + ' bg-slate-900 hover:bg-slate-800 border-slate-700 text-cyan-200 px-3 py-2'}
+            >
+              Help
+            </button>
+          </div>
+          {executeAsResult && (
+            <pre role="status" className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-800 bg-black/40 p-3 text-[10px] leading-4 font-mono text-emerald-200">{executeAsResult}</pre>
+          )}
+          <div className="rounded-xl border border-slate-800 bg-black/25 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wider text-slate-500">
+              <span>Command history</span><span>{cliHistory.length}/30</span>
+            </div>
+            {cliHistory.length ? (
+              <div className="max-h-72 space-y-2 overflow-auto">
+                {cliHistory.map((entry, index) => (
+                  <div key={entry.at.toString() + '-' + index} className="rounded-lg border border-slate-800 bg-slate-950/70 p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <code className="min-w-0 break-all text-[10px] text-cyan-200">{entry.command || 'Console'}</code>
+                      <span className={'shrink-0 text-[8px] font-black uppercase ' + (entry.ok ? 'text-emerald-300' : 'text-rose-300')}>{entry.ok ? 'OK' : 'FAILED'}</span>
+                    </div>
+                    <pre className="mt-1 whitespace-pre-wrap break-words text-[9px] leading-4 font-mono text-slate-400">{entry.output}</pre>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-slate-600">No commands have been run in this session.</div>
+            )}
+          </div>
+        </section>
 
         <details id="io-tool-guild-chat" hidden={activeAdminTool !== 'guild-chat'} open={activeAdminTool === 'guild-chat'} className="rounded-xl border border-slate-800 bg-black/10 p-3">
           <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider text-slate-300">

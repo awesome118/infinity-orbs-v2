@@ -23,8 +23,11 @@ test('Auto Roll keeps cooldown-retry backoff across state refreshes and clears i
   const main = source('src/client/main.tsx');
   assert.match(main, /const autoCooldownRetryDelay = isAutoRoll\s*\?\s*autoRollCooldownRetryDelayMs\(error\)/);
   assert.match(main, /autoRollCooldownRetryUntilRef\.current = retryAt/);
-  assert.match(main, /setReadyAt\(Math\.max\(authoritativeReadyAt, autoRollCooldownRetryUntilRef\.current\)\)/);
-  assert.match(main, /Math\.max\(readyAt, authoritativeReadyAt, autoRollCooldownRetryUntilRef\.current\)/);
+  assert.match(main, /const nextReadyAt = autoRollReadyAt\(/);
+  assert.match(main, /cooldownMs\(latest, true, liveBalance\)/);
+  assert.match(main, /autoRollCooldownRetryUntilRef\.current,/);
+  assert.match(main, /setReadyAt\(manualRollReadyAt\(lastRollAt, cooldownMs\(timingState, false, liveBalance\)\)\)/);
+  assert.doesNotMatch(main, /authoritativeReadyAt/);
   assert.match(main, /if \(isAutoRoll\) autoRollCooldownRetryUntilRef\.current = 0/);
 });
 

@@ -92,7 +92,7 @@ test('Time Energy requests spend one current cooldown per activation and do not 
   assert.match(handler, /s\.timeEnergy = Math\.max\(0, \(s\.timeEnergy \?\? 0\) - \(cd \* freeRollActivations\)\)/);
   assert.match(handler, /if \(!usingTimeEnergy && !usingFreeRoll && !usingChainPatcher\)/);
   assert.match(handler, /const reclaimed = reclaimedPerActivation \* activations/);
-  assert.match(handler, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s, isAuto\)/);
+  assert.match(handler, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s, isAuto, liveBalance\)/);
 });
 
 test('Time Energy awards are capped and require completed eligible activations', () => {
@@ -134,7 +134,7 @@ test('Frenzy start and claim bank Time Energy without multiplying by Multiball',
   const startStart = server.indexOf('export async function startOrbFrenzy');
   const startEnd = server.indexOf('export async function getOrbFrenzyHandoff', startStart);
   const frenzyStart = server.slice(startStart, startEnd);
-  assert.match(frenzyStart, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s\)/);
+  assert.match(frenzyStart, /const reclaimedPerActivation = cooldownReclaimerEnergyPerActivationMs\(s, false, liveBalance\)/);
   assert.match(frenzyStart, /grantCooldownReclaimerTimeEnergy\(s, 1, reclaimedPerActivation\)/);
 
   const claimStart = server.indexOf('export async function claimOrbFrenzy');
