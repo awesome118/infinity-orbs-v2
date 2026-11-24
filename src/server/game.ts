@@ -7204,6 +7204,9 @@ export async function buyChainPatcher(): Promise<{
       throw new Error('Chain Patcher is on cooldown for ' + Math.ceil(remaining / 3_600_000) + ' more hour(s).');
     }
     const pending = Math.floor(Number(s.chainPatcherNextRarity ?? 0) || 0);
+    if (s.adminGuaranteedRollQueued === true) {
+      throw new Error('A guaranteed admin roll is already queued. Use it before buying another Chain Patcher charge.');
+    }
     if (pending >= 2 && pending <= MAX_ORB_RARITY) {
       throw new Error('Your Chain Patcher is already charged. Roll once to use it before buying another.');
     }
@@ -7277,6 +7280,9 @@ export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState>
   }
 
   if (enabled) {
+    if (s.adminGuaranteedRollQueued === true) {
+      throw new Error('Use the queued guaranteed manual roll before re-enabling Auto Roll.');
+    }
     const pendingPatcherRarity = Number(s.chainPatcherNextRarity ?? 0);
     if (pendingPatcherRarity !== 0) {
       throw new Error(Number.isSafeInteger(pendingPatcherRarity) &&
@@ -7473,7 +7479,10 @@ export async function roll(
     }
     if (!bestOrb) throw new Error('No rolls were processed.');
 
-    if (usingChainPatcher) s.chainPatcherNextRarity = 0;
+    if (usingChainPatcher) {
+      s.chainPatcherNextRarity = 0;
+      s.adminGuaranteedRollQueued = false;
+    }
 
     if (!isAuto) {
       s.manualRolls = Math.min(10, (s.manualRolls ?? 0) + freeRollActivations);

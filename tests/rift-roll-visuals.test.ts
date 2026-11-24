@@ -19,6 +19,8 @@ test('Rift mode disables Frenzy, keeps New Best non-blocking, and stages complet
   const roll = source('src/client/components/RollSection.tsx');
   const main = source('src/client/main.tsx');
   const theme = source('src/client/rift-theme.css');
+  const admin = source('src/client/components/DevDebugModal.tsx');
+  const adminServer = source('src/server/debug.ts');
   assert.match(roll, /const isRiftSave = Boolean/);
   assert.match(roll, /frenzyArmedForRoll = frenzyArmed && !isRiftSave/);
   assert.match(roll, /riftCompletionPhase/);
@@ -28,4 +30,7 @@ test('Rift mode disables Frenzy, keeps New Best non-blocking, and stages complet
   assert.match(main, /onRiftCompletionRevealComplete/);
   assert.match(theme, /io-rift-atmosphere/);
   assert.match(theme, /io-rift-completion-charge/);
+  assert.match(admin, /handleQueueGuaranteedRoll/);
+  assert.match(admin, /Guaranteed Next Roll/);
+  assert.match(adminServer, /debugRouter\.post\('\/queue-force-roll'/);
 });

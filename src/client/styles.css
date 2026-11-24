@@ -2862,3 +2862,16 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 @media (prefers-reduced-motion: reduce) {
   .roll-floating-stat { animation: none; opacity: 0; }
 }
+
+/* Exceptional rarity titles and Orbs receive a restrained color-cycle treatment. */
+.io-rarity-color-cycle {
+  animation: io-rarity-color-cycle 4.5s linear infinite;
+}
+@keyframes io-rarity-color-cycle {
+  0% { filter: hue-rotate(0deg) saturate(1.05); }
+  50% { filter: hue-rotate(180deg) saturate(1.2); }
+  100% { filter: hue-rotate(360deg) saturate(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .io-rarity-color-cycle { animation: none; }
+}

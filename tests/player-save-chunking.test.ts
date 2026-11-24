@@ -188,3 +188,29 @@ test('combat saves use shared chunk manifests while preserving compressed payloa
   assert.match(combat, /saveExists: storedRaw != null/);
   assert.match(combat, /JSON\.parse\(decompressStorageString\(raw\)\)/);
 });
+
+
+test('admin guaranteed rolls queue into the next manual roll and use normal Rift completion handling', () => {
+  const shared = source('src/shared/game.ts');
+  const game = source('src/server/game.ts');
+  const debug = source('src/server/debug.ts');
+  const adminUi = source('src/client/components/DevDebugModal.tsx');
+  const rollUi = source('src/client/components/RollSection.tsx');
+
+  assert.match(shared, /adminGuaranteedRollQueued\?: boolean/);
+  assert.match(shared, /adminGuaranteedRollQueued: false/);
+  assert.match(debug, /debugRouter\.post\('\/queue-force-roll'/);
+  assert.match(debug, /s\.chainPatcherNextRarity = forcedRarity/);
+  assert.match(debug, /s\.adminGuaranteedRollQueued = true/);
+  assert.match(debug, /s\.autoRollEnabled = false/);
+  assert.match(adminUi, /\/api\/dev\/queue-force-roll/);
+  assert.match(adminUi, /Queue Next/);
+  assert.match(rollUi, /state\.adminGuaranteedRollQueued === true/);
+
+  const roll = game.slice(game.indexOf('export async function roll('));
+  assert.match(roll, /const usingChainPatcher = rawPatcherRarity >= 2/);
+  assert.match(roll, /usingChainPatcher \? rawPatcherRarity : undefined/);
+  assert.match(roll, /usingChainPatcher \? 1 : undefined/);
+  assert.match(roll, /s\.adminGuaranteedRollQueued = false/);
+  assert.match(game, /Use the queued guaranteed manual roll before re-enabling Auto Roll/);
+});

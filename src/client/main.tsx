@@ -3931,6 +3931,10 @@ function App() {
           <DevDebugModal
             onClose={() => setShowDevModal(false)}
             onRefresh={refreshAll}
+            onForceRollQueued={(queuedState) => {
+              changeTab('roll');
+              applyPlayerState(queuedState);
+            }}
             onForceFrenzyShardPopup={() => { setShowDevModal(false); setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true }); }}
           />
         )}
@@ -4942,6 +4946,10 @@ function App() {
             setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true });
           }}
           onPopupConfigChanged={setPopupConfig}
+            onForceRollQueued={(queuedState) => {
+              changeTab('roll');
+              applyPlayerState(queuedState);
+            }}
           onForceRollResult={res => {
             changeTab('roll');
             applyPlayerState(res.state);
