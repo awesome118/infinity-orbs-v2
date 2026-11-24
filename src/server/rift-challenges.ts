@@ -1,17 +1,16 @@
 import { context, redis } from './devvit-mock.js';
 import { withPlayerMutationLock } from './player-lock.js';
 import { loadRaw } from './game.js';
-import { createRollRandomSource } from '../shared/roll-rng.js';
-import { calculateLevelFromXp, coinsForRarity, rollContinuum } from '../shared/game.js';
+import {
+  createInitialState,
+  calculateLevelFromXp,
+  type PlayerState,
+} from '../shared/game.js';
 import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   getRiftChallengeDefinition,
   normalizeRiftMainProgress,
-  riftChallengeCoinMultiplier,
-  riftChallengeCooldownMs,
-  riftChallengeCriticalChance,
-  riftChallengeEffectiveLuck,
   riftChallengeIsAvailable,
   riftChallengeMechanicUnlocks,
   riftChallengeUpgradeCost,
@@ -63,18 +62,17 @@ function normalizePerkLevels(value: unknown): RiftPerkLevels {
   ) as RiftPerkLevels;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeRun(value: unknown): RiftChallengeRun | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  const challenge = getRiftChallengeDefinition(raw.challengeId);
-  if (!challenge || (raw.status !== 'active' && raw.status !== 'completed')) return null;
-  const levels = raw.upgradeLevels && typeof raw.upgradeLevels === 'object' && !Array.isArray(raw.upgradeLevels)
-    ? raw.upgradeLevels as Record<string, unknown>
-    : {};
-  const rarity = Number(raw.bestRarity);
-  const lastRaw = raw.lastRoll && typeof raw.lastRoll === 'object' && !Array.isArray(raw.lastRoll)
-    ? raw.lastRoll as Record<string, unknown>
-    : null;
+  if (!isRecord(value)) return null;
+  const challenge = getRiftChallengeDefinition(value.challengeId);
+  if (!challenge || (value.status !== 'active' && value.status !== 'completed')) return null;
+  const levels = isRecord(value.upgradeLevels) ? value.upgradeLevels : {};
+  const rarity = Number(value.bestRarity);
+  const lastRaw = isRecord(value.lastRoll) ? value.lastRoll : null;
   const lastRarity = Number(lastRaw?.rarity);
   const lastRoll = lastRaw && Number.isFinite(lastRarity) && lastRarity >= 2
     ? {
@@ -86,16 +84,16 @@ function normalizeRun(value: unknown): RiftChallengeRun | null {
     : null;
 
   return {
-    runId: String(raw.runId ?? '').slice(0, 120),
+    runId: String(value.runId ?? '').slice(0, 120),
     challengeId: challenge.id as RiftChallengeId,
-    status: raw.status,
-    startedAt: safeInteger(raw.startedAt),
-    updatedAt: safeInteger(raw.updatedAt),
-    completedAt: raw.completedAt == null ? null : safeInteger(raw.completedAt),
-    coins: safeInteger(raw.coins),
-    totalRolls: safeInteger(raw.totalRolls),
+    status: value.status,
+    startedAt: safeInteger(value.startedAt),
+    updatedAt: safeInteger(value.updatedAt),
+    completedAt: value.completedAt == null ? null : safeInteger(value.completedAt),
+    coins: safeInteger(value.coins),
+    totalRolls: safeInteger(value.totalRolls),
     bestRarity: Number.isFinite(rarity) ? Math.max(2, Math.min(Number.MAX_SAFE_INTEGER, rarity)) : 2,
-    nextRollAt: safeInteger(raw.nextRollAt),
+    nextRollAt: safeInteger(value.nextRollAt),
     upgradeLevels: {
       fortune: safeInteger(levels.fortune, 0, RIFT_CHALLENGE_UPGRADES.fortune.maxLevel),
       speed: safeInteger(levels.speed, 0, RIFT_CHALLENGE_UPGRADES.speed.maxLevel),
@@ -103,52 +101,50 @@ function normalizeRun(value: unknown): RiftChallengeRun | null {
       critical: safeInteger(levels.critical, 0, RIFT_CHALLENGE_UPGRADES.critical.maxLevel),
     },
     mainProgressAtStart: normalizeRiftMainProgress(
-      raw.mainProgressAtStart && typeof raw.mainProgressAtStart === 'object'
-        ? raw.mainProgressAtStart as Partial<RiftChallengeMainProgress>
+      isRecord(value.mainProgressAtStart)
+        ? value.mainProgressAtStart as Partial<RiftChallengeMainProgress>
         : null,
     ),
     mechanicUnlocks: {
-      fortune: (raw.mechanicUnlocks as Record<string, unknown> | null)?.fortune === true,
-      speed: (raw.mechanicUnlocks as Record<string, unknown> | null)?.speed === true,
-      prosperity: (raw.mechanicUnlocks as Record<string, unknown> | null)?.prosperity === true,
-      critical: (raw.mechanicUnlocks as Record<string, unknown> | null)?.critical === true,
+      fortune: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.fortune === true,
+      speed: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.speed === true,
+      prosperity: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.prosperity === true,
+      critical: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.critical === true,
     },
     lastRoll,
+    gameState: isRecord(value.gameState) ? value.gameState as unknown as PlayerState : null,
   };
 }
 
 function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchive {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return createEmptyRiftChallengeArchive(now);
-  const raw = value as Record<string, unknown>;
-  const completed = Array.isArray(raw.completedChallengeIds)
-    ? raw.completedChallengeIds.filter((item): item is string =>
+  if (!isRecord(value)) return createEmptyRiftChallengeArchive(now);
+  const completed = Array.isArray(value.completedChallengeIds)
+    ? value.completedChallengeIds.filter((item): item is string =>
         typeof item === 'string' && getRiftChallengeDefinition(item) !== undefined,
       ).slice(0, 100)
     : [];
-  const bestRaw = raw.bestRarityByChallenge && typeof raw.bestRarityByChallenge === 'object' && !Array.isArray(raw.bestRarityByChallenge)
-    ? raw.bestRarityByChallenge as Record<string, unknown>
-    : {};
+  const bestRaw = isRecord(value.bestRarityByChallenge) ? value.bestRarityByChallenge : {};
   const bestRarityByChallenge: Record<string, number> = {};
-  for (const [id, value] of Object.entries(bestRaw).slice(0, 50)) {
-    const rarity = Number(value);
+  for (const [id, best] of Object.entries(bestRaw).slice(0, 50)) {
+    const rarity = Number(best);
     if (getRiftChallengeDefinition(id) && Number.isFinite(rarity) && rarity >= 2) {
       bestRarityByChallenge[id] = Math.min(Number.MAX_SAFE_INTEGER, rarity);
     }
   }
-  const riftPerkLevels = normalizePerkLevels(raw.riftPerkLevels);
-  const lastAccrued = safeInteger(raw.riftLastAccruedAt, now);
-  const riftProgressValue = Number(raw.riftProgress);
+  const riftPerkLevels = normalizePerkLevels(value.riftPerkLevels);
+  const lastAccrued = safeInteger(value.riftLastAccruedAt, now);
+  const riftProgressValue = Number(value.riftProgress);
   const archive: RiftChallengeArchive = {
-    version: 2,
-    activeRun: normalizeRun(raw.activeRun),
+    version: 3,
+    activeRun: normalizeRun(value.activeRun),
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
-    totalCompletedRuns: safeInteger(raw.totalCompletedRuns),
-    riftPoints: safeInteger(raw.riftPoints),
+    totalCompletedRuns: safeInteger(value.totalCompletedRuns),
+    riftPoints: safeInteger(value.riftPoints),
     riftProgress: Number.isFinite(riftProgressValue) ? Math.max(0, Math.min(0.999999999, riftProgressValue)) : 0,
     riftRatePerHour: 1,
     riftLastAccruedAt: Math.min(now, lastAccrued),
-    totalRiftPointsEarned: safeInteger(raw.totalRiftPointsEarned, safeInteger(raw.riftPoints)),
+    totalRiftPointsEarned: safeInteger(value.totalRiftPointsEarned, safeInteger(value.riftPoints)),
     riftPerkLevels,
   };
   archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
@@ -159,7 +155,7 @@ async function readArchive(): Promise<RiftChallengeArchive> {
   const raw = await redis.get(archiveKey());
   if (!raw) return createEmptyRiftChallengeArchive(Date.now());
   try {
-    return normalizeArchive(JSON.parse(raw));
+    return normalizeArchive(JSON.parse(String(raw)));
   } catch {
     console.error('[Rift Challenges] Stored archive could not be parsed; a clean archive was returned.');
     return createEmptyRiftChallengeArchive(Date.now());
@@ -185,8 +181,7 @@ function accrueRiftProgress(archive: RiftChallengeArchive, now = Date.now()): vo
   archive.riftLastAccruedAt = safeNow;
 }
 
-async function readMainProgress(): Promise<RiftChallengeMainProgress> {
-  const state = await loadRaw({ registerActivity: false, persistMigrations: false });
+function progressFromGameState(state: PlayerState): RiftChallengeMainProgress {
   const storedLevel = Math.max(1, Number(state.level) || 1);
   const xpLevel = Math.max(1, calculateLevelFromXp(Number(state.xp) || 0).level);
   return normalizeRiftMainProgress({
@@ -198,27 +193,68 @@ async function readMainProgress(): Promise<RiftChallengeMainProgress> {
   });
 }
 
+async function readMainProgress(): Promise<RiftChallengeMainProgress> {
+  // Challenge availability can still require a main-save level. Once a challenge
+  // starts, every gameplay variable comes from the independent Rift save instead.
+  const state = await loadRaw({ registerActivity: false, persistMigrations: false, source: 'main' });
+  return progressFromGameState(state);
+}
+
+function createLegacyRunGameState(run: RiftChallengeRun): PlayerState {
+  // Migration for active First Spark runs created before full PlayerState isolation.
+  // Carry over the already-earned challenge wallet/counters, never the main save.
+  const state = createInitialState(run.startedAt || Date.now());
+  state.username = String(context.username ?? '').slice(0, 100) || undefined;
+  state.coins = Math.max(50, run.coins);
+  state.lifetimeCoins = state.coins;
+  state.totalRolls = run.totalRolls;
+  state.highestRarity = run.bestRarity;
+  state.stateRevision = 0;
+  state.saveGeneration = 0;
+  return state;
+}
+
+function ensureRunGameState(run: RiftChallengeRun): PlayerState {
+  if (!run.gameState || !isRecord(run.gameState)) {
+    run.gameState = createLegacyRunGameState(run);
+  }
+  return run.gameState;
+}
+
+function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): void {
+  const state = ensureRunGameState(run);
+  run.coins = Math.max(0, Number(state.coins) || 0);
+  run.totalRolls = safeInteger(state.totalRolls);
+  run.bestRarity = Math.max(2, Number(state.highestRarity) || 2);
+  run.mainProgressAtStart = progressFromGameState(state);
+  run.mechanicUnlocks = riftChallengeMechanicUnlocks(run.mainProgressAtStart);
+  run.updatedAt = now;
+}
+
 function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChallengeMainProgress): RiftChallengeSnapshot {
   const activeRun = archive.activeRun?.status === 'active' ? archive.activeRun : null;
-  const mainProgress = activeRun?.mainProgressAtStart ?? currentMainProgress;
+  if (activeRun) {
+    syncRunSummaryFromGameState(activeRun);
+  }
+  const mainProgress = activeRun?.gameState
+    ? progressFromGameState(activeRun.gameState)
+    : currentMainProgress;
   return {
     challenge: RIFT_FIRST_SPARK,
     challenges: RIFT_CHALLENGES,
     archive,
     mainProgress,
-    mechanicUnlocks: activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
-    challengeAvailable: riftChallengeIsAvailable(mainProgress),
+    mechanicUnlocks: activeRun?.gameState
+      ? riftChallengeMechanicUnlocks(mainProgress)
+      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
+    challengeAvailable: activeRun
+      ? true
+      : riftChallengeIsAvailable(currentMainProgress),
   };
 }
 
 function createRunId(): string {
   const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-}
-
-function createRollSeed(): string {
-  const bytes = new Uint8Array(32);
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
 }
@@ -234,6 +270,7 @@ export async function getRiftChallengeStatus(): Promise<RiftChallengeSnapshot> {
   return withPlayerMutationLock(async () => {
     const archive = await readArchive();
     accrueRiftProgress(archive);
+    if (archive.activeRun?.status === 'active') syncRunSummaryFromGameState(archive.activeRun);
     await writeArchive(archive);
     if (archive.activeRun?.status === 'active') {
       return snapshot(archive, archive.activeRun.mainProgressAtStart);
@@ -249,7 +286,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
     const mainProgress = await readMainProgress();
     const archive = await readArchive();
     accrueRiftProgress(archive);
-    if (!challenge || mainProgress.level < challenge.requiredMainLevel) {
+    if (mainProgress.level < challenge.requiredMainLevel) {
       throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in the main game to unlock ' + challenge.name + '.');
     }
     if (challenge.prerequisiteId && !archive.completedChallengeIds.includes(challenge.prerequisiteId)) {
@@ -260,7 +297,14 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       throw new Error('You already have an active challenge. Resume it or abandon it before starting another.');
     }
     const now = Date.now();
+    const state = createInitialState(now);
     const seedCoins = archive.riftPerkLevels.riftStartCoins * 100;
+    state.username = String(context.username ?? '').slice(0, 100) || undefined;
+    state.coins += seedCoins;
+    state.lifetimeCoins = state.coins;
+    state.saveGeneration = 0;
+    state.stateRevision = 0;
+    const riftProgress = progressFromGameState(state);
     archive.activeRun = {
       runId: createRunId(),
       challengeId: challenge.id as RiftChallengeId,
@@ -268,86 +312,24 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       startedAt: now,
       updatedAt: now,
       completedAt: null,
-      coins: seedCoins,
-      totalRolls: 0,
-      bestRarity: 2,
+      coins: state.coins,
+      totalRolls: state.totalRolls,
+      bestRarity: Math.max(2, state.highestRarity),
       nextRollAt: 0,
       upgradeLevels: { fortune: 0, speed: 0, prosperity: 0, critical: 0 },
-      mainProgressAtStart: mainProgress,
-      mechanicUnlocks: riftChallengeMechanicUnlocks(mainProgress),
+      mainProgressAtStart: riftProgress,
+      mechanicUnlocks: riftChallengeMechanicUnlocks(riftProgress),
       lastRoll: null,
+      gameState: state,
     };
     await writeArchive(archive);
     return snapshot(archive, mainProgress);
   });
 }
 
-export async function rollRiftChallenge(expectedRunIdValue: unknown): Promise<RiftChallengeSnapshot> {
-  return withPlayerMutationLock(async () => {
-    const archive = await readArchive();
-    accrueRiftProgress(archive);
-    const run = archive.activeRun;
-    if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
-    assertExpectedRunId(run, expectedRunIdValue);
-    const challenge = getRiftChallengeDefinition(run.challengeId);
-    if (!challenge) throw new Error('CHALLENGE_RUN_MISMATCH');
-    const now = Date.now();
-    if (run.nextRollAt > now) {
-      throw new Error('RIFT_CHALLENGE_COOLDOWN:' + String(run.nextRollAt - now));
-    }
-
-    const random = createRollRandomSource(createRollSeed());
-    const riftPerks = archive.riftPerkLevels;
-    const effectiveLuck =
-      riftChallengeEffectiveLuck(run.upgradeLevels.fortune) *
-      (1 + riftPerks.riftLuck * 0.05);
-    const rawRarity = rollContinuum(effectiveLuck, () => random.nextRarity(), 1, 2, 1);
-    const criticalChance = riftChallengeCriticalChance(run.upgradeLevels.critical);
-    const isCritical = random.next() < criticalChance;
-    const finiteRarity = Number.isFinite(rawRarity) ? Math.max(2, Math.floor(rawRarity)) : Number.MAX_SAFE_INTEGER;
-    const rarity = isCritical
-      ? Math.min(Number.MAX_SAFE_INTEGER, finiteRarity * 2)
-      : finiteRarity;
-    const coinsGained = Math.max(1, Math.min(
-      Number.MAX_SAFE_INTEGER,
-      Math.floor(
-        coinsForRarity(rarity) *
-        riftChallengeCoinMultiplier(run.upgradeLevels.prosperity) *
-        challenge.coinMultiplier,
-      ),
-    ));
-
-    run.coins = Math.min(Number.MAX_SAFE_INTEGER, run.coins + coinsGained);
-    run.totalRolls = Math.min(Number.MAX_SAFE_INTEGER, run.totalRolls + 1);
-    run.bestRarity = Math.max(run.bestRarity, rarity);
-    run.updatedAt = now;
-    const speedPerkFactor = Math.max(0.65, 1 - riftPerks.riftSpeed * 0.03);
-    run.nextRollAt = now + Math.max(450, Math.round(
-      riftChallengeCooldownMs(run.upgradeLevels.speed, challenge.baseCooldownMs) * speedPerkFactor,
-    ));
-    run.lastRoll = { rarity, isCritical, coinsGained, rolledAt: now };
-
-    if (rarity >= challenge.targetRarity) {
-      run.status = 'completed';
-      run.completedAt = now;
-      archive.totalCompletedRuns = Math.min(Number.MAX_SAFE_INTEGER, archive.totalCompletedRuns + 1);
-      const firstClear = !archive.completedChallengeIds.includes(challenge.id);
-      if (firstClear) {
-        archive.completedChallengeIds.push(challenge.id);
-      }
-      const pointReward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
-      archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, archive.riftPoints + pointReward);
-      archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + pointReward);
-      archive.bestRarityByChallenge[challenge.id] = Math.max(
-        archive.bestRarityByChallenge[challenge.id] ?? 0,
-        run.bestRarity,
-      );
-      archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
-    }
-
-    await writeArchive(archive);
-    return snapshot(archive, run.mainProgressAtStart);
-  });
+/** Kept as a compatibility guard; actual Rift rolls now use the ordinary game /api/roll path. */
+export async function rollRiftChallenge(_expectedRunIdValue: unknown): Promise<RiftChallengeSnapshot> {
+  throw new Error('Use the main game Roll button while a Rift challenge is active.');
 }
 
 export async function buyRiftChallengeUpgrade(
@@ -365,17 +347,22 @@ export async function buyRiftChallengeUpgrade(
     const run = archive.activeRun;
     if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
     assertExpectedRunId(run, expectedRunIdValue);
-    if (!run.mechanicUnlocks[upgradeId]) {
-      throw new Error('Main-game requirement not met: ' + RIFT_CHALLENGE_UPGRADES[upgradeId].mainRequirement + '.');
+    const gameState = ensureRunGameState(run);
+    const progress = progressFromGameState(gameState);
+    const mechanicUnlocks = riftChallengeMechanicUnlocks(progress);
+    if (!mechanicUnlocks[upgradeId]) {
+      throw new Error('Rift-game requirement not met: ' + RIFT_CHALLENGE_UPGRADES[upgradeId].mainRequirement + '.');
     }
     const definition = RIFT_CHALLENGE_UPGRADES[upgradeId];
     const currentLevel = run.upgradeLevels[upgradeId];
     if (currentLevel >= definition.maxLevel) throw new Error('This challenge upgrade is already at maximum level.');
     const cost = riftChallengeUpgradeCost(upgradeId, currentLevel, run.totalRolls);
-    if (run.coins < cost) throw new Error('Need ' + String(cost) + ' challenge Coins for this upgrade.');
-    run.coins -= cost;
+    if (gameState.coins < cost) throw new Error('Need ' + String(cost) + ' Rift Coins for this upgrade.');
+    gameState.coins -= cost;
+    gameState.stateRevision = safeInteger(gameState.stateRevision) + 1;
+    run.coins = gameState.coins;
     run.upgradeLevels[upgradeId] = currentLevel + 1;
-    run.updatedAt = Date.now();
+    syncRunSummaryFromGameState(run);
     await writeArchive(archive);
     return snapshot(archive, run.mainProgressAtStart);
   });
@@ -398,8 +385,8 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
     archive.riftPerkLevels[perkId] = currentLevel + 1;
     archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
     await writeArchive(archive);
-    const mainProgress = archive.activeRun?.status === 'active'
-      ? archive.activeRun.mainProgressAtStart
+    const mainProgress = archive.activeRun?.status === 'active' && archive.activeRun.gameState
+      ? progressFromGameState(archive.activeRun.gameState)
       : await readMainProgress();
     return snapshot(archive, mainProgress);
   });
