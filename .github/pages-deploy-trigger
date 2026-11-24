@@ -59,3 +59,5 @@ Rift restoration: integrate the current challenge system into the modern Pages g
 Pages validation: include the Rift integration and main-game-only beginner Orb guarantee regression tests.
 
 Pages validation retry: remove duplicate client declarations introduced while merging Rift into the Pages branch.
+
+Pages update: add the full purple Rift theme and slow rotating vortex atmosphere, scoped to active Rift sessions.

@@ -116,6 +116,7 @@ import './styles.css';
 import './ui-polish.css';
 import './experience-200.css';
 import './mobile-experience.css';
+import './rift-theme.css';
 
 const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
@@ -545,6 +546,7 @@ function App() {
       setCombatTutorialStep(1);
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
+  const riftActive = Boolean(state?.riftSession || state?.riftSaveContext?.startsWith('rift:'));
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
   const riftChallengesMode = tab === 'challenges' && !state?.riftSession;
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
@@ -3943,7 +3945,8 @@ function App() {
   }
 
   return (
-    <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
+    <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} ${riftActive ? 'io-rift-active' : ''} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
+      {riftActive && <div className="io-rift-atmosphere" aria-hidden="true" />}
       {/* Sticky Top Header */}
       <Header
         state={state}
