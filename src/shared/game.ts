@@ -1196,6 +1196,8 @@ export interface PlayerState {
   collectionStorageVersion?: number;
   collectionCount?: number;
   codexChain?: number;
+  codexChainStart?: number;
+  codexChainEnd?: number;
   codexDevotionLuckPercent?: number;
   /** Persistent charge for equipped Shard Constellation Rune effects. */
   runeConstellationCharge?: number;
