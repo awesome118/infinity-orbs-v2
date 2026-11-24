@@ -93,6 +93,13 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(riftTheme, /io-rift-spiral-arms/);
   assert.match(riftTheme, /prefers-reduced-motion: reduce/);
 
+  // Keep the portal in the shell's negative layer. Do not flatten every GUI
+  // child to z-index: 1, which traps dropdowns and dialogs behind later siblings.
+  assert.doesNotMatch(riftTheme, /\.io-ui\.io-rift-active\s*>\s*:not\(\.io-rift-atmosphere\)\s*\{\s*z-index:\s*1;/);
+  assert.match(riftTheme, /\.io-rift-atmosphere\s*\{\s*position:\s*fixed;\s*z-index:\s*-1;/);
+  assert.match(riftTheme, /\.io-ui\.io-rift-active \.app-header\s*\{\s*z-index:\s*60;/);
+  assert.match(riftTheme, /\.io-ui\.io-rift-active \.app-nav\s*\{\s*z-index:\s*50;/);
+
   // The completed response is held until the charge and orb-reveal sequence finishes.
   assert.match(client, /res\.state\.riftRunComplete === true/);
   assert.match(client, /pendingRiftChallengeCompletionRef\.current =/);
