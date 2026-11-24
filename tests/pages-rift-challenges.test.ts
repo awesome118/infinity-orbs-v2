@@ -74,7 +74,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(client, /const riftActive = Boolean/);
   assert.match(client, /newBestModalData && !riftActive/);
   assert.match(client, /current\.riftSession \|\| current\.riftSaveContext/);
-  assert.match(client, /if \(loadedState\.riftSession\) throw new Error\('Frenzy publishing is unavailable inside an isolated Rift run/);
+  assert.match(game, /if \(loadedState\.riftSession\) throw new Error\('Frenzy publishing is unavailable inside an isolated Rift run/);
   assert.match(rollUi, /const isRiftSave = Boolean\(state\.riftSession/);
   assert.match(rollUi, /const frenzyArmedForRoll = frenzyArmed && !isRiftSave/);
   assert.match(rollUi, /!isRiftSave && \(/);
