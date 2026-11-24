@@ -57,3 +57,5 @@ Pages update: expanded Admin CLI feature controls, server-side granular route ga
 Rift restoration: integrate the current challenge system into the modern Pages game while preserving current Pages balance, admin, mobile, and Frenzy features.
 
 Pages validation: include the Rift integration and main-game-only beginner Orb guarantee regression tests.
+
+Pages validation retry: remove duplicate client declarations introduced while merging Rift into the Pages branch.
