@@ -2319,7 +2319,7 @@ function App() {
       if (canShowPrediction && prediction) {
         setLastOrb(prediction.orb);
         setLastBatch([prediction.orb]);
-        setBatchSummary(null);
+        // Keep the previous confirmed reward text visible until the server commits this roll.
       }
       const ticketSeed = ticket.seeds[ticketIndex - ticket.predictionStartIndex];
       if (!ticketSeed) throw new Error('Roll prediction seed is unavailable. Refresh the game.');
