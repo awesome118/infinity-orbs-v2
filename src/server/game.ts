@@ -3929,7 +3929,8 @@ async function saveActiveRiftPlayerState(
   const userId = currentUserId();
   const expectedTicketKey = rollTicketKey(userId, session.runId);
   const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
-  if (ticketWrites.length > 1 || allExtraWrites.some(write => write.key !== expectedTicketKey)) {
+  const unsupportedRequiredWrites = allExtraWrites.filter(write => write.key !== expectedTicketKey && !write.optional);
+  if (ticketWrites.length > 1 || unsupportedRequiredWrites.length > 0) {
     throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
   }
 
