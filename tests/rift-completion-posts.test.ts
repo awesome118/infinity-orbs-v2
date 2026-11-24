@@ -36,7 +36,7 @@ test('Kudos is once per viewer, expires after 24 hours, and applies all three re
   assert.match(server, /RIFT_KUDOS_PROGRESS_MINUTES = 1/);
   assert.match(server, /archive\.kudosSinceLastOpen = Math\.min/);
   assert.match(server, /await save\(giverState, \[/);
-  assert.match(post, /name="Kudos"/);
+  assert.match(post, /Send Kudos/);
   assert.match(post, /Sending Kudos does not open the game\./);
 
   const sendStart = post.indexOf('const sendKudos');
