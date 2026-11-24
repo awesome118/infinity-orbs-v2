@@ -720,6 +720,7 @@ function App() {
   const [frenzyArmed, setFrenzyArmed] = useState(false);
   const [showFrenzyPrompt, setShowFrenzyPrompt] = useState(false);
   const [frenzyPromptPreview, setFrenzyPromptPreview] = useState(false);
+  const [frenzyShardPopup, setFrenzyShardPopup] = useState<{ amount: number; eventCount: number; preview: boolean } | null>(null);
   const [popupConfig, setPopupConfig] = useState<PopupConfig>(() => ({ ...DEFAULT_POPUP_CONFIG }));
   const [popupConfigLoaded, setPopupConfigLoaded] = useState(false);
   const [showJoinSubredditPrompt, setShowJoinSubredditPrompt] = useState(false);
@@ -733,6 +734,8 @@ function App() {
   const [frenzyThanksPrompt, setFrenzyThanksPrompt] = useState<{ rarity: number; isInfinity?: boolean; ownerUsername: string; postId: string; message: string } | null>(null);
   const [postingFrenzyThanks, setPostingFrenzyThanks] = useState(false);
   const frenzyPromptShownRef = useRef(false);
+  const frenzyShardPopupShownAtRef = useRef(0);
+  const riftGameOpenedRef = useRef(false);
   const frenzyClaimActiveRef = useRef(false);
   const componentMountedRef = useRef(true);
   const stateRevisionRef = useRef(0);
@@ -778,6 +781,47 @@ function App() {
     });
     return () => { active = false; };
   }, [splashEntered]);
+
+  // The "since last open" counter uses a server timestamp, not a browser-local
+  // value that could be reset or manipulated by changing the device clock.
+  useEffect(() => {
+    if (!splashEntered || riftGameOpenedRef.current) return;
+    riftGameOpenedRef.current = true;
+    void getJson('/api/rift-challenges/mark-opened', { method: 'POST' })
+      .catch(error => console.warn('[Rift Kudos] Could not record game entry.', error));
+  }, [splashEntered]);
+
+  useEffect(() => {
+    const pending = state?.frenzyShardPopupPending;
+    if (
+      !splashEntered ||
+      !popupConfigLoaded ||
+      !popupConfig.frenzyShard ||
+      !pending ||
+      state?.riftSession ||
+      frenzyShardPopupShownAtRef.current === pending.lastRewardAt ||
+      showFrenzyPrompt ||
+      showJoinSubredditPrompt ||
+      showNotificationPrompt
+    ) return;
+    frenzyShardPopupShownAtRef.current = pending.lastRewardAt;
+    setFrenzyShardPopup({
+      amount: Math.max(0, Number(pending.amount) || 0),
+      eventCount: Math.max(1, Math.floor(Number(pending.eventCount) || 1)),
+      preview: false,
+    });
+    trackPopupEvent('frenzyShard', 'shown');
+  }, [
+    splashEntered,
+    popupConfigLoaded,
+    popupConfig.frenzyShard,
+    state?.frenzyShardPopupPending,
+    state?.riftSession,
+    showFrenzyPrompt,
+    showJoinSubredditPrompt,
+    showNotificationPrompt,
+    trackPopupEvent,
+  ]);
 
   useEffect(() => {
     // React Strict Mode replays effects in development. Restore the mounted
@@ -3579,6 +3623,23 @@ function App() {
     trackPopupEvent('frenzy', 'dismissed');
   };
 
+  const dismissFrenzyShardPopup = async (event: 'accepted' | 'dismissed' = 'accepted') => {
+    const popup = frenzyShardPopup;
+    if (!popup) return;
+    setFrenzyShardPopup(null);
+    if (popup.preview) {
+      showToast('Frenzy Shard popup preview closed. No reward or metric was applied.', 'info');
+      return;
+    }
+    trackPopupEvent('frenzyShard', event);
+    try {
+      const result = await getJson<{ state: PlayerState }>('/api/frenzy/shard-popup/ack', { method: 'POST' });
+      applyPlayerState(result.state);
+    } catch (error) {
+      console.warn('[Frenzy Shard Popup] Could not acknowledge the notice. It will be available again after reopening the game.', error);
+    }
+  };
+
   const acceptFrenzyPrompt = () => {
     if (frenzyPromptPreview) {
       setShowFrenzyPrompt(false);
@@ -3797,6 +3858,7 @@ function App() {
           <DevDebugModal
             onClose={() => setShowDevModal(false)}
             onRefresh={refreshAll}
+            onForceFrenzyShardPopup={() => setFrenzyShardPopup({ amount: FRENZY_OWNER_SHARD_REWARD, eventCount: 1, preview: true })}
           />
         )}
       </main>
@@ -4473,6 +4535,39 @@ function App() {
             </div>
             <div className="mt-3 text-[10px] text-slate-600">
               You can post another Frenzy tomorrow.
+            </div>
+          </section>
+        </div>
+      )}
+
+      {frenzyShardPopup && (
+        <div className="fixed inset-0 z-[72] io-modal-backdrop flex items-center justify-center p-4" data-testid="frenzy-shard-popup-backdrop">
+          <section className="io-modal-card w-full max-w-md overflow-hidden border border-fuchsia-400/35 bg-slate-950/95 shadow-[0_0_70px_rgba(217,70,239,.2)]" role="dialog" aria-modal="true" aria-labelledby="io-frenzy-shard-popup-title" data-testid="frenzy-shard-popup">
+            {frenzyShardPopup.preview && <div className="mb-3 rounded-lg border border-teal-400/30 bg-teal-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-teal-200">Admin Preview · No reward or metrics</div>}
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-200">
+              <Sparkles className="h-4 w-4" /> Orb Frenzy · Owner Reward
+            </div>
+            <div className="relative mt-4 overflow-hidden rounded-2xl border border-fuchsia-400/25 bg-gradient-to-br from-fuchsia-950/70 via-indigo-950/70 to-slate-950 px-5 py-6 text-center">
+              <div className="pointer-events-none absolute inset-0 opacity-40" style={{ background: 'radial-gradient(circle at 50% 25%, rgba(232,121,249,.45), transparent 58%)' }} />
+              <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-fuchsia-200/40 bg-fuchsia-400/10 shadow-[0_0_35px_rgba(217,70,239,.35)]">
+                <Sparkles className="h-8 w-8 text-fuchsia-100" />
+              </div>
+              <h2 id="io-frenzy-shard-popup-title" className="relative mt-4 text-xl font-black text-white">Your Frenzy was claimed</h2>
+              <div className="relative mt-2 text-4xl font-black tracking-tight text-fuchsia-100 drop-shadow-[0_0_16px_rgba(232,121,249,.6)]">+{formatNumber(frenzyShardPopup.amount)} SHARDS</div>
+              <p className="relative mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-300">
+                Someone claimed your Orb Frenzy. These Shards have already been added to your balance.
+              </p>
+              {frenzyShardPopup.eventCount > 1 && !frenzyShardPopup.preview && (
+                <div className="relative mt-3 text-[10px] font-bold uppercase tracking-wider text-fuchsia-200/80">{formatNumber(frenzyShardPopup.eventCount)} owner rewards received</div>
+              )}
+            </div>
+            <div className="io-modal-actions mt-4">
+              <button type="button" onClick={() => void dismissFrenzyShardPopup('accepted')} className="io-public-button io-public-button-primary" data-testid="frenzy-shard-popup-ack">
+                <Sparkles className="h-4 w-4" /> Got it
+              </button>
+              <button type="button" onClick={() => void dismissFrenzyShardPopup('dismissed')} className="io-public-button io-public-button-secondary" aria-label="Dismiss Frenzy Shard reward notice">
+                Not now
+              </button>
             </div>
           </section>
         </div>
