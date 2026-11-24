@@ -3826,8 +3826,21 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       gameState.stateRevision = 0;
     }
     const riftPerks = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+    const runId = run.runId.slice(0, 120);
+    const codexOwnerId = riftCodexOwnerId(userId, runId);
+    const inlineCollection = isValidCollection(gameState.collection)
+      ? normalizeCodexCollection(gameState.collection)
+      : {};
+    const storedCollection = await readCodexShards(codexOwnerId, 0);
+    if (Object.keys(storedCollection).length === 0 && Object.keys(inlineCollection).length > 0) {
+      await migrateLegacyCodex(codexOwnerId, 0, inlineCollection);
+      gameState.collection = inlineCollection;
+    } else {
+      gameState.collection = storedCollection;
+    }
+    gameState.collectionStorageVersion = CODEX_STORAGE_VERSION;
     return {
-      runId: run.runId.slice(0, 120),
+      runId,
       challengeId: challenge.id,
       targetRarity: challenge.targetRarity,
       baseCooldownMs: challenge.baseCooldownMs,
@@ -3846,6 +3859,10 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     console.error('[Rift Save] Could not read the active Rift archive.', error);
     throw new Error('Your active Rift save could not be read safely. Your main save has not been changed.');
   }
+}
+
+function riftCodexOwnerId(userId: string, runId: string): string {
+  return userId + ':rift:' + runId;
 }
 
 function safeNonNegativeInteger(value: unknown): number {
@@ -3877,7 +3894,8 @@ function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number
 }
 
 function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerState {
-  const stored = { ...state, stateRevision: revision, saveGeneration: 0 };
+  const stored: Record<string, unknown> = { ...state, stateRevision: revision, saveGeneration: 0 };
+  delete stored.collection;
   delete stored.riftSession;
   delete stored.riftRunComplete;
   delete stored.gameBan;
@@ -3889,6 +3907,13 @@ function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerS
   delete stored.codexChain;
   delete stored.codexDevotionLuckPercent;
   return JSON.parse(JSON.stringify(stored)) as PlayerState;
+}
+
+export async function deleteRiftCodexForRun(runId: string): Promise<void> {
+  const ownerId = riftCodexOwnerId(currentUserId(), String(runId ?? '').slice(0, 120));
+  await Promise.all(Array.from({ length: CODEX_SHARD_COUNT }, (_, shard) =>
+    redis.del(codexShardKey(ownerId, 0, shard)),
+  ));
 }
 
 async function saveActiveRiftPlayerState(
@@ -3909,11 +3934,17 @@ async function saveActiveRiftPlayerState(
   );
   const userId = currentUserId();
   const keyName = RIFT_ARCHIVE_KEY_PREFIX + userId;
+  const codexOwnerId = riftCodexOwnerId(userId, session.runId);
+  const dirtyCodexKeys = pendingCodexRarityWrites.get(state) ?? new Set<string>();
+  const codexWrites = state.collectionStorageVersion === CODEX_STORAGE_VERSION && dirtyCodexKeys.size > 0
+    ? groupCodexFields(Array.from(dirtyCodexKeys, rarityKey => [rarityKey, Number(state.collection?.[rarityKey] ?? 0)] as const))
+    : [];
+  const codexWriteKeys = codexWrites.map(write => codexShardKey(codexOwnerId, 0, write.shard));
   const now = Date.now();
   await touchPlayerActivity(userId, String(state.username ?? context.username ?? userId));
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const txn = await redis.watch(keyName, ...ticketWrites.map(write => write.key));
+    const txn = await redis.watch(keyName, ...ticketWrites.map(write => write.key), ...codexWriteKeys);
     let transactionClosed = false;
     try {
       const [raw, ...ticketRawValues] = await Promise.all([
@@ -3996,6 +4027,9 @@ async function saveActiveRiftPlayerState(
 
       await txn.multi();
       await txn.set(keyName, JSON.stringify(archive));
+      for (let index = 0; index < codexWrites.length; index += 1) {
+        await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
+      }
       for (const write of ticketWrites) {
         if (write.expiration) await txn.set(write.key, write.nextValue, { expiration: write.expiration });
         else await txn.set(write.key, write.nextValue);
@@ -4011,6 +4045,9 @@ async function saveActiveRiftPlayerState(
         if (completed) {
           state.riftRunComplete = true;
           delete state.riftSession;
+          void deleteRiftCodexForRun(session.runId).catch(error => {
+            console.error('[Rift Save] Completed challenge Codex cleanup failed:', error);
+          });
         }
         return;
       }
