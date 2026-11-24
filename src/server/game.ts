@@ -4469,6 +4469,8 @@ async function saveActiveRiftPlayerState(
 
 export async function loadRaw(options: { registerActivity?: boolean; persistMigrations?: boolean; source?: 'active' | 'main' } = {}): Promise<PlayerState> {
   const userId = currentUserId();
+  // Read-only snapshots must never race an ordinary player mutation by committing a save migration.
+  const canPersistMigrations = options.persistMigrations !== false && getActivePlayerMutationLock(userId) !== null;
   const activeRiftRun = options.source === 'main' ? null : await readActiveRiftRun(userId);
   const isRiftSave = activeRiftRun !== null;
   const playerKey = key();
@@ -4555,16 +4557,16 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     restoredCollection = normalizeCodexCollection(isValidCollection(parsed.collection) ? parsed.collection : {});
   } else if (storedCodexVersion === CODEX_STORAGE_VERSION) {
     restoredCollection = await readCodexShards(userId, generation);
-    await deleteLegacyCodexShards(userId, generation);
+    if (canPersistMigrations) await deleteLegacyCodexShards(userId, generation);
   } else if (storedCodexVersion === 1) {
     restoredCollection = await readLegacyCodexShards(userId, generation);
     if (Object.keys(restoredCollection).length === 0 && isValidCollection(parsed.collection)) {
       restoredCollection = normalizeCodexCollection(parsed.collection);
     }
-    await migrateLegacyCodex(userId, generation, restoredCollection);
+    if (canPersistMigrations) await migrateLegacyCodex(userId, generation, restoredCollection);
   } else {
     restoredCollection = normalizeCodexCollection(isValidCollection(parsed.collection) ? parsed.collection : base.collection);
-    await migrateLegacyCodex(userId, generation, restoredCollection);
+    if (canPersistMigrations) await migrateLegacyCodex(userId, generation, restoredCollection);
   }
   const cleanParsed = { ...(parsed as PlayerState & Record<string, unknown>) };
   const normalizedPurchasedShards = Math.min(
@@ -4740,7 +4742,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
   }
   // Persist one-time migrations rather than only changing the read view.
   const levelExpansionMigration = restoredLevel > parsedLevel;
-  if (options.persistMigrations !== false && (levelExpansionMigration || needsCodexMigration)) {
+  if (canPersistMigrations && (levelExpansionMigration || needsCodexMigration)) {
     try {
       await save(restored);
     } catch (error) {
