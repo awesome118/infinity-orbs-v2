@@ -72,7 +72,8 @@ test('Clockwork applies through the Auto Roll request, server cooldown, and live
   assert.ok(app.includes('req.body?.auto === true'));
   assert.ok(rollHandler.includes('const cd = cooldownMs(s, isAuto, liveBalance)'));
   assert.ok(rollHandler.includes('rollsRemainingUntilNext: cd'));
-  assert.ok(client.includes('const authoritativeReadyAt = lastRollAt + cooldownMs(timingState, true)'));
+  assert.ok(client.includes('const nextReadyAt = autoRollReadyAt('));
+  assert.ok(client.includes('cooldownMs(latest, true, liveBalance)'));;
   assert.ok(client.includes('setReadyAt(Math.max(authoritativeReadyAt, autoRollCooldownRetryUntilRef.current))'));
 });
 
