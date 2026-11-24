@@ -90,8 +90,12 @@ test('notification prompt works for returning players and admin preview does not
   assert.match(main, /setNotificationPromptPreview\(true\)/);
   assert.doesNotMatch(main, /maybePromptForNotifications/);
 
-  assert.match(header, /Enable Reddit notifications/);
-  assert.match(header, /Disable Reddit notifications/);
+  assert.match(header, /Push notifications/);
+  assert.match(header, /Choose each type independently/);
+  assert.match(header, /aria-label="Notification settings"/);
+  assert.match(header, /role="switch"/);
+  assert.match(header, /Game updates/);
+  assert.match(header, /Offline Orbs/);
   assert.match(server, /export async function getNotificationState/);
   assert.match(server, /return notifications\.isOptedIn\(id\)/);
   assert.match(server, /await notifications\.optInCurrentUser\(\)/);
