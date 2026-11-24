@@ -52,6 +52,7 @@ test('Rift menu counts Kudos over the last day and since the most recent game en
   const client = read('src/client/components/RiftChallengesSection.tsx');
   const shared = read('src/shared/rift-challenges.ts');
   const main = read('src/client/main.tsx');
+  const pagesApi = read('src/pages/api.ts');
 
   assert.match(shared, /kudosSinceLastOpen: number/);
   assert.match(shared, /kudosDisplaySinceLastOpen: number/);
@@ -59,6 +60,7 @@ test('Rift menu counts Kudos over the last day and since the most recent game en
   assert.match(server, /sinceLastOpen: archive\.kudosDisplaySinceLastOpen \+ archive\.kudosSinceLastOpen/);
   assert.match(server, /archive\.kudosSinceLastOpen = 0/);
   assert.match(main, /\/api\/rift-challenges\/mark-opened/);
+  assert.match(pagesApi, /case '\/api\/rift-challenges\/mark-opened'/);
   assert.match(client, /snapshot\.kudosStats\.last24Hours/);
   assert.match(client, /snapshot\.kudosStats\.sinceLastOpen/);
 });
