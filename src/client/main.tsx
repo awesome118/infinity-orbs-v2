@@ -22,6 +22,7 @@ import {
   Megaphone,
   X,
   Gem,
+  Compass,
   MessageSquare,
 } from 'lucide-react';
 import type {
@@ -89,6 +90,8 @@ import { sound } from './sound.js';
 import { autoRollCooldownRetryDelayMs, autoRollReadyAt, manualRollReadyAt } from '../shared/auto-roll-timing.js';
 import { Header } from './components/Header.js';
 import { CombatSection } from './components/CombatSection.js';
+import { RiftChallengesSection } from './components/RiftChallengesSection.js';
+import { RedditPostSimulator } from './components/RedditPostSimulator.js';
 import type { CombatPage } from '../shared/combat.js';
 import { RollSection } from './components/RollSection.js';
 import { UpgradesSection } from './components/UpgradesSection.js';
@@ -147,6 +150,7 @@ type ActiveTab =
   | 'boosters'
   | 'altar'
   | 'mastery'
+  | 'challenges'
   | 'collection'
   | 'runes'
   | 'quests'
@@ -159,6 +163,8 @@ type ActiveTab =
   | 'skills'
   | 'arena'
   | 'reddit-simulator';
+
+const IS_GITHUB_PAGES_TEST = typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
 
 const inFlightReadRequests = new Map<string, Promise<unknown>>();
 
@@ -542,8 +548,11 @@ function App() {
     }
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
-  const combatModeRef = useRef(combatMode);
-  combatModeRef.current = combatMode;
+  const riftChallengesMode = tab === 'challenges' && !state?.riftSession;
+  const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
+  const standalonePageMode = combatMode || riftChallengesMode;
+  const combatModeRef = useRef(standalonePageMode);
+  combatModeRef.current = standalonePageMode;
   const [autoRoll, setAutoRoll] = useState<boolean>(false);
   const [isBeta, setIsBeta] = useState(false);
   const [changelogUnread, setChangelogUnread] = useState(() => {
@@ -554,14 +563,14 @@ function App() {
   // different browsers, and Reddit's embedded webview storage boundaries.
   useEffect(() => {
     setAutoRoll(Boolean(
-      !combatMode &&
+      !standalonePageMode &&
       state &&
       (state.upgrades.auto ?? 0) > 0 &&
       state.autoRollEnabled === true,
     ));
-  }, [combatMode, state?.autoRollEnabled, state?.upgrades.auto]);
+  }, [standalonePageMode, state?.autoRollEnabled, state?.upgrades.auto]);
 
-  // Persist Auto Roll as OFF while Combat is open, including direct links into a Combat tab.
+  // Persist Auto Roll as OFF while a standalone page is open, including direct links.
   useEffect(() => {
     const onCombatBeatState = (event: Event) => {
       combatBeatActiveRef.current = (event as CustomEvent<{active?:boolean}>).detail?.active === true;
@@ -571,7 +580,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!combatMode) {
+    if (!standalonePageMode) {
       autoRollDisableForCombatRef.current = false;
       return;
     }
@@ -589,11 +598,11 @@ function App() {
     }).catch(() => {
       // Keep Auto Roll disabled locally even if the preference write failed.
       setAutoRoll(false);
-      showToast('Auto Roll was stopped for Combat, but the preference could not be saved.', 'warn');
+      showToast('Auto Roll was stopped for the standalone page, but the preference could not be saved.', 'warn');
     }).finally(() => {
       autoRollDisableForCombatRef.current = false;
     });
-  }, [combatMode, state?.autoRollEnabled]);
+  }, [standalonePageMode, state?.autoRollEnabled]);
 
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
@@ -920,6 +929,15 @@ function App() {
     const nextServerRevision = Number(nextState.stateRevision);
     const nextServerGeneration = Number(nextState.saveGeneration);
     const currentState = stateRef.current;
+    const currentRiftRunId = currentState?.riftSaveContext ?? (currentState?.riftSession?.runId ? 'rift:' + currentState.riftSession.runId : 'main');
+    const nextRiftRunId = nextState.riftSaveContext ?? (nextState.riftSession?.runId ? 'rift:' + nextState.riftSession.runId : 'main');
+    if (currentState && currentRiftRunId !== nextRiftRunId) {
+      // Main and Rift saves have independent revision counters.
+      appliedServerGenerationRef.current = nextServerGeneration;
+      appliedServerRevisionRef.current = -1;
+      rollTicketRef.current = null;
+      rollTicketRequestRef.current = null;
+    }
 
     // Normal reads reject balance changes at an unchanged durable revision.
     // Upgrade recovery is the narrow exception: a rejected optimistic purchase
@@ -948,9 +966,11 @@ function App() {
     // Global Boosters are shared state with their own polling timeline. Keep the
     // freshest accepted snapshot across delayed /api/me and mutation responses,
     // just as we preserve the live online-player overlay.
-    const currentGlobalBoosters =
-      latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
-    if (latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
+    const isRiftSave = Boolean(nextState.riftSession || nextState.riftSaveContext?.startsWith('rift:'));
+    const currentGlobalBoosters = isRiftSave
+      ? nextState.globalBoosters ?? null
+      : latestGlobalBoostersRef.current ?? currentState?.globalBoosters ?? nextState.globalBoosters ?? null;
+    if (!isRiftSave && latestGlobalBoostersRef.current == null && currentGlobalBoosters != null) {
       latestGlobalBoostersRef.current = currentGlobalBoosters;
     }
     const mergedState = {
@@ -1033,9 +1053,14 @@ function App() {
       rollTicketRequestRef.current = tracked;
     }
 
+    const requestedRiftRunId = stateRef.current?.riftSession?.runId ?? null;
     const ticket = await rollTicketRequestRef.current;
     if (requestSessionEpoch !== authSessionEpochRef.current) {
       throw new Error('REDDIT_LOGIN_REQUIRED');
+    }
+    if (requestedRiftRunId !== (stateRef.current?.riftSession?.runId ?? null)) {
+      rollTicketRef.current = null;
+      throw new Error('The active game save changed while preparing a roll. Refresh and try again.');
     }
     rollTicketRef.current = ticket;
     return ticket;
@@ -1084,6 +1109,7 @@ function App() {
     boosters: 'Boosters',
     altar: 'Altar',
     mastery: 'Mastery',
+    challenges: 'Challenges',
     collection: 'Collection',
     social: 'Guilds',
     profile: 'Progress',
@@ -1094,6 +1120,7 @@ function App() {
     skills: 'Combat',
     arena: 'Combat',
     runes: 'Runes',
+    'reddit-simulator': 'Reddit Simulator',
   };
 
   const changeTab = (nextTab: ActiveTab) => {
@@ -1110,8 +1137,10 @@ function App() {
       return;
     }
     const targetIsCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
-    if (targetIsCombatMode && rollActionLockRef.current) {
-      showToast('Finish the current roll before entering Combat.', 'info');
+    const targetIsRiftChallengesMode = nextTab === 'challenges' && !stateRef.current?.riftSession;
+    const targetIsStandalonePageMode = targetIsCombatMode || targetIsRiftChallengesMode;
+    if (targetIsStandalonePageMode && rollActionLockRef.current) {
+      showToast(targetIsRiftChallengesMode ? 'Finish the current roll before opening Rift Challenges.' : 'Finish the current roll before entering Combat.', 'info');
       return;
     }
     if (combatMode && !targetIsCombatMode && combatBeatActiveRef.current) {
@@ -1120,7 +1149,7 @@ function App() {
     }
     if (combatMode && !targetIsCombatMode) window.dispatchEvent(new CustomEvent('io-combat-leaving'));
     // Update synchronously so stale interval callbacks cannot roll during a tab transition.
-    combatModeRef.current = targetIsCombatMode;
+    combatModeRef.current = targetIsStandalonePageMode;
     if (targetIsCombatMode) {
       setAutoRoll(false);
       if (stateRef.current?.autoRollEnabled === true) {
@@ -1325,13 +1354,16 @@ function App() {
       if (me.gameBan?.active) return;
       const isCurrentRefresh = () =>
         componentMountedRef.current && refreshSequence === refreshSequenceRef.current;
+      if (me.riftSession || me.riftSaveContext?.startsWith('rift:')) setWorldEvent(null);
       const communityReads = [
+        ...(!(me.riftSession || me.riftSaveContext?.startsWith('rift:')) ? [
+          getJson<WorldEvent | null>('/api/world-event')
+            .then(value => { if (isCurrentRefresh()) setWorldEvent(value); })
+            .catch(() => undefined),
+        ] : []),
         ...(activeTabRef.current === 'social'
           ? [refreshLeaderboards().catch(() => undefined), refreshGuildData().catch(() => undefined)]
           : []),
-        getJson<WorldEvent | null>('/api/world-event')
-          .then(value => { if (isCurrentRefresh()) setWorldEvent(value); })
-          .catch(() => undefined),
         getJson<{ message: string; updatedAt: number; updatedBy: string } | null>('/api/developer-announcement')
           .then(value => { if (isCurrentRefresh()) setDeveloperAnnouncement(value?.message ? value : null); })
           .catch(() => undefined),
@@ -1380,6 +1412,20 @@ function App() {
       console.error('Refresh error:', e);
     }
   }, [applyPlayerState, refreshGuildData, refreshLeaderboards, splashEntered]);
+
+  useEffect(() => {
+    if (!state?.riftRunComplete) return;
+    setTab('challenges');
+    setMoreNavOpen(false);
+    setAutoRoll(false);
+    setLastOrb(null);
+    setLastBatch([]);
+    setBatchSummary(null);
+    setReadyAt(0);
+    // The winning roll response contains the finished Rift save. Load the
+    // original account save after the server has closed the Rift run.
+    void refreshAll({ allowSameRevisionBalanceChanges: true });
+  }, [state?.riftRunComplete, refreshAll]);
 
   // Admin discovery must not delay the game or community panels. A brief
   // status outage retries with backoff while preserving any confirmed access.
@@ -1645,6 +1691,10 @@ function App() {
   // Refresh live community state while visible; hidden webviews should not poll.
   useEffect(() => {
     if (!splashEntered) return;
+    if (state?.riftSession || state?.riftSaveContext?.startsWith('rift:')) {
+      setWorldEvent(null);
+      return;
+    }
     const pollInterval = tab === 'social' ? 10_000 : 20_000;
     let cancelled = false;
     let worldEventInFlight = false;
@@ -1701,11 +1751,11 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab, splashEntered]);
+  }, [tab, splashEntered, state?.riftSession?.runId, state?.riftSaveContext]);
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (!splashEntered || tab !== 'boosters') return;
+    if (!splashEntered || tab !== 'boosters' || state?.riftSession || state?.riftSaveContext?.startsWith('rift:')) return;
     let cancelled = false;
     let inFlight = false;
     const refreshGlobalBoosters = async () => {
@@ -1713,7 +1763,7 @@ function App() {
       inFlight = true;
       try {
         const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
-        if (cancelled || !snapshot) return;
+        if (cancelled || !snapshot || stateRef.current?.riftSession || stateRef.current?.riftSaveContext?.startsWith('rift:')) return;
         latestGlobalBoostersRef.current = snapshot;
         if (stateRef.current) stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
         setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
@@ -4129,9 +4179,9 @@ function App() {
         </div>
       )}
 
-      <nav aria-label={combatMode ? "Combat navigation" : "Game navigation"} className={"io-nav app-nav" + (combatMode ? " io-nav-combat" : "")}>
+      <nav aria-label={combatMode ? "Combat navigation" : riftChallengesMode ? "Rift Challenges navigation" : "Game navigation"} className={"io-nav app-nav" + (standalonePageMode ? " io-nav-combat" : "") + (riftChallengesMode ? " io-nav-rift" : "") + (redditSimulatorMode ? " io-nav-reddit-simulator" : "")}>
         <div className="nav-shell">
-          {!combatMode ? (
+          {!standalonePageMode ? (
             <>
               <div className="io-nav-primary" role="group" aria-label="Main game">
                 {renderNavItem('roll', 'Roll', Sparkles)}
@@ -4194,9 +4244,19 @@ function App() {
                   <span className="io-nav-label">Combat</span>
                   {state.level < FEATURE_UNLOCK_LEVELS.combat && <span className="io-nav-unlock">Lv {FEATURE_UNLOCK_LEVELS.combat}</span>}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => changeTab('challenges')}
+                  className="nav-tab io-combat-mode-switch io-rift-mode-switch"
+                  aria-label="Open Rift Challenges"
+                  title="Build passive Rift Points, clear trials, and buy permanent perks."
+                >
+                  <Compass className="io-nav-icon" />
+                  <span className="io-nav-label">Rift</span>
+                </button>
               </div>
             </>
-          ) : (
+          ) : combatMode ? (
             <>
               <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Combat pages">
                 <button type="button" aria-current={tab === 'fight' ? 'page' : undefined} onClick={() => changeTab('fight')} className={"nav-tab io-nav-item" + (tab === 'fight' ? " is-active" : "")}><Flame className="io-nav-icon" /><span className="io-nav-label">Fight</span></button>
@@ -4242,6 +4302,18 @@ function App() {
                 </button>
               </div>
             </>
+          ) : (
+            <>
+              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Rift Challenges pages">
+                {renderNavItem('challenges', 'Rift Progression', Compass)}
+              </div>
+              <div className="io-nav-trailing io-nav-combat-trailing">
+                <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
+                  <Sparkles className="io-nav-icon" />
+                  <span className="io-nav-label">Back to Orbs</span>
+                </button>
+              </div>
+            </>
           )}
         </div>
       </nav>
@@ -4268,9 +4340,9 @@ function App() {
       )}
 
       {/* Main Container Content */}
-      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : "")}>
+      <main className={"app-main flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8" + (combatMode ? " io-app-main-combat" : riftChallengesMode ? " io-app-main-rift" : redditSimulatorMode ? " io-app-main-reddit-simulator" : "")}>
 
-        {!combatMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
+        {!standalonePageMode && state && tutorialStatusLoaded && !tutorialDismissed && (state.totalRolls <= 3 || tutorialStep > 0) && (
           <section className="io-tutorial-guide" aria-live="polite" aria-label={`First steps tutorial, step ${Math.min(4, tutorialStep + 1)} of 4`}>
           <div className="io-tutorial-topline"><span>First steps</span><span>Step {Math.min(4, tutorialStep + 1)} of 4</span><button type="button" onClick={finishTutorial} aria-label="Skip tutorial">Skip</button></div>
             {tutorialStep === 0 && <>
@@ -4301,6 +4373,48 @@ function App() {
         )}
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
+        ) : riftChallengesMode ? (
+          <RiftChallengesSection
+            onEnterGame={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
+            onExit={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
+            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+          />
+        ) : redditSimulatorMode ? (
+          <RedditPostSimulator
+            state={state}
+            onClaimed={res => {
+              applyPlayerState(res.state);
+              setLastOrb(res.orb);
+              setLastBatch(res.batch ?? [res.orb]);
+              setBatchSummary({
+                totalVal: res.totalRollValue,
+                coins: res.coinsGained,
+                shards: res.shardsGained,
+                xp: res.xpGained,
+                frenzyCount: res.frenzyCount ?? 0,
+              });
+              setReadyAt(Date.now() + res.rollsRemainingUntilNext);
+              showToast('Simulator Frenzy claimed. ' + formatNumber(res.frenzyCount ?? 0) + ' Orbs rolled.', 'success');
+            }}
+          />
         ) : (
           <>
         {tab === 'roll' && (
@@ -4336,6 +4450,32 @@ function App() {
           />
         )}
 
+        {tab === 'challenges' && !riftChallengesMode && (
+          <RiftChallengesSection
+            onEnterGame={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
+            onExit={() => {
+              setTab('roll');
+              setMoreNavOpen(false);
+              setAutoRoll(false);
+              setLastOrb(null);
+              setLastBatch([]);
+              setBatchSummary(null);
+              setReadyAt(0);
+              void refreshAll({ allowSameRevisionBalanceChanges: true });
+            }}
+            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+          />
+        )}
+
         {tab === 'boosters' && (
           <BoostersAndAutomation
             state={state}
@@ -4345,7 +4485,7 @@ function App() {
               speed: { tier: 0, activationProgress: 0, endsAt: 0 },
               crit: { tier: 0, activationProgress: 0, endsAt: 0 },
             }}
-            worldEvent={worldEvent}
+            worldEvent={state.riftSession || state.riftSaveContext?.startsWith('rift:') ? null : worldEvent}
             onActivateBooster={handleActivatePremiumBooster}
             onActivateGlobalBooster={handleActivateGlobalBooster}
             onBuyAutomation={handleBuyAutomation}
