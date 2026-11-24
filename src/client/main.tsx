@@ -80,7 +80,7 @@ import {
   FEATURE_UNLOCK_LEVELS,
 
 } from '../shared/game.js';
-import { RIFT_CHALLENGES } from '../shared/rift-challenges.js';
+import { getRiftChallengeDefinition } from '../shared/rift-challenges.js';
 import { shouldAcceptPlayerStateSnapshot } from './state-reconciliation.js';
 import {
   DEFAULT_LIVE_BALANCE_CONFIG,
@@ -2423,9 +2423,7 @@ function App() {
       const isRiftCompletion = res.state.riftRunComplete === true &&
         Boolean(currentState.riftSession || currentState.riftSaveContext?.startsWith('rift:'));
       if (isRiftCompletion) {
-        const challengeName = RIFT_CHALLENGES.find(challenge =>
-          challenge.id === currentState.riftSession?.challengeId,
-        )?.name ?? 'Rift Challenge';
+        const challengeName = getRiftChallengeDefinition(currentState.riftSession?.challengeId)?.name ?? 'Rift Challenge';
         const runId = currentState.riftSession?.runId ?? currentState.riftSaveContext ?? 'rift-complete';
         pendingRiftChallengeCompletionRef.current = {
           state: res.state,
