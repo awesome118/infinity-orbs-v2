@@ -88,5 +88,20 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(riftTheme, /io-rift-vortex__ring--outer/);
   assert.match(riftTheme, /io-rift-energy-stream/);
   assert.match(riftTheme, /io-rift-particles/);
+  assert.match(riftTheme, /io-rift-nebula/);
+  assert.match(riftTheme, /io-rift-starfield/);
+  assert.match(riftTheme, /io-rift-spiral-arms/);
   assert.match(riftTheme, /prefers-reduced-motion: reduce/);
+
+  // The completed response is held until the charge and orb-reveal sequence finishes.
+  assert.match(client, /res\.state\.riftRunComplete === true/);
+  assert.match(client, /pendingRiftChallengeCompletionRef\.current =/);
+  assert.match(client, /applyPlayerState\(pending\.state\)/);
+  assert.match(client, /setRiftChallengeCompletedPopup/);
+  assert.match(rollUi, /riftCompletionReveal/);
+  assert.match(rollUi, /io-rift-completion-emissions/);
+  assert.match(rollUi, /setRiftCompletionPhase\('charge'\)/);
+  assert.match(rollUi, /setRiftCompletionPhase\('rush'\)/);
+  assert.match(riftTheme, /io-rift-completion-rush/);
+  assert.match(riftTheme, /io-rift-challenge-shake/);
 });

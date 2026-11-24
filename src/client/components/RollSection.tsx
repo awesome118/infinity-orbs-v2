@@ -59,6 +59,8 @@ interface RollSectionProps {
   frenzyArmed: boolean;
   onOpenShareModal: (rarity: number, isInfinity?: boolean) => void;
   onNewBest?: (orb: Orb, prevBest: number) => void;
+  riftCompletionReveal?: { id: string; orb: Orb } | null;
+  onRiftCompletionRevealComplete?: () => void;
 }
 
 interface FloatingRewardText {
@@ -120,6 +122,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
   frenzyArmed,
   onOpenShareModal,
   onNewBest,
+  riftCompletionReveal = null,
+  onRiftCompletionRevealComplete,
 }) => {
   const isRiftSave = Boolean(state.riftSession || state.riftSaveContext?.startsWith('rift:'));
   const frenzyArmedForRoll = frenzyArmed && !isRiftSave;
@@ -139,6 +143,8 @@ export const RollSection: React.FC<RollSectionProps> = ({
     .reduce((total, count) => total + (count ?? 0), 0);
   const [now, setNow] = useState(() => Date.now());
   const [reducedMotion, setReducedMotion] = useState(() => prefersReducedMotion());
+  const [riftCompletionPhase, setRiftCompletionPhase] = useState<'charge' | 'rush' | null>(null);
+  const [riftCompletionOrb, setRiftCompletionOrb] = useState<Orb | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -148,6 +154,34 @@ export const RollSection: React.FC<RollSectionProps> = ({
     media.addEventListener('change', updatePreference);
     return () => media.removeEventListener('change', updatePreference);
   }, []);
+
+  useEffect(() => {
+    const reveal = riftCompletionReveal;
+    if (!reveal) {
+      setRiftCompletionPhase(null);
+      setRiftCompletionOrb(null);
+      return;
+    }
+
+    setRiftCompletionPhase('charge');
+    setRiftCompletionOrb(null);
+    const chargeDuration = reducedMotion ? 0 : 2_250;
+    const rushDuration = reducedMotion ? 90 : 760;
+    const rushTimer = window.setTimeout(() => {
+      setRiftCompletionOrb(reveal.orb);
+      setRiftCompletionPhase('rush');
+    }, chargeDuration);
+    const finishTimer = window.setTimeout(() => {
+      setRiftCompletionPhase(null);
+      setRiftCompletionOrb(null);
+      onRiftCompletionRevealComplete?.();
+    }, chargeDuration + rushDuration);
+
+    return () => {
+      window.clearTimeout(rushTimer);
+      window.clearTimeout(finishTimer);
+    };
+  }, [riftCompletionReveal?.id, reducedMotion, onRiftCompletionRevealComplete]);
 
   useEffect(() => () => {
     floatingRewardTimersRef.current.forEach(timer => window.clearTimeout(timer));
@@ -467,7 +501,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
     bestWasInfinityRef.current = state.highestRarityIsInfinity === true;
   }, [state.highestRarity, state.highestRarityIsInfinity]);
 
-  const displayOrb = lastOrb;
+  const displayOrb = riftCompletionOrb ?? lastOrb;
   const orbInfo = displayOrb ? getOrbInfo(displayOrb.rarity, displayOrb.isInfinity) : null;
 
   const cosmeticEffectClass =
@@ -640,7 +674,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
       )}
 
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
-      <div ref={rollStageRef} className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''}`}>
+      <div ref={rollStageRef} className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''} ${riftCompletionPhase ? 'io-rift-completion-' + riftCompletionPhase : ''}`}>
         {/* Ambient Glow Background centered on orb */}
         <div
           className={`absolute w-64 h-64 rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700 ${orbInfo?.animated ? 'io-rarity-color-cycle' : ''}`}
@@ -657,7 +691,24 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         {/* Orbiting Satellite Orbs Container (Concentric with central orb) */}
-        {hasMultipleOrbs && <OrbOrbit orbs={lastBatch} radius={orbitRadius} primaryOrb={displayOrb} />}
+        {hasMultipleOrbs && !riftCompletionPhase && <OrbOrbit orbs={lastBatch} radius={orbitRadius} primaryOrb={displayOrb} />}
+
+        {riftCompletionPhase === 'charge' && (
+          <div className="io-rift-completion-emissions" aria-hidden="true">
+            {Array.from({ length: 20 }, (_, index) => (
+              <span
+                key={index}
+                style={{
+                  '--io-rift-light-angle': `${index * 18}deg`,
+                  '--io-rift-light-delay': `${(index % 5) * 85}ms`,
+                } as React.CSSProperties}
+              />
+            ))}
+          </div>
+        )}
+        {riftCompletionPhase === 'rush' && (
+          <div className="io-rift-completion-rush" aria-hidden="true" />
+        )}
 
         {/* Celestial Sonar Radar Pulse Wave on Rare Drops */}
         {sonarPinging && (
@@ -682,12 +733,14 @@ export const RollSection: React.FC<RollSectionProps> = ({
           }}
           className={`io-main-orb relative z-10 w-44 h-44 sm:w-48 sm:h-48 rounded-full flex flex-col items-center justify-center transition-all duration-500 transform cursor-pointer active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300 ${cosmeticEffectClass} ${orbInfo?.animated ? 'io-rarity-color-cycle' : ''} ${
             isRevealing ? 'is-revealing' : 'hover:scale-102'
-          } ${isShaking ? 'is-shaking' : ''}`}
+          } ${isShaking ? 'is-shaking' : ''} ${riftCompletionPhase === 'charge' ? 'io-rift-completion-orb-charge' : ''} ${riftCompletionPhase === 'rush' ? 'io-rift-completion-orb-reveal' : ''}`}
           style={{
-            background: orbInfo
-              ? orbInfo.bgGradient
-              : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
-            borderColor: orbInfo?.color ?? '#6366f1',
+            background: riftCompletionPhase === 'charge'
+              ? 'radial-gradient(circle at 50% 42%, #211333 0%, #10091b 62%, #07040d 100%)'
+              : orbInfo
+                ? orbInfo.bgGradient
+                : 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 65%, #0f172a)',
+            borderColor: riftCompletionPhase === 'charge' ? '#d8bdff' : orbInfo?.color ?? '#6366f1',
             borderWidth: 2,
             ...(isShaking ? {
               '--shake-x-a': (-3 * shakeIntensity) + 'px',
@@ -780,7 +833,7 @@ export const RollSection: React.FC<RollSectionProps> = ({
         )}
 
         {/* Persistent exact reward readout, including all bonuses. */}
-        {batchSummary && (
+        {batchSummary && !riftCompletionPhase && (
           <div className="roll-reward-summary" aria-live="polite">
             <div className="roll-reward-label">Last roll</div>
             <div className="roll-reward-values">
