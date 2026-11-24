@@ -68,6 +68,7 @@ import {
   setNotificationPreferences,
   getPopupConfig,
   recordPopupEvent,
+  acknowledgeFrenzyShardPopup,
   getFollowRewardStatus,
   settleOffline,
   recordPlayerHeartbeat,
@@ -120,7 +121,7 @@ import * as devvitServer from '@devvit/web/server';
 import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromXp, formatRarity, MASTERY_SKILLS, MAX_ORB_RARITY, nextCodexChainRarity, type FeatureId, type MasterySkillId, type UpgradeId } from '../shared/game.js';
 import { APP_VERSION } from '../shared/version.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge, markRiftGameOpened, registerRiftCompletionPost, getRiftCompletionPostInfo, awardRiftCompletionKudos } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1099,6 +1100,39 @@ export function createApp() {
     }
   });
 
+  app.post('/api/rift-challenges/mark-opened', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await markRiftGameOpened());
+    } catch (error: any) {
+      const message = error?.message || 'Could not record game entry.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 500).json({ error: message });
+    }
+  });
+
+  app.get('/api/rift-completion/info', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await getRiftCompletionPostInfo());
+    } catch (error: any) {
+      const message = error?.message || 'Could not load this Rift completion post.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 404).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-completion/kudos', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await awardRiftCompletionKudos());
+    } catch (error: any) {
+      const message = error?.message || 'Could not send Kudos.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : /already kudosed|24 hours|own Rift/i.test(message) ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
   app.post('/api/rift-challenges/start', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -1521,6 +1555,44 @@ export function createApp() {
       const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true, ticketSeed, progressAttemptId);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
+
+      // A first-clear marker is attached by the Rift save transaction only after
+      // its archive commit. Posting is a secondary side effect and must never
+      // make a successfully completed roll appear to have failed.
+      const completion = result.state?.riftChallengeFirstClear;
+      if (completion?.runId) {
+        try {
+          const registeredPostId = await redis.get('io:rift-completion:run:v1:' + completion.runId);
+          if (!registeredPostId) {
+            const subredditName = String(context.subredditName ?? '').trim();
+            if (!subredditName) throw new Error('Subreddit context is unavailable for the Rift announcement.');
+            const title = `u/${completion.ownerUsername} has completed the Rift ${completion.challengeName} for the first time!`;
+            const post = await reddit.submitCustomPost({
+              runAs: 'USER',
+              subredditName,
+              title,
+              entry: 'rift',
+              userGeneratedContent: {
+                text: `u/${completion.ownerUsername} has completed the rift ${completion.challengeName} for the first time!\\n\\nCelebrate this first clear with Kudos. Each player can send Kudos once, during the first 24 hours after the post is published.\\n\\nKudos gives you +10 Shards, gives the Rift champion +10 Shards, and adds 1 minute of progress to their Rift bar.\\n\\nUse the buttons below to open Infinity Orbs or send Kudos. Sending Kudos will not open the game.`,
+              },
+            });
+            const postId = String(post?.id ?? '').trim();
+            if (!postId) throw new Error('Reddit did not return a Rift completion post ID.');
+            await registerRiftCompletionPost({
+              postId,
+              runId: completion.runId,
+              ownerId: completion.ownerId,
+              ownerUsername: completion.ownerUsername,
+              challengeId: completion.challengeId,
+              challengeName: completion.challengeName,
+              subredditName,
+              createdAt: Date.now(),
+            });
+          }
+        } catch (postError) {
+          console.error('[Rift Completion] The first-clear reward committed, but its announcement could not be published.', postError);
+        }
+      }
       res.json(result);
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
@@ -1834,6 +1906,15 @@ export function createApp() {
       res.json(await postFrenzyThankYouComment(req.body?.text ?? '', req.body?.postId ?? ''));
     } catch (error) {
       badRequest(res, error, 'Could not post the thank-you comment.');
+    }
+  });
+
+  app.post('/api/frenzy/shard-popup/ack', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json({ state: await acknowledgeFrenzyShardPopup() });
+    } catch (error) {
+      badRequest(res, error, 'Could not dismiss the Frenzy Shard notice.');
     }
   });
 
