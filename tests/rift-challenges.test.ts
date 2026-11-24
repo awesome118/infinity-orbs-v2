@@ -35,7 +35,7 @@ test('Rift challenge catalog is sequential and has increasing objectives', () =>
   assert.equal(RIFT_CHALLENGES[2].prerequisiteId, 'fractured-tempo');
 });
 
-test('main-game progress independently unlocks challenge mechanics', () => {
+test('Rift game progress independently unlocks challenge mechanics', () => {
   assert.deepEqual(
     riftChallengeMechanicUnlocks({ level: 9, totalRolls: 24, totalCrits: 9 }),
     { fortune: true, speed: false, prosperity: false, critical: false },
@@ -46,7 +46,7 @@ test('main-game progress independently unlocks challenge mechanics', () => {
   );
 });
 
-test('main-game progress normalization rejects malformed counters', () => {
+test('Rift game progress normalization rejects malformed counters', () => {
   assert.deepEqual(
     normalizeRiftMainProgress({ level: Number.NaN, totalRolls: -1, totalCrits: 2.5, highestRarity: Infinity }),
     { level: 1, totalRolls: 0, totalCrits: 0, highestRarity: 2, masteryPoints: 0 },
@@ -91,7 +91,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 2,
+    version: 3,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
