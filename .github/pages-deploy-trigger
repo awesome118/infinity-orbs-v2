@@ -93,3 +93,5 @@ Retry Pages deployment with per-attempt artifact names to prevent duplicate arti
 Deploy using the matching per-attempt artifact upload and deploy configuration.
 
 Pages save reset fix: atomically advance the player save generation and clear player, combat, Rift archive, and roll-ticket state without passing a fresh revision-zero save through ordinary save CAS.
+
+Pages diagnostics fix: do not poll Global Chat until server availability is true; count failed HTTP responses and unhandled promise rejections in full-log error totals, with regression coverage.
