@@ -1,3 +1,4 @@
+import type { PlayerState } from './game.js';
 export type RiftChallengeUpgradeId = 'fortune' | 'speed' | 'prosperity' | 'critical';
 export type RiftChallengeRunStatus = 'active' | 'completed';
 
@@ -224,10 +225,12 @@ export interface RiftChallengeRun {
   mainProgressAtStart: RiftChallengeMainProgress;
   mechanicUnlocks: RiftChallengeMechanicUnlocks;
   lastRoll: RiftChallengeLastRoll | null;
+  /** Complete, isolated main-game save used while this Rift challenge is active. */
+  gameState?: PlayerState | null;
 }
 
 export interface RiftChallengeArchive {
-  version: 2;
+  version: 3;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -347,7 +350,7 @@ export function riftRatePerHour(completedChallengeIds: readonly string[], perkLe
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 2,
+    version: 3,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
