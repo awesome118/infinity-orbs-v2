@@ -224,3 +224,11 @@ test('Pages Admin API exposes the same queued guaranteed-roll action as Devvit',
   assert.match(pages, /state\.autoRollEnabled = false/);
   assert.match(pages, /saveCurrentState\(state\)/);
 });
+
+test('read-only player snapshots cannot commit player-save migrations outside the player lock', () => {
+  const game = source('src/server/game.ts');
+  assert.match(game, /const canPersistMigrations = options\.persistMigrations !== false && getActivePlayerMutationLock\(userId\) !== null/);
+  assert.match(game, /if \(canPersistMigrations\) await migrateLegacyCodex\(userId, generation, restoredCollection\)/);
+  assert.match(game, /if \(canPersistMigrations\) await deleteLegacyCodexShards\(userId, generation\)/);
+  assert.match(game, /if \(canPersistMigrations && \(levelExpansionMigration \|\| needsCodexMigration\)\)/);
+});
