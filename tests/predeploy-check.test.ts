@@ -77,6 +77,7 @@ function createFixture(options: {
     writeFileSync(join(sourceDir, 'entry.ts'), options.sourceText ?? 'export const healthy = true;\n');
     writeFileSync(join(clientDir, 'splash.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
     writeFileSync(join(clientDir, 'frenzy.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
+    writeFileSync(join(clientDir, 'rift.html'), '<html class="io-inline-post"><body class="io-inline-post"><div id="root" class="io-inline-post"></div></body></html>');
     writeFileSync(join(clientDir, 'splash.tsx'), 'export const splashInlineSafe = true;\n');
     writeFileSync(join(clientDir, 'frenzy.tsx'), 'export const frenzyInlineSafe = true;\n');
     writeFileSync(join(clientDir, 'styles.css'), options.inlineCssText ?? 'html.io-inline-post, body.io-inline-post { height: 100%; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n#root.io-inline-post { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-public { overflow: clip; overscroll-behavior: auto; touch-action: pan-y pinch-zoom; }\n.io-combat-log{max-height:245px;overflow:auto}\n');
@@ -182,6 +183,11 @@ const invalidManifestCases: Array<{
     label: 'Frenzy entrypoint and tall layout',
     mutate: manifest => { manifest.post.entrypoints.frenzy.height = 'inline'; },
     expected: /post\.entrypoints\.frenzy\.height must be/,
+  },
+  {
+    label: 'Rift completion entrypoint and tall layout',
+    mutate: manifest => { manifest.post.entrypoints.rift.height = 'inline'; },
+    expected: /post\.entrypoints\.rift\.height must be/,
   },
   {
     label: 'server output entry',
