@@ -2271,7 +2271,9 @@ function App() {
 
         const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
         if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-          setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
         }
         applyPlayerState(res.state);
         setFrenzyArmed(false);
@@ -2344,7 +2346,9 @@ function App() {
       }
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       if (!isAutoRoll && res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
       }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
@@ -3032,7 +3036,9 @@ function App() {
       const res = await getJson<RollResponse>('/api/offline/claim', { method: 'POST' });
       const latestBest = Math.max(2, Number(res.state.highestRarity) || 2);
       if (res.orb.rarity > previousBest && res.orb.rarity >= latestBest) {
-        setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+        if (!(res.state.riftSession || res.state.riftSaveContext?.startsWith('rift:'))) {
+            setNewBestModalData({ orb: res.orb, prevBest: previousBest });
+          }
       }
       applyPlayerState(res.state);
       setLastOrb(res.orb);
@@ -3946,7 +3952,17 @@ function App() {
 
   return (
     <div className={`app-shell io-ui ${webViewMode === 'expanded' ? 'io-expanded-view' : 'io-inline-view'} ${riftActive ? 'io-rift-active' : ''} min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white`}>
-      {riftActive && <div className="io-rift-atmosphere" aria-hidden="true" />}
+      {riftActive && <div className="io-rift-atmosphere" aria-hidden="true">
+        <div className="io-rift-energy-stream io-rift-energy-stream--one" />
+        <div className="io-rift-energy-stream io-rift-energy-stream--two" />
+        <div className="io-rift-vortex">
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--outer" />
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--middle" />
+          <div className="io-rift-vortex__ring io-rift-vortex__ring--inner" />
+          <div className="io-rift-vortex__core" />
+        </div>
+        <div className="io-rift-particles" />
+      </div>}
       {/* Sticky Top Header */}
       <Header
         state={state}
@@ -4437,7 +4453,7 @@ function App() {
             onOrbFrenzy={handleStartOrbFrenzy}
             frenzyArmed={frenzyArmed}
             onOpenShareModal={(r, isInfinity) => { setShareRarity(r); setShareIsInfinity(!!isInfinity); }}
-            onNewBest={(orb, prevBest) => setNewBestModalData({ orb, prevBest })}
+            onNewBest={(orb, prevBest) => { if (!(stateRef.current?.riftSession || stateRef.current?.riftSaveContext?.startsWith('rift:'))) setNewBestModalData({ orb, prevBest }); }}
           />
         )}
 
