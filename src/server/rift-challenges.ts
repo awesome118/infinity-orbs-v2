@@ -12,6 +12,8 @@ import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   emptyRiftUnlocks,
+  normalizeRiftUnlocks,
+  riftStartingProgressRarity,
   RIFT_UNLOCKS,
   normalizeRiftModifierSettings,
   normalizeRiftChallengeToggles,
@@ -133,6 +135,25 @@ function legacyStolenMomentumRefund(value: unknown): number {
   return refund;
 }
 
+// Fracture Exchange and Critical Resonance were removed in archive v10 because
+// they were flat stat bumps rather than feature unlocks. Refund their exact
+// historical purchase costs once when migrating an older archive.
+function legacyRemovedStatPerkRefund(value: unknown): number {
+  if (!isRecord(value)) return 0;
+  const removed = [
+    { id: 'riftCoinYield', baseCost: 12, costGrowth: 1.68 },
+    { id: 'riftCrit', baseCost: 16, costGrowth: 1.74 },
+  ] as const;
+  let refund = 0;
+  for (const perk of removed) {
+    const level = safeInteger(value[perk.id], 0, 10);
+    for (let rank = 0; rank < level; rank += 1) {
+      refund = Math.min(Number.MAX_SAFE_INTEGER, refund + Math.ceil(perk.baseCost * Math.pow(perk.costGrowth, rank)));
+    }
+  }
+  return refund;
+}
+
 function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchive {
   if (!isRecord(value)) return createEmptyRiftChallengeArchive(now);
   const completed = Array.isArray(value.completedChallengeIds)
@@ -150,10 +171,11 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
   }
   const archiveVersion = safeInteger(value.version, 0);
   const legacyPerks = isRecord(value.riftPerkLevels) ? value.riftPerkLevels : {};
-  const removedPerkRefund = archiveVersion < 6 ? legacyStolenMomentumRefund(legacyPerks.stolenMomentum) : 0;
+  const removedPerkRefund =
+    (archiveVersion < 6 ? legacyStolenMomentumRefund(legacyPerks.stolenMomentum) : 0) +
+    (archiveVersion < 10 ? legacyRemovedStatPerkRefund(legacyPerks) : 0);
   const riftPerkLevels = normalizePerkLevels(value.riftPerkLevels);
-  const rawUnlocks = isRecord(value.riftUnlocks) ? value.riftUnlocks : {};
-  const riftUnlocks = { timelineFork: rawUnlocks.timelineFork === true };
+  const riftUnlocks = normalizeRiftUnlocks(value.riftUnlocks);
   const maxRelicSlots = riftUnlocks.timelineFork ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
   const lastAccrued = safeInteger(value.riftLastAccruedAt, now);
   const riftProgressValue = Number(value.riftProgress);
@@ -178,7 +200,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     ? activeRun
     : null;
   const archive: RiftChallengeArchive = {
-    version: 9,
+    version: 10,
     activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
@@ -360,6 +382,15 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
     const targetRarity = isModifierRun
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.ceil(RIFT_ASCENT.targetRarity * modifierSettings.instability)))
       : challenge.targetRarity;
+    const startingBestRarity = archive.riftUnlocks.riftMemory && previousCompletedRun
+      ? riftStartingProgressRarity(
+          previousCompletedRun.bestRarity,
+          previousCompletedRun.targetRarity ?? getRiftChallengeDefinition(previousCompletedRun.challengeId)?.targetRarity ?? targetRarity,
+          targetRarity,
+        )
+      : 2;
+    state.highestRarity = startingBestRarity;
+    state.highestRarityIsInfinity = false;
     const maxRelicSlots = archive.riftUnlocks.timelineFork ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
     const relicEffects = getRiftRelicEffects(archive.equippedRiftRelics, archive.riftRelicLevels, maxRelicSlots);
     const effectiveTemporalDrag = riftEffectiveTemporalDragMultiplier(
