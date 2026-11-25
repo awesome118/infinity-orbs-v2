@@ -229,6 +229,6 @@ export function riftRelicProgressCoinMultiplier(bestRarityValue: unknown, target
   if (bonus <= 0) return 1;
   const best = Math.max(2, Number(bestRarityValue) || 2);
   const target = Math.max(2, Number(targetRarityValue) || 2);
-  const progress = Math.max(0, Math.min(1, Math.log10(best) / Math.log10(target)));
+  const progress = target <= 2 ? 1 : Math.max(0, Math.min(1, Math.log10(best / 2) / Math.log10(target / 2)));
   return 1 + progress * bonus;
 }
