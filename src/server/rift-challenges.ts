@@ -151,6 +151,22 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
   const lastAccrued = safeInteger(value.riftLastAccruedAt, now);
   const riftProgressValue = Number(value.riftProgress);
   const activeRun = normalizeRun(value.activeRun, maxRelicSlots);
+  // Older Rift Ascent saves received the unconditional +1 Multiball level.
+  // Remove that one granted level from already-active runs when Second-best is off,
+  // retaining any Multiball levels the player purchased during the run.
+  if (
+    archiveVersion < 7 &&
+    activeRun?.status === 'active' &&
+    activeRun.challengeId === RIFT_ASCENT.id &&
+    activeRun.challengeToggles?.secondBest !== true &&
+    isRecord(activeRun.gameState?.upgrades)
+  ) {
+    const savedUpgrades = activeRun.gameState!.upgrades as unknown as Record<string, unknown>;
+    const multiballLevel = Number(savedUpgrades.multi ?? 0);
+    if (Number.isSafeInteger(multiballLevel) && multiballLevel > 0) {
+      savedUpgrades.multi = multiballLevel - 1;
+    }
+  }
   const legacyCompletedAscent = activeRun?.status === 'completed' && activeRun.challengeId === RIFT_ASCENT.id
     ? activeRun
     : null;
