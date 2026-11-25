@@ -697,9 +697,7 @@ export const RiftChallengesSection: React.FC<{
           const coreMaxed = coreLevel >= corePerk.maxLevel;
           const coreCost = riftPerkCost(corePerk.id, coreLevel);
           const coreCanBuy = !coreMaxed && riftProjection.points >= coreCost && busyAction === null;
-          const timelineFork = RIFT_UNLOCKS.timelineFork;
-          const timelineUnlocked = archive.riftUnlocks.timelineFork === true;
-          const timelineCanBuy = !timelineUnlocked && !isActive && ascentCleared && riftProjection.points >= timelineFork.cost && busyAction === null;
+          const oneTimeUnlocks = Object.values(RIFT_UNLOCKS);
 
           return (
             <div className="io-rift-research space-y-7">
@@ -823,37 +821,53 @@ export const RiftChallengesSection: React.FC<{
 
               <section className="relative isolate overflow-hidden rounded-[1.7rem] border border-amber-200/20 bg-gradient-to-r from-[#241a12] via-[#171320] to-[#11101d] p-5 sm:p-6">
                 <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border border-amber-200/10 shadow-[0_0_0_24px_rgba(251,191,36,.025),0_0_0_52px_rgba(251,191,36,.02)]" />
-                <div className="relative grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,.7fr)] lg:items-center">
-                  <div>
-                    <div className="text-[9px] font-black uppercase tracking-[.24em] text-amber-300">Restricted protocol · one-time unlock</div>
-                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">One-time unlocks</h3>
-                    <h4 className="mt-3 text-lg font-black text-amber-100">{timelineFork.name}</h4>
-                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">{timelineFork.description}</p>
-                    <p className="mt-2 text-xs font-bold text-amber-200">{timelineFork.effect}</p>
+                <div className="relative">
+                  <div className="text-[9px] font-black uppercase tracking-[.24em] text-amber-300">Restricted protocols · permanent feature access</div>
+                  <h3 className="mt-2 text-2xl font-black tracking-tight text-white">One-time unlocks</h3>
+                  <p className="mt-2 max-w-3xl text-xs leading-relaxed text-slate-400">These do more than increase a number. Each one reconnects a game system, changes how a run begins, or expands what the Rift lets you do.</p>
+                  <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {oneTimeUnlocks.map((unlock, index) => {
+                      const installed = archive.riftUnlocks[unlock.id] === true;
+                      const canBuy = !installed && !isActive && ascentCleared && riftProjection.points >= unlock.cost && busyAction === null;
+                      return (
+                        <article key={unlock.id} className="rounded-2xl border border-amber-200/15 bg-black/25 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-amber-200/25 bg-amber-200/10 text-[10px] font-black text-amber-100">{String(index + 1).padStart(2, '0')}</span>
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-black text-amber-100">{unlock.name}</h4>
+                                <div className="mt-1 text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{installed ? 'Installed permanently' : 'Available protocol'}</div>
+                              </div>
+                            </div>
+                            <span className="shrink-0 rounded-lg border border-amber-200/15 bg-amber-200/[.06] px-2 py-1 text-[9px] font-black text-amber-200">{installed ? 'ONLINE' : formatNumber(unlock.cost) + ' RP'}</span>
+                          </div>
+                          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{unlock.description}</p>
+                          <div className="mt-3 rounded-xl border border-amber-200/10 bg-amber-200/[.045] px-3 py-2.5">
+                            <div className="text-[8px] font-black uppercase tracking-[.18em] text-amber-300/70">Protocol effect</div>
+                            <p className="mt-1 text-xs font-bold leading-relaxed text-white">{unlock.effect}</p>
+                          </div>
+                          {unlock.id === 'timelineFork' && (
+                            <div className="mt-3 flex items-center gap-2 text-[9px] font-bold text-slate-500">
+                              <span className="h-2.5 w-2.5 rounded border border-amber-200/50 bg-amber-200/20" />
+                              <span className="h-px w-4 bg-amber-200/30" />
+                              <span className="h-2.5 w-2.5 rounded border border-amber-200/50 bg-amber-200/20" />
+                              <span className="h-px w-4 bg-amber-200/30" />
+                              <span className={'grid h-5 w-5 place-items-center rounded border text-[7px] ' + (installed ? 'border-amber-200/50 bg-amber-200/20 text-amber-100' : 'border-dashed border-slate-600 text-slate-500')}>{installed ? 'III' : '?'}</span>
+                              <span>{installed ? 'Three relic slots online' : 'Third relic slot sealed'}</span>
+                            </div>
+                          )}
+                          <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{installed ? 'No further cost' : 'Permanent purchase'}</span>
+                            <button type="button" onClick={() => buyUnlock(unlock.id)} disabled={!canBuy} className="min-h-9 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-[9px] font-black tracking-[.12em] text-amber-100 transition hover:bg-amber-200/20 disabled:cursor-not-allowed disabled:opacity-35">
+                              {busyAction === 'unlock-' + unlock.id ? 'UNLOCKING…' : installed ? 'INSTALLED' : 'UNLOCK'}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
-                  <div className="rounded-2xl border border-amber-200/15 bg-black/25 p-4">
-                    <div className="flex items-center justify-center gap-2" aria-label={timelineUnlocked ? 'Three relic slots unlocked' : 'Two relic slots available, third slot locked'}>
-                      <span className="h-9 w-9 rounded-xl border border-amber-200/40 bg-amber-200/15 shadow-[0_0_16px_rgba(251,191,36,.14)]" />
-                      <span className="h-px w-5 bg-amber-200/30" />
-                      <span className="h-9 w-9 rounded-xl border border-amber-200/40 bg-amber-200/15 shadow-[0_0_16px_rgba(251,191,36,.14)]" />
-                      <span className="h-px w-5 bg-amber-200/30" />
-                      <span className={'grid h-9 w-9 place-items-center rounded-xl border text-[9px] font-black ' + (timelineUnlocked ? 'border-amber-200/50 bg-amber-200/20 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,.2)]' : 'border-dashed border-slate-600 bg-slate-900/80 text-slate-500')}>
-                        {timelineUnlocked ? 'III' : 'LOCK'}
-                      </span>
-                    </div>
-                    <div className="mt-3 text-center text-[8px] font-black uppercase tracking-[.2em] text-slate-500">{timelineUnlocked ? 'Three relic slots online' : 'Third relic slot sealed'}</div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
-                      <div>
-                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-600">Unlock cost</div>
-                        <div className="mt-1 text-sm font-black tabular-nums text-white">{timelineUnlocked ? 'Unlocked permanently' : formatNumber(timelineFork.cost) + ' RP'}</div>
-                      </div>
-                      <button type="button" onClick={() => buyUnlock(timelineFork.id)} disabled={!timelineCanBuy} className="min-h-10 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-[9px] font-black tracking-[.12em] text-amber-100 transition hover:bg-amber-200/20 disabled:cursor-not-allowed disabled:opacity-35">
-                        {busyAction === 'unlock-' + timelineFork.id ? 'UNLOCKING…' : timelineUnlocked ? 'INSTALLED' : 'UNLOCK'}
-                      </button>
-                    </div>
-                    {!ascentCleared && <p className="mt-3 text-[9px] leading-relaxed text-amber-200/80">Complete Rift Ascent once to access restricted research.</p>}
-                    {ascentCleared && isActive && !timelineUnlocked && <p className="mt-3 text-[9px] leading-relaxed text-amber-200/80">Finish or abandon the active run before changing your relic loadout capacity.</p>}
-                  </div>
+                  {!ascentCleared && <p className="mt-4 text-[9px] leading-relaxed text-amber-200/80">Complete Rift Ascent once to access restricted research.</p>}
+                  {ascentCleared && isActive && oneTimeUnlocks.some(unlock => archive.riftUnlocks[unlock.id] !== true) && <p className="mt-4 text-[9px] leading-relaxed text-amber-200/80">Finish or abandon the active run before purchasing a new protocol.</p>}
                 </div>
               </section>
             </div>
