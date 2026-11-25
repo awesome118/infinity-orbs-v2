@@ -126,7 +126,7 @@ import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromX
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, abandonRiftChallenge, markRiftGameOpened, registerRiftCompletionPost, getRiftCompletionPostInfo, awardRiftCompletionKudos } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, setRiftTemporalDrag, abandonRiftChallenge, markRiftGameOpened, registerRiftCompletionPost, getRiftCompletionPostInfo, awardRiftCompletionKudos } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1265,6 +1265,25 @@ export function createApp() {
           message.includes('valid Rift perk') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/temporal-drag', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const multiplier = req.body?.multiplier;
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The active Rift run ID is missing. Refresh and try again.' });
+      }
+      res.json(await setRiftTemporalDrag(multiplier, runId));
+    } catch (error: any) {
+      const message = error?.message || 'Temporal Drag could not be updated.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : message.includes('Temporal Drag must be') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error });
     }
   });
 
