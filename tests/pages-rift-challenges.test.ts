@@ -108,7 +108,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /riftMutationLuckMultiplier/);
   assert.match(rollUi, /Rift mutation active/);
   assert.match(challengeUi, /Rift mutations/);
-  assert.match(game, /archive\.version = 8/);
+  assert.match(game, /archive\.version = 9/);
   assert.match(game, /RIFT_MUTATION_BREAK_ROLLS/);
   assert.match(game, /riftMutationCoinMultiplier/);
   assert.match(game, /getRiftRelicEffects/);
