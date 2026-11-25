@@ -488,6 +488,29 @@ async function mutate<T>(fn:(s:CombatState)=>T):Promise<T> {
   }
   throw new Error('Combat state changed repeatedly. Please retry.');
 }
+/** Read Scrap shared by Combat gear salvage and the Rift Relic Forge. */
+export async function getCombatScrapBalance(): Promise<number> {
+  return normalizeState(await redis.get(combatKey())).scrap;
+}
+/** Spend Scrap through the same WATCH/CAS path used by Combat gear actions. */
+export async function spendCombatScrapForRiftForge(amountValue: unknown): Promise<number> {
+  const amount = Number(amountValue);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('Relic Scrap cost is invalid.');
+  return mutate(state => {
+    if (state.scrap < amount) throw new Error('Not enough Scrap for this relic.');
+    state.scrap -= amount;
+    return state.scrap;
+  });
+}
+/** Compensation path used only if the paired Rift Point archive write fails. */
+export async function refundCombatScrapForRiftForge(amountValue: unknown): Promise<void> {
+  const amount = Number(amountValue);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('Relic Scrap refund is invalid.');
+  await mutate(state => {
+    state.scrap = Math.min(Number.MAX_SAFE_INTEGER, state.scrap + amount);
+    return undefined;
+  });
+}
 /** Read the shared Combat Marks wallet for the global HUD without creating/writing combat state. */
 export async function getCombatMarksBalance():Promise<number>{
   return normalizeState(await redis.get(combatKey())).combatMarks;

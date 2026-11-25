@@ -1,4 +1,5 @@
 import type { PlayerState } from './game.js';
+import type { RiftRelicId, RiftRelicLevels } from './rift-relics.js';
 export type RiftChallengeUpgradeId = 'fortune' | 'speed' | 'prosperity' | 'critical';
 export type RiftChallengeRunStatus = 'active' | 'completed';
 
@@ -374,11 +375,15 @@ export interface RiftChallengeRun {
   modifierSettings?: RiftModifierSettings;
   challengeToggles?: RiftChallengeToggles;
   /** Complete, isolated main-game save used while this Rift challenge is active. */
+  /** Relic loadout captured when this run starts. */
+  equippedRelics: RiftRelicId[];
+  /** Exclusive roll count through which Fracture Cascade remains active. */
+  fractureCascadeUntilRoll: number;
   gameState?: PlayerState | null;
 }
 
 export interface RiftChallengeArchive {
-  version: 4;
+  version: 5;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -398,6 +403,8 @@ export interface RiftChallengeArchive {
   bestModifierSettings: RiftModifierSettings;
   bestChallengeToggles: RiftChallengeToggles;
   riftPerkLevels: RiftPerkLevels;
+  riftRelicLevels: RiftRelicLevels;
+  equippedRiftRelics: RiftRelicId[];
 }
 
 export interface RiftChallengeSnapshot {
@@ -408,6 +415,7 @@ export interface RiftChallengeSnapshot {
   mainProgress: RiftChallengeMainProgress;
   mechanicUnlocks: RiftChallengeMechanicUnlocks;
   challengeAvailable: boolean;
+  scrapBalance: number;
 }
 
 export function normalizeRiftMainProgress(value: Partial<RiftChallengeMainProgress> | null | undefined): RiftChallengeMainProgress {
@@ -534,7 +542,7 @@ export function riftRatePerHour(
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 4,
+    version: 5,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -550,5 +558,7 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     bestModifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
     bestChallengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels,
+    riftRelicLevels: { 'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0, observer: 0, 'loaded-die': 0, 'fracture-cascade': 0 },
+    equippedRiftRelics: [],
   };
 }
