@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   RIFT_CHALLENGES,
   RIFT_CHALLENGE_UPGRADES,
+  RIFT_MUTATIONS,
+  getRiftMutationDefinition,
   RIFT_PERKS,
   normalizeRiftTemporalDragMultiplier,
   riftChallengeUpgradeCost,
@@ -52,6 +54,7 @@ export const RiftChallengesSection: React.FC<{
   const [now, setNow] = useState(Date.now());
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [temporalDragDraft, setTemporalDragDraft] = useState(1);
+  const [blueprintDraft, setBlueprintDraft] = useState<RiftChallengeUpgradeId>('fortune');
 
   const refresh = useCallback(async () => {
     const result = await challengeRequest<RiftChallengeSnapshot>('/api/rift-challenges');
@@ -76,6 +79,13 @@ export const RiftChallengesSection: React.FC<{
   const archive = snapshot?.archive;
   const run = archive?.activeRun ?? null;
   const challenge = run ? RIFT_CHALLENGES.find(item => item.id === run.challengeId) : null;
+  const activeMutationDefinition = run?.activeMutation
+    ? getRiftMutationDefinition(run.activeMutation.id)
+    : undefined;
+  const emergencyCharges = run
+    ? Math.max(0, (archive?.riftPerkLevels.emergencyProtocol ?? 0) +
+        (archive?.riftPerkLevels.advancedDeployment ?? 0) - (run.emergencyProtocolsUsed ?? 0))
+    : 0;
 
   useEffect(() => {
     if (run?.status === 'active') setTemporalDragDraft(run.temporalDragMultiplier ?? 1);
@@ -135,7 +145,7 @@ export const RiftChallengesSection: React.FC<{
   const startChallenge = (id: RiftChallengeId) => void performAction(
     'start-' + id,
     '/api/rift-challenges/start',
-    { challengeId: id },
+    { challengeId: id, blueprintId: blueprintDraft },
   );
   const buyUpgrade = (id: RiftChallengeUpgradeId) => void performAction(
     id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
@@ -145,6 +155,16 @@ export const RiftChallengesSection: React.FC<{
     'temporal-drag',
     '/api/rift-challenges/temporal-drag',
     { runId: run?.runId, multiplier: normalizeRiftTemporalDragMultiplier(temporalDragDraft) },
+  );
+  const chooseMutation = (mutationId: string) => void performAction(
+    'mutation-' + mutationId,
+    '/api/rift-challenges/mutation',
+    { runId: run?.runId, mutationId },
+  );
+  const activateEmergencyProtocol = () => void performAction(
+    'emergency-protocol',
+    '/api/rift-challenges/emergency',
+    { runId: run?.runId },
   );
 
   if (loading) {
@@ -254,6 +274,30 @@ export const RiftChallengesSection: React.FC<{
             <p className="mt-1 text-xs text-slate-400">First clears improve your permanent generation rate. Replays award additional Rift Points.</p>
           </div>
           <div className="text-[10px] text-slate-500">Your main save is preserved and restored when the Rift run ends.</div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-violet-400/20 bg-violet-500/[.05] p-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-black uppercase tracking-widest text-violet-200">Preloaded Blueprint</div>
+            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+              Select the challenge upgrade that starts pre-installed. Requires Preloaded Blueprint in the Rift shop.
+            </p>
+          </div>
+          <select
+            value={blueprintDraft}
+            onChange={event => setBlueprintDraft(event.target.value as RiftChallengeUpgradeId)}
+            disabled={(archive.riftPerkLevels.preloadedBlueprint ?? 0) <= 0 || busyAction !== null || run?.status === 'active'}
+            className="min-w-44 rounded-lg border border-violet-300/25 bg-slate-950 px-3 py-2 text-xs font-bold text-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Preloaded challenge upgrade"
+          >
+            <option value="fortune">Fortune Lens</option>
+            <option value="speed">Quickstep Coil</option>
+            <option value="prosperity">Coin Converter</option>
+            <option value="critical">Critical Echo</option>
+          </select>
+          <span className="text-[9px] font-bold text-violet-200/70">
+            Lv {archive.riftPerkLevels.preloadedBlueprint ?? 0}/4
+          </span>
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -460,6 +504,70 @@ export const RiftChallengesSection: React.FC<{
 
           {isActive && (
             <>
+              {Array.isArray(run.pendingMutationChoices) && run.pendingMutationChoices.length > 0 && (
+                <div className="mt-5 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/[.07] p-4">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-fuchsia-200">Rift Mutation detected</div>
+                  <h3 className="mt-1 text-lg font-black text-white">Choose an anomaly</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    A mutation is available after your run's progress milestone. It lasts for a limited number of Rift rolls and grants a reward when it expires.
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {run.pendingMutationChoices.map(mutationId => {
+                      const mutation = getRiftMutationDefinition(mutationId);
+                      if (!mutation) return null;
+                      return (
+                        <button
+                          key={mutationId}
+                          type="button"
+                          onClick={() => chooseMutation(mutationId)}
+                          disabled={busyAction !== null}
+                          className="rounded-xl border border-fuchsia-300/25 bg-slate-950/75 p-3 text-left transition hover:border-fuchsia-200/60 hover:bg-fuchsia-500/10 disabled:opacity-40"
+                        >
+                          <span className="block text-xs font-black text-fuchsia-100">{mutation.name}</span>
+                          <span className="mt-1 block text-[10px] leading-relaxed text-slate-400">{mutation.description}</span>
+                          <span className="mt-2 block text-[9px] font-bold text-fuchsia-200/80">{mutation.effect}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {activeMutationDefinition && run.activeMutation && (
+                <div className="mt-5 rounded-2xl border border-fuchsia-400/25 bg-fuchsia-500/[.06] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[9px] font-black uppercase tracking-widest text-fuchsia-200">Active Rift Mutation</div>
+                      <h3 className="mt-1 text-lg font-black text-white">{activeMutationDefinition.name}</h3>
+                    </div>
+                    <div className="rounded-lg border border-fuchsia-300/20 bg-slate-950/70 px-3 py-2 text-right">
+                      <div className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Remaining</div>
+                      <div className="text-sm font-black text-fuchsia-100">{formatNumber(Math.max(0, run.activeMutation.endsAtRoll - run.totalRolls))} rolls</div>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">{activeMutationDefinition.description}</p>
+                  <p className="mt-1 text-[10px] font-bold text-fuchsia-200">{activeMutationDefinition.effect}</p>
+                </div>
+              )}
+
+              {(archive.riftPerkLevels.emergencyProtocol ?? 0) > 0 && (
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/[.06] p-4">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-amber-200">Emergency Protocol</div>
+                    <p className="mt-1 text-xs text-slate-400">Clear your current roll cooldown and gain ×1.5 Luck for the next five rolls.</p>
+                    <p className="mt-1 text-[10px] font-bold text-amber-100">{emergencyCharges} charge{emergencyCharges === 1 ? '' : 's'} remaining this run</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={activateEmergencyProtocol}
+                    disabled={busyAction !== null || emergencyCharges <= 0}
+                    className="rounded-xl border border-amber-300/30 bg-amber-400/15 px-4 py-3 text-xs font-black text-amber-100 transition hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    {busyAction === 'emergency-protocol' ? 'Activating…' : 'ACTIVATE'}
+                  </button>
+                </div>
+              )}
+
               <div className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-500/5 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
