@@ -23,7 +23,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(build, /main\.tsx/);
   assert.match(build, /dist-pages/);
   assert.match(api, /getRiftChallengeStatus/);
-  assert.match(server, /return \{\\s*challenge: RIFT_FIRST_SPARK,\\s*challenges: RIFT_CHALLENGES/);
+  assert.ok(server.includes("return {\\n    challenge: RIFT_FIRST_SPARK,\\n    challenges: RIFT_CHALLENGES,"));
   assert.match(api, /updateRiftModifiers\(body\.modifierSettings, body\.challengeToggles\)/);
   assert.match(api, /startRiftChallenge\(body\.challengeId\)/);
   assert.match(api, /rollRiftChallenge/);
