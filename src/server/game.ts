@@ -415,7 +415,7 @@ async function ensureCodexStorageVersion(userId: string, generation: number, sta
 
 const NON_PERSISTED_PLAYER_FIELDS = new Set([
   'collection', 'codexChain', 'codexDevotionLuckPercent', 'guildPerks', 'guildCombo',
-  'globalBoosters', 'dailyStreakCommunity', 'onlinePlayers',
+  'globalBoosters', 'dailyStreakCommunity', 'onlinePlayers', 'riftChallengeFirstClear',
 ]);
 
 function serializePlayerStateForRedis(state: PlayerState): string {
@@ -4367,6 +4367,7 @@ function serializeRiftPlayerState(state: PlayerState, revision: number): PlayerS
   delete stored.collection;
   delete stored.riftSession;
   delete stored.riftRunComplete;
+  delete stored.riftChallengeFirstClear;
   delete stored.riftSaveContext;
   delete stored.riftSelectedBestRarity;
   delete stored.gameBan;
@@ -4578,6 +4579,7 @@ async function saveActiveRiftPlayerState(
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
+      let firstClear = false;
       if (riftBestRarity >= targetRarity) {
         completed = true;
         run.status = 'completed';
@@ -4586,7 +4588,7 @@ async function saveActiveRiftPlayerState(
         const completedIds = Array.isArray(archive.completedChallengeIds)
           ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
           : [];
-        const firstClear = !completedIds.includes(challenge.id);
+        firstClear = !completedIds.includes(challenge.id);
         if (firstClear) completedIds.push(challenge.id);
         archive.completedChallengeIds = completedIds;
         if (challenge.id === RIFT_ASCENT.id) {
@@ -4670,6 +4672,16 @@ async function saveActiveRiftPlayerState(
         }
         if (completed) {
           state.riftRunComplete = true;
+          if (firstClear) {
+            state.riftChallengeFirstClear = {
+              challengeId: challenge.id,
+              challengeName: challenge.name,
+              runId: session.runId,
+              completedAt: now,
+              ownerId: userId,
+              ownerUsername: String(context.username ?? state.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor',
+            };
+          }
           delete state.riftSession;
           void deleteRiftCodexForRun(session.runId).catch(error => {
             console.error('[Rift Save] Completed challenge Codex cleanup failed:', error);
