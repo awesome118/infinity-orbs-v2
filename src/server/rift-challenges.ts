@@ -7,7 +7,7 @@ import {
   calculateLevelFromXp,
   type PlayerState,
 } from '../shared/game.js';
-import { normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, getRiftRelicEffects, riftEffectiveTemporalDragMultiplier, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
+import { normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, getRiftRelicEffects, riftEffectiveTemporalDragMultiplier, riftStartingMultiballLevel, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
 import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
@@ -20,11 +20,8 @@ import {
   normalizeRiftMainProgress,
   riftChallengeIsAvailable,
   riftChallengeUnlockStatus,
-  riftChallengeMechanicUnlocks,
-  riftChallengeUpgradeCost,
   riftPerkCost,
   riftRatePerHour,
-  RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
   RIFT_PERKS,
@@ -33,7 +30,6 @@ import {
   type RiftChallengeMainProgress,
   type RiftChallengeRun,
   type RiftChallengeSnapshot,
-  type RiftChallengeUpgradeId,
   type RiftPerkId,
   type RiftPerkLevels,
   type RiftUnlockId,
@@ -79,7 +75,6 @@ function normalizeRun(value: unknown, maxRelicSlots = RIFT_RELIC_EQUIP_SLOTS): R
   if (!isRecord(value)) return null;
   const challenge = getRiftChallengeDefinition(value.challengeId);
   if (!challenge || (value.status !== 'active' && value.status !== 'completed')) return null;
-  const levels = isRecord(value.upgradeLevels) ? value.upgradeLevels : {};
   const rarity = Number(value.bestRarity);
   const lastRaw = isRecord(value.lastRoll) ? value.lastRoll : null;
   const lastRarity = Number(lastRaw?.rarity);
@@ -103,23 +98,11 @@ function normalizeRun(value: unknown, maxRelicSlots = RIFT_RELIC_EQUIP_SLOTS): R
     totalRolls: safeInteger(value.totalRolls),
     bestRarity: Number.isFinite(rarity) ? Math.max(2, Math.min(Number.MAX_SAFE_INTEGER, rarity)) : 2,
     nextRollAt: safeInteger(value.nextRollAt),
-    upgradeLevels: {
-      fortune: safeInteger(levels.fortune, 0, RIFT_CHALLENGE_UPGRADES.fortune.maxLevel),
-      speed: safeInteger(levels.speed, 0, RIFT_CHALLENGE_UPGRADES.speed.maxLevel),
-      prosperity: safeInteger(levels.prosperity, 0, RIFT_CHALLENGE_UPGRADES.prosperity.maxLevel),
-      critical: safeInteger(levels.critical, 0, RIFT_CHALLENGE_UPGRADES.critical.maxLevel),
-    },
     mainProgressAtStart: normalizeRiftMainProgress(
       isRecord(value.mainProgressAtStart)
         ? value.mainProgressAtStart as Partial<RiftChallengeMainProgress>
         : null,
     ),
-    mechanicUnlocks: {
-      fortune: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.fortune === true,
-      speed: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.speed === true,
-      prosperity: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.prosperity === true,
-      critical: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.critical === true,
-    },
     lastRoll,
     targetRarity: safeInteger(value.targetRarity, challenge.targetRarity),
     baseCooldownMs: safeInteger(value.baseCooldownMs, challenge.baseCooldownMs),
@@ -172,7 +155,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     ? activeRun
     : null;
   const archive: RiftChallengeArchive = {
-    version: 6,
+    version: 7,
     activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
@@ -286,30 +269,12 @@ function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): v
   } else {
     run.bestRarity = Math.max(2, safeInteger(run.bestRarity, 2));
   }
-  const progressUnlocks = riftChallengeMechanicUnlocks(progressFromGameState(state));
-  run.mechanicUnlocks = {
-    fortune: progressUnlocks.fortune || run.upgradeLevels.fortune > 0,
-    speed: progressUnlocks.speed || run.upgradeLevels.speed > 0,
-    prosperity: progressUnlocks.prosperity || run.upgradeLevels.prosperity > 0,
-    critical: progressUnlocks.critical || run.upgradeLevels.critical > 0,
-  };
   run.updatedAt = now;
 }
 
 async function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChallengeMainProgress): Promise<RiftChallengeSnapshot> {
   const activeRun = archive.activeRun?.status === 'active' ? archive.activeRun : null;
   if (activeRun) syncRunSummaryFromGameState(activeRun);
-  const mechanicProgress = activeRun?.gameState
-    ? progressFromGameState(activeRun.gameState)
-    : currentMainProgress;
-  return {
-    challenge: RIFT_FIRST_SPARK,
-    challenges: RIFT_CHALLENGES,
-    archive,
-    mainProgress: currentMainProgress,
-    mechanicUnlocks: activeRun?.gameState
-      ? riftChallengeMechanicUnlocks(mechanicProgress)
-      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mechanicProgress),
     challengeAvailable: riftChallengeIsAvailable(currentMainProgress),
     scrapBalance: await getCombatScrapBalance(),
   };
@@ -369,14 +334,22 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
       : challenge.targetRarity;
     const maxRelicSlots = archive.riftUnlocks.timelineFork ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
     const relicEffects = getRiftRelicEffects(archive.equippedRiftRelics, archive.riftRelicLevels, maxRelicSlots);
-    const effectiveTemporalDrag = riftEffectiveTemporalDragMultiplier(modifierSettings.temporalDrag, relicEffects.temporalDragPenaltyReduction);
+    const effectiveTemporalDrag = riftEffectiveTemporalDragMultiplier(
+    modifierSettings.temporalDrag,
+    relicEffects.temporalDragPenaltyReduction,
+    isModifierRun && challengeToggles.noAutomation ? relicEffects.noAutomationCooldownReduction : 0,
+  );
     const baseCooldownMs = isModifierRun
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(500, Math.ceil(RIFT_ASCENT.baseCooldownMs * effectiveTemporalDrag)))
       : challenge.baseCooldownMs;
     const challengeCoinMultiplier = isModifierRun
       ? 1 / modifierSettings.coinScarcity
       : challenge.coinMultiplier;
-    if (isModifierRun) state.upgrades.multi = Math.max(1, state.upgrades.multi ?? 0);
+    state.upgrades.multi = riftStartingMultiballLevel(
+      state.upgrades.multi ?? 0,
+      isModifierRun && challengeToggles.secondBest,
+      isModifierRun ? relicEffects.secondBestMultiballBonus : 0,
+    );
     const seedCoins = archive.riftPerkLevels.riftStartCoins * 100;
     state.username = String(context.username ?? '').slice(0, 100) || undefined;
     state.coins = seedCoins;
@@ -388,7 +361,6 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
     state.saveGeneration = 0;
     state.stateRevision = 0;
     const riftProgress = progressFromGameState(state);
-    const startMechanicUnlocks = riftChallengeMechanicUnlocks(riftProgress);
     archive.activeRun = {
       runId: createRunId(),
       challengeId: challenge.id as RiftChallengeId,
@@ -400,9 +372,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
       totalRolls: state.totalRolls,
       bestRarity: Math.max(2, state.highestRarity),
       nextRollAt: 0,
-      upgradeLevels: { fortune: 0, speed: 0, prosperity: 0, critical: 0 },
       mainProgressAtStart: mainProgress,
-      mechanicUnlocks: startMechanicUnlocks,
       lastRoll: null,
       targetRarity,
       baseCooldownMs,
@@ -426,44 +396,6 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
 /** Kept as a compatibility guard; actual Rift rolls now use the ordinary game /api/roll path. */
 export async function rollRiftChallenge(_expectedRunIdValue: unknown): Promise<RiftChallengeSnapshot> {
   throw new Error('Use the main game Roll button while a Rift challenge is active.');
-}
-
-export async function buyRiftChallengeUpgrade(
-  upgradeIdValue: unknown,
-  expectedRunIdValue: unknown,
-): Promise<RiftChallengeSnapshot> {
-  const upgradeId = String(upgradeIdValue ?? '') as RiftChallengeUpgradeId;
-  if (!Object.prototype.hasOwnProperty.call(RIFT_CHALLENGE_UPGRADES, upgradeId)) {
-    throw new Error('Choose a valid challenge upgrade.');
-  }
-
-  return withPlayerMutationLock(async () => {
-    const archive = await readArchive();
-    accrueRiftProgress(archive);
-    const run = archive.activeRun;
-    if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
-    assertExpectedRunId(run, expectedRunIdValue);
-    const gameState = ensureRunGameState(run);
-    const progress = progressFromGameState(gameState);
-    const mechanicUnlocks = riftChallengeMechanicUnlocks(progress);
-    if (!mechanicUnlocks[upgradeId] && run.upgradeLevels[upgradeId] <= 0) {
-      throw new Error('Rift-game requirement not met: ' + RIFT_CHALLENGE_UPGRADES[upgradeId].mainRequirement + '.');
-    }
-    const definition = RIFT_CHALLENGE_UPGRADES[upgradeId];
-    const currentLevel = run.upgradeLevels[upgradeId];
-    if (currentLevel >= definition.maxLevel) throw new Error('This challenge upgrade is already at maximum level.');
-    const baseCost = riftChallengeUpgradeCost(upgradeId, currentLevel, run.totalRolls);
-    const inflation = normalizeRiftModifierSettings(run.modifierSettings).upgradeInflation;
-    const cost = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(baseCost * inflation));
-    if (gameState.coins < cost) throw new Error('Need ' + String(cost) + ' Rift Coins for this upgrade.');
-    gameState.coins -= cost;
-    gameState.stateRevision = safeInteger(gameState.stateRevision) + 1;
-    run.coins = gameState.coins;
-    run.upgradeLevels[upgradeId] = currentLevel + 1;
-    syncRunSummaryFromGameState(run);
-    await writeArchive(archive);
-    return snapshot(archive, await readMainProgress());
-  });
 }
 
 export async function updateRiftModifiers(
