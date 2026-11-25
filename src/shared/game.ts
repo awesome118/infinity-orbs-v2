@@ -1160,6 +1160,7 @@ export interface RiftPlayerSession {
   riftObserverLuckMultiplier?: number;
   riftLoadedDieMultiplier?: number;
   riftFractureCascadeMultiplier?: number;
+  riftProbabilityDebtMultiplier?: number;
 }
 
 export interface PlayerState {

@@ -1,4 +1,5 @@
 export const RIFT_RELIC_EQUIP_SLOTS = 2;
+export const RIFT_RELIC_FORKED_EQUIP_SLOTS = 3;
 
 export type RiftRelicId =
   | 'clock-without-hands'
@@ -85,16 +86,17 @@ export function normalizeRiftRelicLevels(value: unknown): RiftRelicLevels {
   })) as RiftRelicLevels;
 }
 
-export function normalizeEquippedRiftRelics(value: unknown, levelsValue?: unknown): RiftRelicId[] {
+export function normalizeEquippedRiftRelics(value: unknown, levelsValue?: unknown, maxSlotsValue: unknown = RIFT_RELIC_EQUIP_SLOTS): RiftRelicId[] {
   if (!Array.isArray(value)) return [];
   const levels = levelsValue === undefined ? null : normalizeRiftRelicLevels(levelsValue);
+  const maxSlots = Number.isFinite(Number(maxSlotsValue)) ? Math.max(0, Math.min(RIFT_RELIC_FORKED_EQUIP_SLOTS, Math.floor(Number(maxSlotsValue)))) : RIFT_RELIC_EQUIP_SLOTS;
   const result: RiftRelicId[] = [];
   for (const entry of value) {
     if (typeof entry !== 'string' || !Object.prototype.hasOwnProperty.call(RIFT_RELICS, entry)) continue;
     const id = entry as RiftRelicId;
     if (result.includes(id) || (levels && levels[id] <= 0)) continue;
     result.push(id);
-    if (result.length >= RIFT_RELIC_EQUIP_SLOTS) break;
+    if (result.length >= maxSlots) break;
   }
   return result;
 }
@@ -136,9 +138,9 @@ export interface RiftRelicEffects {
   fractureCascadeRank: number;
 }
 
-export function getRiftRelicEffects(equippedValue: unknown, levelsValue: unknown): RiftRelicEffects {
+export function getRiftRelicEffects(equippedValue: unknown, levelsValue: unknown, maxSlotsValue: unknown = RIFT_RELIC_EQUIP_SLOTS): RiftRelicEffects {
   const levels = normalizeRiftRelicLevels(levelsValue);
-  const equipped = normalizeEquippedRiftRelics(equippedValue, levels);
+  const equipped = normalizeEquippedRiftRelics(equippedValue, levels, maxSlotsValue);
   const level = (id: RiftRelicId) => equipped.includes(id) ? levels[id] : 0;
   const clock = level('clock-without-hands');
   const arbitrage = level('temporal-arbitrage');

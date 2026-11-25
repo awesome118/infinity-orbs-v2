@@ -263,7 +263,10 @@ export type RiftPerkId =
   | 'riftLuck'
   | 'riftSpeed'
   | 'riftYield'
-  | 'riftStartCoins';
+  | 'riftStartCoins'
+  | 'probabilityDebt'
+  | 'dimensionalInterest'
+  | 'stolenMomentum';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -310,7 +313,50 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     effect: '+100 starting challenge Coins per level.',
     baseCost: 2, costGrowth: 1.48, maxLevel: 20,
   },
+  probabilityDebt: {
+    id: 'probabilityDebt', name: 'Probability Debt', category: 'rift',
+    description: 'Failed rolls build pressure. A new Rift best clears the debt and resets the bonus.',
+    effect: '+2% Luck per 25 non-record rolls per level, up to +200%.',
+    baseCost: 12, costGrowth: 1.72, maxLevel: 10,
+  },
+  dimensionalInterest: {
+    id: 'dimensionalInterest', name: 'Dimensional Interest', category: 'rift',
+    description: 'Unspent Rift Points feed the Rift Bar, so saving a reserve becomes a strategy.',
+    effect: '+0.5% Rift Bar rate per 100 unspent RP per level, capped at +100%.',
+    baseCost: 15, costGrowth: 1.78, maxLevel: 10,
+  },
+  stolenMomentum: {
+    id: 'stolenMomentum', name: 'Stolen Momentum', category: 'rift',
+    description: 'Carry a fraction of the temporary upgrade levels from your previous completed run.',
+    effect: 'Carry 10% of previous run upgrade levels per level, up to 100%.',
+    baseCost: 20, costGrowth: 1.82, maxLevel: 10,
+  },
 };
+
+export type RiftUnlockId = 'timelineFork';
+export type RiftUnlocks = Record<RiftUnlockId, boolean>;
+
+export interface RiftUnlockDefinition {
+  id: RiftUnlockId;
+  name: string;
+  description: string;
+  effect: string;
+  cost: number;
+}
+
+export const RIFT_UNLOCKS: Record<RiftUnlockId, RiftUnlockDefinition> = {
+  timelineFork: {
+    id: 'timelineFork',
+    name: 'Timeline Fork',
+    description: 'Split the relic timeline and unlock one additional relic equipment slot.',
+    effect: 'Equip 3 relics instead of 2.',
+    cost: 120,
+  },
+};
+
+export function emptyRiftUnlocks(): RiftUnlocks {
+  return { timelineFork: false };
+}
 
 export const RIFT_CHALLENGE_UPGRADES: Record<RiftChallengeUpgradeId, RiftChallengeUpgradeDefinition> = {
   fortune: {
@@ -379,6 +425,8 @@ export interface RiftChallengeRun {
   equippedRelics: RiftRelicId[];
   /** Exclusive roll count through which Fracture Cascade remains active. */
   fractureCascadeUntilRoll: number;
+  /** Rolls since the last Rift personal best, used by Probability Debt. */
+  probabilityDebtRolls: number;
   gameState?: PlayerState | null;
 }
 
@@ -405,6 +453,7 @@ export interface RiftChallengeArchive {
   riftPerkLevels: RiftPerkLevels;
   riftRelicLevels: RiftRelicLevels;
   equippedRiftRelics: RiftRelicId[];
+  riftUnlocks: RiftUnlocks;
 }
 
 export interface RiftChallengeSnapshot {
@@ -509,6 +558,7 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
   return {
     mainLuck: 0, mainCoins: 0, mainXp: 0,
     riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
+    probabilityDebt: 0, dimensionalInterest: 0, stolenMomentum: 0,
   };
 }
 
@@ -523,6 +573,7 @@ export function riftRatePerHour(
   perkLevels: Partial<RiftPerkLevels> | null | undefined,
   modifierSettings: unknown = DEFAULT_RIFT_MODIFIERS,
   challengeToggles: unknown = DEFAULT_RIFT_CHALLENGES,
+  unspentRiftPointsValue: unknown = 0,
 ): number {
   const legacyFirstClearRate = RIFT_CHALLENGES.reduce(
     (sum, challenge) => sum + (completedChallengeIds.includes(challenge.id) ? challenge.rateBonusPerHour : 0),
@@ -535,8 +586,23 @@ export function riftRatePerHour(
   const preview = hasClearedAscent
     ? riftModifierRewardPreview(modifierSettings, challengeToggles, 0)
     : { rpPerHour: RIFT_BASE_RATE_PER_HOUR };
-  const rate = (preview.rpPerHour + legacyFirstClearRate) * (1 + yieldLevel * 0.05);
+  const interestLevel = Math.max(0, Math.min(RIFT_PERKS.dimensionalInterest.maxLevel, Math.floor(Number(perkLevels?.dimensionalInterest) || 0)));
+  const unspentRiftPoints = Number.isFinite(Number(unspentRiftPointsValue)) ? Math.max(0, Math.floor(Number(unspentRiftPointsValue))) : 0;
+  const interestBonus = Math.min(1, Math.floor(unspentRiftPoints / 100) * 0.005 * interestLevel);
+  const rate = (preview.rpPerHour + legacyFirstClearRate) * (1 + yieldLevel * 0.05) * (1 + interestBonus);
   return Number.isFinite(rate) ? Math.max(RIFT_BASE_RATE_PER_HOUR, Math.min(Number.MAX_SAFE_INTEGER, rate)) : Number.MAX_SAFE_INTEGER;
+}
+
+export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRollsValue: unknown): number {
+  const perkLevel = Math.max(0, Math.min(RIFT_PERKS.probabilityDebt.maxLevel, Math.floor(Number(perkLevelValue) || 0)));
+  const debtRolls = Math.max(0, Math.floor(Number(debtRollsValue) || 0));
+  return 1 + Math.min(2, Math.floor(debtRolls / 25) * 0.02 * perkLevel);
+}
+
+export function riftStolenMomentumLevel(previousLevelValue: unknown, perkLevelValue: unknown): number {
+  const previousLevel = Math.max(0, Math.min(10, Math.floor(Number(previousLevelValue) || 0)));
+  const perkLevel = Math.max(0, Math.min(RIFT_PERKS.stolenMomentum.maxLevel, Math.floor(Number(perkLevelValue) || 0)));
+  return Math.min(10, Math.floor(previousLevel * perkLevel / 10));
 }
 
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
@@ -560,5 +626,6 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftPerkLevels,
     riftRelicLevels: { 'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0, observer: 0, 'loaded-die': 0, 'fracture-cascade': 0 },
     equippedRiftRelics: [],
+    riftUnlocks: emptyRiftUnlocks(),
   };
 }
