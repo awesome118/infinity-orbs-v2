@@ -40,6 +40,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /if \(s\.riftSession\) \{/);
   assert.match(game, /run\.gameState = storedState/);
   assert.match(server, /updateRiftModifiers/);
+  assert.match(server, /state\.upgrades\.multi = Math\.max\(1, state\.upgrades\.multi \?\? 0\)/);
+  assert.match(server, /targetRarity = isModifierRun/);
   assert.match(server, /const mainProgress = await readMainProgress\(\)/);
   assert.match(server, /riftChallengeUnlockStatus\(challenge, mainProgress, archive\.completedChallengeIds\)/);
   assert.match(server, /Reach Level .* in the main game to unlock/);
@@ -62,6 +64,10 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.doesNotMatch(adminDebug.slice(queuedDevAdminStart, queuedDevAdminEnd), /applyRolls\(/);
   assert.match(game, /rollTicketKey\(currentUserId\(\), s\.riftSession\?\.runId\)/);
   assert.match(game, /challengeCoinMultiplier/);
+  assert.match(game, /sampleSecondOrderUniform/);
+  assert.match(game, /secondBestOrb/);
+  assert.match(game, /session\.noShards === true/);
+  assert.match(game, /s\.riftSession\?\.noAutomation === true/);
   assert.match(game, /Auto Roll is disabled by this Rift challenge/);
   assert.match(game, /Offline rolls are disabled in The First Spark/);
   assert.match(game, /Automation is disabled in The First Spark/);
@@ -81,6 +87,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(adminUi, /handleQueueGuaranteedRoll/);
   assert.match(adminUi, /Queue Next/);
   assert.match(client, /Number\(stateForRoll\.chainPatcherNextRarity \?\? 0\) === 0/);
+  assert.match(client, /getRiftChallengeDefinition\(currentState\.riftSession\?\.challengeId\)/);
   assert.match(client, /onEnterGame=\{\(\) =>/);
   assert.match(client, /renderNavItem\('reddit-simulator', 'Reddit Simulator', MessageSquare\)/);
   assert.match(client, /renderNavItem\('challenges', 'Rift Progression', Compass\)/);
