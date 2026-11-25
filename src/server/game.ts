@@ -4200,6 +4200,7 @@ interface ActiveRiftRunContext {
   riftLoadedDieMultiplier: number;
   riftFractureCascadeMultiplier: number;
   riftProbabilityDebtMultiplier: number;
+  riftCritChanceBonus: number;
   riftMutation: {
     id: string;
     name: string;
@@ -4284,7 +4285,9 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       baseCooldownMs: isModifierRun ? Math.max(500, storedBaseCooldownMs || Math.ceil(RIFT_ASCENT.baseCooldownMs * modifierSettings.temporalDrag)) : challenge.baseCooldownMs,
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
-      challengeCoinMultiplier: isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier,
+      challengeCoinMultiplier: (isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier) *
+        (1 + safeNonNegativeInteger(riftPerks.riftCoinYield) * 0.03),
+      riftCritChanceBonus: safeNonNegativeInteger(riftPerks.riftCrit) * 0.005,
       luckSuppressionMultiplier: isModifierRun ? 1 / modifierSettings.fortuneSuppression : 1,
       secondBest: isModifierRun && challengeToggles.secondBest,
       noAutomation: isModifierRun && challengeToggles.noAutomation,
@@ -4499,7 +4502,11 @@ async function saveActiveRiftPlayerState(
       const targetRarity = safeNonNegativeInteger(run.targetRarity) || challenge.targetRarity;
 
       // Mutations stay dormant until the player has made real progress.
-      // Each condition lasts 12 rolls, followed by an 8-roll quiet interval.
+      // Permanent Research can lengthen their duration and shorten the quiet interval.
+      const riftPerkLevels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+      const mutationPersistence = Math.min(5, safeNonNegativeInteger(riftPerkLevels.mutationPersistence));
+      const mutationCycle = Math.min(5, safeNonNegativeInteger(riftPerkLevels.mutationCycle));
+      const mutationQuietRolls = Math.max(2, RIFT_MUTATION_BREAK_ROLLS - mutationCycle);
       const currentMutation = getRiftMutationDefinition(run.mutationId);
       let mutationsCompleted = safeNonNegativeInteger(run.mutationsCompleted);
       if (
@@ -4513,7 +4520,7 @@ async function saveActiveRiftPlayerState(
         run.mutationEndsAtRoll = 0;
         run.nextMutationAtRoll = Math.min(
           Number.MAX_SAFE_INTEGER,
-          safeNonNegativeInteger(storedState.totalRolls) + RIFT_MUTATION_BREAK_ROLLS,
+          safeNonNegativeInteger(storedState.totalRolls) + mutationQuietRolls,
         );
       }
       const mutationAlreadyActive = Boolean(getRiftMutationDefinition(run.mutationId));
@@ -4535,7 +4542,7 @@ async function saveActiveRiftPlayerState(
         run.mutationId = selectedMutation.id;
         run.mutationEndsAtRoll = Math.min(
           Number.MAX_SAFE_INTEGER,
-          safeNonNegativeInteger(storedState.totalRolls) + RIFT_MUTATION_DURATION_ROLLS,
+          safeNonNegativeInteger(storedState.totalRolls) + RIFT_MUTATION_DURATION_ROLLS + mutationPersistence,
         );
         run.nextMutationAtRoll = 0;
       }
@@ -4587,7 +4594,7 @@ async function saveActiveRiftPlayerState(
         const reward = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(
           baseReward *
             getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels, completionRelicSlotCount).completionRewardMultiplier *
-            riftMutationRewardMultiplier(run.mutationsCompleted),
+            riftMutationRewardMultiplier(run.mutationsCompleted, safeNonNegativeInteger(riftPerkLevels.mutationMastery)),
         ));
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
@@ -4920,6 +4927,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
       riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
+      riftCritChanceBonus: activeRiftRun.riftCritChanceBonus,
       riftProgressCoinMultiplier: activeRiftRun.riftProgressCoinMultiplier,
       luckSuppressionMultiplier: activeRiftRun.luckSuppressionMultiplier,
       secondBest: activeRiftRun.secondBest,
@@ -6021,7 +6029,8 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo)
+    guildComboCritChanceBonus(s.guildCombo) +
+    (s.riftSession?.riftCritChanceBonus ?? 0)
   );
 }
 
