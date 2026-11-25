@@ -424,7 +424,7 @@ export interface RiftChallengeRun {
 }
 
 export interface RiftChallengeArchive {
-  version: 5;
+  version: 6;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;

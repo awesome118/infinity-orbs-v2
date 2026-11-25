@@ -141,3 +141,5 @@ Pages Rift upgrade test correction: use a plain text assertion for the research 
 Pages Rift upgrade pruning: remove Stolen Momentum and return prior purchases as Rift Points through a one-time archive v6 migration.
 
 Deploy prompt: remove Stolen Momentum, migrate existing purchases back to Rift Points, and start new Rift runs without carry-over ranks.
+
+Pages migration type fix: update the Rift archive schema type to version 6.
