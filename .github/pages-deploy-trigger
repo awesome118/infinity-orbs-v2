@@ -116,3 +116,5 @@ Pages Relic Forge validation correction: tolerant Observer floating-point assert
 Pages Rift upgrades: Probability Debt, Dimensional Interest, Stolen Momentum, Timeline Fork, and a prominent START RIFT button.
 
 Pages Rift upgrades final validation: updated Start Rift assertion, Timeline Fork third-slot enforcement, and immediate interest-rate recalculation.
+
+Pages Rift integration validation: assert Dimensional Interest in its shared Rift economy implementation.
