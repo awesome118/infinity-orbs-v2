@@ -1,6 +1,5 @@
 import type { PlayerState } from './game.js';
 import type { RiftRelicId, RiftRelicLevels } from './rift-relics.js';
-export type RiftChallengeUpgradeId = 'fortune' | 'speed' | 'prosperity' | 'critical';
 export type RiftChallengeRunStatus = 'active' | 'completed';
 
 export const RIFT_CHALLENGES = [
@@ -20,7 +19,6 @@ export const RIFT_CHALLENGES = [
     rateBonusPerHour: 0.5,
     debuffs: [
       { name: 'Fresh Save', description: 'Main-game Coins and upgrades do not carry over. Only the permanent Emergency Stipend perk can seed this separate wallet.' },
-      { name: 'Dimensional Tax', description: 'Challenge-upgrade prices rise by 5% every 10 rolls, up to 50%.' },
       { name: 'Shards Disabled', description: 'Shards cannot drop or be spent during a Rift run.' },
       { name: 'No Automation', description: 'Auto Roll and offline rolls are unavailable.' },
       { name: 'Sealed Progression', description: 'Main-game boosts do not affect this temporary economy.' },
@@ -43,7 +41,6 @@ export const RIFT_CHALLENGES = [
     debuffs: [
       { name: 'Temporal Drag', description: 'The base roll interval is longer than in The First Spark.' },
       { name: 'Thin Payouts', description: 'Challenge Coin rewards are reduced by 10%.' },
-      { name: 'Dimensional Tax', description: 'Challenge-upgrade prices rise by 5% every 10 rolls, up to 50%.' },
       { name: 'Sealed Progression', description: 'Only Rift-specific perks affect this temporary economy.' },
     ],
   },
@@ -64,7 +61,6 @@ export const RIFT_CHALLENGES = [
     debuffs: [
       { name: 'Hollow Payouts', description: 'Challenge Coin rewards are reduced by 45%.' },
       { name: 'Temporal Drag', description: 'The base roll interval is longer than in earlier challenges.' },
-      { name: 'Dimensional Tax', description: 'Challenge-upgrade prices rise by 5% every 10 rolls, up to 50%.' },
       { name: 'Sealed Progression', description: 'Main-game Luck, Coins, and XP perks do not apply inside the challenge.' },
     ],
   },
@@ -102,7 +98,6 @@ export interface RiftModifierSettings {
   temporalDrag: number;
   fortuneSuppression: number;
   coinScarcity: number;
-  upgradeInflation: number;
 }
 
 export type RiftModifierId = keyof RiftModifierSettings;
@@ -119,7 +114,6 @@ export const DEFAULT_RIFT_MODIFIERS: RiftModifierSettings = {
   temporalDrag: 1,
   fortuneSuppression: 1,
   coinScarcity: 1,
-  upgradeInflation: 1,
 };
 
 export const DEFAULT_RIFT_CHALLENGES: RiftChallengeToggles = {
@@ -144,7 +138,6 @@ export function normalizeRiftModifierSettings(value: unknown): RiftModifierSetti
     temporalDrag: normalize('temporalDrag'),
     fortuneSuppression: normalize('fortuneSuppression'),
     coinScarcity: normalize('coinScarcity'),
-    upgradeInflation: normalize('upgradeInflation'),
   };
 }
 
@@ -191,7 +184,6 @@ export function riftModifierDifficultyScore(
     temporalDrag: 1,
     fortuneSuppression: 1.25,
     coinScarcity: 1,
-    upgradeInflation: 0.75,
   };
   const continuous = (Object.keys(weights) as RiftModifierId[]).reduce(
     (sum, id) => sum + Math.log10(settings[id]) * weights[id],
@@ -227,22 +219,6 @@ export interface RiftChallengeMainProgress {
   totalCrits: number;
   highestRarity: number;
   masteryPoints: number;
-}
-
-export interface RiftChallengeMechanicUnlocks {
-  fortune: boolean;
-  speed: boolean;
-  prosperity: boolean;
-  critical: boolean;
-}
-
-export interface RiftChallengeUpgradeDefinition {
-  name: string;
-  description: string;
-  mainRequirement: string;
-  baseCost: number;
-  costGrowth: number;
-  maxLevel: number;
 }
 
 export interface RiftPerkDefinition {
@@ -351,39 +327,6 @@ export function emptyRiftUnlocks(): RiftUnlocks {
   return { timelineFork: false };
 }
 
-export const RIFT_CHALLENGE_UPGRADES: Record<RiftChallengeUpgradeId, RiftChallengeUpgradeDefinition> = {
-  fortune: {
-    name: 'Fortune Lens',
-    description: '+12% effective Luck per level in this challenge.',
-    mainRequirement: 'Reach Level 5 in the Rift',
-    baseCost: 10, costGrowth: 1.42, maxLevel: 10,
-  },
-  speed: {
-    name: 'Quickstep Coil',
-    description: 'Reduces the challenge roll cooldown by 90ms per level.',
-    mainRequirement: 'Reach Level 10 in the Rift',
-    baseCost: 18, costGrowth: 1.48, maxLevel: 10,
-  },
-  prosperity: {
-    name: 'Coin Converter',
-    description: '+20% Coins earned per level in this challenge.',
-    mainRequirement: 'Roll 25 Orbs in the Rift',
-    baseCost: 14, costGrowth: 1.45, maxLevel: 10,
-  },
-  critical: {
-    name: 'Critical Echo',
-    description: '+1.5 percentage points of critical chance per level, up to 15%.',
-    mainRequirement: 'Land 10 critical rolls in the Rift',
-    baseCost: 55, costGrowth: 1.65, maxLevel: 10,
-  },
-};
-
-export const RIFT_CHALLENGE_BASE_COOLDOWN_MS = 1_500;
-export const RIFT_CHALLENGE_MIN_COOLDOWN_MS = 600;
-export const RIFT_CHALLENGE_COOLDOWN_REDUCTION_PER_LEVEL_MS = 90;
-export const RIFT_CHALLENGE_COST_TAX_PER_10_ROLLS = 0.05;
-export const RIFT_CHALLENGE_MAX_COST_TAX = 0.5;
-// Rift energy accrues continuously and is credited when the player next opens the Rift page or performs a Rift action.
 export const RIFT_BASE_RATE_PER_HOUR = 1;
 
 export interface RiftChallengeLastRoll {
@@ -404,9 +347,7 @@ export interface RiftChallengeRun {
   totalRolls: number;
   bestRarity: number;
   nextRollAt: number;
-  upgradeLevels: Record<RiftChallengeUpgradeId, number>;
   mainProgressAtStart: RiftChallengeMainProgress;
-  mechanicUnlocks: RiftChallengeMechanicUnlocks;
   lastRoll: RiftChallengeLastRoll | null;
   /** Dynamic target captured when a modifier run begins. */
   targetRarity?: number;
@@ -424,7 +365,7 @@ export interface RiftChallengeRun {
 }
 
 export interface RiftChallengeArchive {
-  version: 6;
+  version: 7;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -455,7 +396,6 @@ export interface RiftChallengeSnapshot {
   challenges: typeof RIFT_CHALLENGES;
   archive: RiftChallengeArchive;
   mainProgress: RiftChallengeMainProgress;
-  mechanicUnlocks: RiftChallengeMechanicUnlocks;
   challengeAvailable: boolean;
   scrapBalance: number;
 }
@@ -493,58 +433,6 @@ export function riftChallengeUnlockStatus(
   const levelReady = normalizeRiftMainProgress(mainProgress).level >= challenge.requiredMainLevel;
   const prerequisiteCleared = !challenge.prerequisiteId || completedChallengeIds.includes(challenge.prerequisiteId);
   return { levelReady, prerequisiteCleared, unlocked: levelReady && prerequisiteCleared };
-}
-
-export function riftChallengeMechanicUnlocks(
-  mainProgress: Partial<RiftChallengeMainProgress> | null | undefined,
-): RiftChallengeMechanicUnlocks {
-  const progress = normalizeRiftMainProgress(mainProgress);
-  return {
-    fortune: progress.level >= 5,
-    speed: progress.level >= 10,
-    prosperity: progress.totalRolls >= 25,
-    critical: progress.totalCrits >= 10,
-  };
-}
-
-export function riftChallengeUpgradeCost(
-  id: RiftChallengeUpgradeId,
-  currentLevel: number,
-  totalRolls: number,
-): number {
-  const definition = RIFT_CHALLENGE_UPGRADES[id];
-  const level = Math.max(0, Math.min(definition.maxLevel, Math.floor(Number(currentLevel) || 0)));
-  const rolls = Math.max(0, Math.floor(Number(totalRolls) || 0));
-  const taxStacks = Math.min(
-    RIFT_CHALLENGE_MAX_COST_TAX / RIFT_CHALLENGE_COST_TAX_PER_10_ROLLS,
-    Math.floor(rolls / 10),
-  );
-  const taxMultiplier = 1 + taxStacks * RIFT_CHALLENGE_COST_TAX_PER_10_ROLLS;
-  return Math.min(
-    Number.MAX_SAFE_INTEGER,
-    Math.ceil(definition.baseCost * Math.pow(definition.costGrowth, level) * taxMultiplier),
-  );
-}
-
-export function riftChallengeCooldownMs(speedLevel: number, baseCooldownMs = RIFT_CHALLENGE_BASE_COOLDOWN_MS): number {
-  const level = Math.max(0, Math.min(RIFT_CHALLENGE_UPGRADES.speed.maxLevel, Math.floor(Number(speedLevel) || 0)));
-  const base = Math.max(500, Math.floor(Number(baseCooldownMs) || RIFT_CHALLENGE_BASE_COOLDOWN_MS));
-  return Math.max(500, base - level * RIFT_CHALLENGE_COOLDOWN_REDUCTION_PER_LEVEL_MS);
-}
-
-export function riftChallengeEffectiveLuck(fortuneLevel: number): number {
-  const level = Math.max(0, Math.min(RIFT_CHALLENGE_UPGRADES.fortune.maxLevel, Math.floor(Number(fortuneLevel) || 0)));
-  return 1 + level * 0.12;
-}
-
-export function riftChallengeCoinMultiplier(prosperityLevel: number): number {
-  const level = Math.max(0, Math.min(RIFT_CHALLENGE_UPGRADES.prosperity.maxLevel, Math.floor(Number(prosperityLevel) || 0)));
-  return 1 + level * 0.20;
-}
-
-export function riftChallengeCriticalChance(criticalLevel: number): number {
-  const level = Math.max(0, Math.min(RIFT_CHALLENGE_UPGRADES.critical.maxLevel, Math.floor(Number(criticalLevel) || 0)));
-  return Math.min(0.15, level * 0.015);
 }
 
 export function emptyRiftPerkLevels(): RiftPerkLevels {
@@ -595,7 +483,7 @@ export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRolls
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 6,
+    version: 7,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
