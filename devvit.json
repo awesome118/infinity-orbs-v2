@@ -15,6 +15,10 @@
         "entry": "frenzy.html",
         "height": "tall"
       }
+      "rift": {
+        "entry": "rift.html",
+        "height": "tall"
+      }
     }
   },
   "server": {
