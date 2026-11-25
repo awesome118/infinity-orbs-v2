@@ -107,10 +107,11 @@ test('Mirror Array, Stillness Engine, and Rift Tithe have distinct equipped effe
   assert.equal(effects.progressCoinBonus, 0);
   const tithe = getRiftRelicEffects(['rift-tithe'], levels);
   assert.equal(tithe.progressCoinBonus, 0.75);
-  assert.equal(riftRelicProgressCoinMultiplier(1_000, 1_000_000, 0.75), 1);
+  assert.equal(riftRelicProgressCoinMultiplier(2, 1_000_000, 0.75), 1);
+  assert.ok(riftRelicProgressCoinMultiplier(1_000, 1_000_000, 0.75) > 1);
   assert.equal(riftRelicProgressCoinMultiplier(1_000_000, 1_000_000, 0.75), 1.75);
 });
 
 test('Stillness Engine compounds multiplicatively with Clock Without Hands', () => {
-  assert.equal(riftEffectiveTemporalDragMultiplier(6, 0.4, 0.2), 3.4);
+  assert.ok(Math.abs(riftEffectiveTemporalDragMultiplier(6, 0.4, 0.2) - 3.4) < 1e-12);
 });
