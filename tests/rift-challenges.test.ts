@@ -4,6 +4,7 @@ import {
   accrueRiftDimensionalInterest,
   riftMutationDurationRolls,
   riftMutationPenaltyFactor,
+  riftObjectiveProgress,
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   normalizeRiftTemporalDragMultiplier,
@@ -172,10 +173,22 @@ test('Fracture Cascade and Echo Chamber respect their maximum levels', () => {
   assert.equal(riftEchoChamberChance(20), 0.2);
 });
 
-test('Singularity Focus ramps at the 90% and 99% logarithmic objective marks', () => {
-  assert.ok(Math.abs(riftSingularityFocusMultiplier(1e9, 1e10, 10) - 2) < 1e-12);
-  assert.ok(Math.abs(riftSingularityFocusMultiplier(Math.pow(10, 9.9), 1e10, 10) - 5) < 1e-9);
-  assert.equal(riftSingularityFocusMultiplier(1e10, 1e10, 0), 1);
+test('Rift objective progress is logarithmic and normalized from the starting rarity', () => {
+  const target = 1e10;
+  assert.equal(riftObjectiveProgress(2, target), 0);
+  assert.equal(riftObjectiveProgress(target, target), 1);
+  assert.ok(Math.abs(riftObjectiveProgress(2 * Math.pow(target / 2, 0.25), target) - 0.25) < 1e-12);
+  assert.ok(Math.abs(riftObjectiveProgress(2 * Math.pow(target / 2, 0.5), target) - 0.5) < 1e-12);
+  assert.ok(Math.abs(riftObjectiveProgress(2 * Math.pow(target / 2, 0.75), target) - 0.75) < 1e-12);
+});
+
+test('Singularity Focus ramps at the 90% and 99% normalized logarithmic objective marks', () => {
+  const target = 1e10;
+  const rarityAt90Percent = 2 * Math.pow(target / 2, 0.90);
+  const rarityAt99Percent = 2 * Math.pow(target / 2, 0.99);
+  assert.ok(Math.abs(riftSingularityFocusMultiplier(rarityAt90Percent, target, 10) - 2) < 1e-9);
+  assert.ok(Math.abs(riftSingularityFocusMultiplier(rarityAt99Percent, target, 10) - 5) < 1e-8);
+  assert.equal(riftSingularityFocusMultiplier(target, target, 0), 1);
 });
 
 test('Overkill converts excess orders of magnitude into completion rewards', () => {
