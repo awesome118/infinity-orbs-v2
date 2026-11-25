@@ -18,7 +18,7 @@ import {
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
-import { getRiftRelicEffects, riftObserverLuckMultiplier } from '../shared/rift-relics.js';
+import { getRiftRelicEffects, riftObserverLuckMultiplier, riftTemporalArbitrageMultiplier } from '../shared/rift-relics.js';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
@@ -4257,7 +4257,7 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       noCriticals: isModifierRun && challengeToggles.noCriticals,
       noShards: isModifierRun && challengeToggles.noShards,
       riftTemporalArbitrageMultiplier: isModifierRun
-        ? 1 + (modifierSettings.temporalDrag - 1) * relicEffects.temporalArbitrageEfficiency
+        ? riftTemporalArbitrageMultiplier(modifierSettings.temporalDrag, relicEffects.temporalArbitrageEfficiency)
         : 1,
       riftRelicLuckExcessMultiplier: relicEffects.luckExcessMultiplier,
       riftObserverLuckMultiplier: riftObserverLuckMultiplier(Math.max(2, safeNonNegativeInteger(run.bestRarity)), targetRarity, relicEffects.observerRank),

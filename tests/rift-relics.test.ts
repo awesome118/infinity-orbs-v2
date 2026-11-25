@@ -8,6 +8,8 @@ import {
   normalizeRiftRelicLevels,
   riftObserverLuckMultiplier,
   riftRelicCost,
+  riftEffectiveTemporalDragMultiplier,
+  riftTemporalArbitrageMultiplier,
 } from '../src/shared/rift-relics.js';
 
 test('Rift relic levels are bounded and equipped loadouts contain only owned relics', () => {
@@ -60,4 +62,11 @@ test('Observer Luck ramps from neutral to its maximum near the Rift goal', () =>
   assert.ok(Math.abs(riftObserverLuckMultiplier(1_000_000 ** 0.9, target, 3) - 2) < 1e-10);
   assert.ok(Math.abs(riftObserverLuckMultiplier(1_000_000 ** 0.99, target, 3) - 5) < 1e-10);
   assert.equal(riftObserverLuckMultiplier(1_000_000, target, 1), 1 + 4 / 3);
+});
+
+test('Clock Without Hands and Temporal Arbitrage convert the Temporal Drag penalty as designed', () => {
+  assert.equal(riftEffectiveTemporalDragMultiplier(6, 0.4), 4);
+  assert.equal(riftTemporalArbitrageMultiplier(6, 0.2), 2);
+  assert.equal(riftEffectiveTemporalDragMultiplier(1, 0.4), 1);
+  assert.equal(riftTemporalArbitrageMultiplier(1, 0.2), 1);
 });

@@ -7,7 +7,7 @@ import {
   calculateLevelFromXp,
   type PlayerState,
 } from '../shared/game.js';
-import { normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, getRiftRelicEffects, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
+import { normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, getRiftRelicEffects, riftEffectiveTemporalDragMultiplier, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
 import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
@@ -336,7 +336,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.ceil(RIFT_ASCENT.targetRarity * modifierSettings.instability)))
       : challenge.targetRarity;
     const relicEffects = getRiftRelicEffects(archive.equippedRiftRelics, archive.riftRelicLevels);
-    const effectiveTemporalDrag = 1 + (modifierSettings.temporalDrag - 1) * (1 - relicEffects.temporalDragPenaltyReduction);
+    const effectiveTemporalDrag = riftEffectiveTemporalDragMultiplier(modifierSettings.temporalDrag, relicEffects.temporalDragPenaltyReduction);
     const baseCooldownMs = isModifierRun
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(500, Math.ceil(RIFT_ASCENT.baseCooldownMs * effectiveTemporalDrag)))
       : challenge.baseCooldownMs;

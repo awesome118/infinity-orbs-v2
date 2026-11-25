@@ -109,6 +109,22 @@ export function riftRelicCost(id: RiftRelicId, currentLevel: number): { scrap: n
   };
 }
 
+export function riftEffectiveTemporalDragMultiplier(temporalDragValue: unknown, penaltyReductionValue: unknown): number {
+  const rawDrag = Number(temporalDragValue);
+  const drag = Number.isFinite(rawDrag) ? Math.max(1, Math.min(100, rawDrag)) : 1;
+  const rawReduction = Number(penaltyReductionValue);
+  const reduction = Number.isFinite(rawReduction) ? Math.max(0, Math.min(1, rawReduction)) : 0;
+  return 1 + (drag - 1) * (1 - reduction);
+}
+
+export function riftTemporalArbitrageMultiplier(temporalDragValue: unknown, efficiencyValue: unknown): number {
+  const rawDrag = Number(temporalDragValue);
+  const drag = Number.isFinite(rawDrag) ? Math.max(1, Math.min(100, rawDrag)) : 1;
+  const rawEfficiency = Number(efficiencyValue);
+  const efficiency = Number.isFinite(rawEfficiency) ? Math.max(0, Math.min(1, rawEfficiency)) : 0;
+  return 1 + (drag - 1) * efficiency;
+}
+
 export interface RiftRelicEffects {
   temporalDragPenaltyReduction: number;
   temporalArbitrageEfficiency: number;
