@@ -7,7 +7,7 @@ import {
   calculateLevelFromXp,
   type PlayerState,
 } from '../shared/game.js';
-import { emptyRiftRelicLevels, normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
+import { normalizeRiftRelicLevels, normalizeEquippedRiftRelics, riftRelicCost, RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, type RiftRelicId } from '../shared/rift-relics.js';
 import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,

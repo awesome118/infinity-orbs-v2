@@ -18,6 +18,7 @@ import {
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
+import { getRiftRelicEffects, riftObserverLuckMultiplier } from '../shared/rift-relics.js';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
@@ -4184,6 +4185,11 @@ interface ActiveRiftRunContext {
   noCriticals: boolean;
   noShards: boolean;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
+  riftTemporalArbitrageMultiplier: number;
+  riftRelicLuckExcessMultiplier: number;
+  riftObserverLuckMultiplier: number;
+  riftLoadedDieMultiplier: number;
+  riftFractureCascadeMultiplier: number;
   gameState: PlayerState;
 }
 
@@ -4206,6 +4212,9 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     const isModifierRun = challenge.id === RIFT_ASCENT.id;
     const storedTargetRarity = safeNonNegativeInteger(run.targetRarity);
     const storedBaseCooldownMs = safeNonNegativeInteger(run.baseCooldownMs);
+    const targetRarity = isModifierRun ? Math.max(1, storedTargetRarity || Math.ceil(RIFT_ASCENT.targetRarity * modifierSettings.instability)) : challenge.targetRarity;
+    const equippedRelics = Array.isArray(run.equippedRelics) ? run.equippedRelics : [];
+    const relicEffects = getRiftRelicEffects(equippedRelics, archive.riftRelicLevels);
     let gameState: PlayerState;
     if (isPlainRecord(run.gameState)) {
       gameState = run.gameState as unknown as PlayerState;
@@ -4237,7 +4246,7 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     return {
       runId,
       challengeId: challenge.id,
-      targetRarity: isModifierRun ? Math.max(1, storedTargetRarity || Math.ceil(RIFT_ASCENT.targetRarity * modifierSettings.instability)) : challenge.targetRarity,
+      targetRarity,
       baseCooldownMs: isModifierRun ? Math.max(500, storedBaseCooldownMs || Math.ceil(RIFT_ASCENT.baseCooldownMs * modifierSettings.temporalDrag)) : challenge.baseCooldownMs,
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
@@ -4247,6 +4256,15 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       noAutomation: isModifierRun && challengeToggles.noAutomation,
       noCriticals: isModifierRun && challengeToggles.noCriticals,
       noShards: isModifierRun && challengeToggles.noShards,
+      riftTemporalArbitrageMultiplier: isModifierRun
+        ? 1 + (modifierSettings.temporalDrag - 1) * relicEffects.temporalArbitrageEfficiency
+        : 1,
+      riftRelicLuckExcessMultiplier: relicEffects.luckExcessMultiplier,
+      riftObserverLuckMultiplier: riftObserverLuckMultiplier(safeNonNegativeInteger(run.bestRarity, 2), targetRarity, relicEffects.observerRank),
+      riftLoadedDieMultiplier: relicEffects.loadedDieMultiplier,
+      riftFractureCascadeMultiplier: relicEffects.fractureCascadeRank > 0 &&
+        safeNonNegativeInteger(run.fractureCascadeUntilRoll) > safeNonNegativeInteger(gameState.totalRolls)
+        ? relicEffects.fractureCascadeMultiplier : 1,
       upgradeLevels: {
         fortune: safeNonNegativeInteger(levels.fortune),
         speed: safeNonNegativeInteger(levels.speed),
@@ -4423,9 +4441,15 @@ async function saveActiveRiftPlayerState(
       const riftBestRarity = challenge.id === RIFT_ASCENT.id
         ? Math.max(2, previousRunBest, selectedRarity || 2)
         : Math.max(2, Number(storedState.highestRarity) || 2);
+      const relicEffects = getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels);
+      if (relicEffects.fractureCascadeRank > 0 && riftBestRarity > previousRunBest) {
+        run.fractureCascadeUntilRoll = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(storedState.totalRolls) + 5);
+      } else {
+        run.fractureCascadeUntilRoll = safeNonNegativeInteger(run.fractureCascadeUntilRoll);
+      }
       run.bestRarity = riftBestRarity;
       run.updatedAt = now;
-      archive.version = 4;
+      archive.version = 5;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
@@ -4461,13 +4485,14 @@ async function saveActiveRiftPlayerState(
           masteryPoints: safeNonNegativeInteger(storedState.masteryPoints),
         } satisfies RiftChallengeMainProgress;
         const riftPerkLevels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
-        const reward = challenge.id === RIFT_ASCENT.id
+        const baseReward = challenge.id === RIFT_ASCENT.id
           ? riftModifierRewardPreview(
               run.modifierSettings ?? archive.modifierSettings,
               run.challengeToggles ?? archive.challengeToggles,
               safeNonNegativeInteger(riftPerkLevels.riftYield),
             ).pointsPerClear
           : firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        const reward = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(baseReward * getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels).completionRewardMultiplier));
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
@@ -4786,6 +4811,11 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       noAutomation: activeRiftRun.noAutomation,
       noCriticals: activeRiftRun.noCriticals,
       noShards: activeRiftRun.noShards,
+      riftTemporalArbitrageMultiplier: activeRiftRun.riftTemporalArbitrageMultiplier,
+      riftRelicLuckExcessMultiplier: activeRiftRun.riftRelicLuckExcessMultiplier,
+      riftObserverLuckMultiplier: activeRiftRun.riftObserverLuckMultiplier,
+      riftLoadedDieMultiplier: activeRiftRun.riftLoadedDieMultiplier,
+      riftFractureCascadeMultiplier: activeRiftRun.riftFractureCascadeMultiplier,
       upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
   }
@@ -6079,13 +6109,21 @@ export async function applyRolls(
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
+  const loadedDieCrossedMilestone = Boolean(s.riftSession && (s.riftSession.riftLoadedDieMultiplier ?? 1) > 1 &&
+    Math.floor((s.totalRolls + rollCount) / 100) > Math.floor(s.totalRolls / 100));
+  const relicLoadedDieMultiplier = loadedDieCrossedMilestone ? (s.riftSession?.riftLoadedDieMultiplier ?? 1) : 1;
   const challengeLuckMultiplier =
     (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
-    (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05);
+    (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05) *
+    (s.riftSession?.riftTemporalArbitrageMultiplier ?? 1) *
+    (s.riftSession?.riftObserverLuckMultiplier ?? 1) *
+    (s.riftSession?.riftFractureCascadeMultiplier ?? 1) *
+    relicLoadedDieMultiplier;
   const unsuppressedLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
     riftMultipliers.luckMultiplier * challengeLuckMultiplier;
   const luckSuppression = Math.max(0, Math.min(1, Number(s.riftSession?.luckSuppressionMultiplier ?? 1) || 0));
-  const baseLuckCandidate = 1 + Math.max(0, unsuppressedLuckCandidate - 1) * luckSuppression;
+  const relicLuckExcessMultiplier = Math.max(0, Math.min(1, Number(s.riftSession?.riftRelicLuckExcessMultiplier ?? 1) || 0));
+  const baseLuckCandidate = 1 + Math.max(0, unsuppressedLuckCandidate - 1) * luckSuppression * relicLuckExcessMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');

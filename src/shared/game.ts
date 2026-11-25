@@ -1154,6 +1154,12 @@ export interface RiftPlayerSession {
   noAutomation: boolean;
   noCriticals: boolean;
   noShards: boolean;
+  /** Rift relic effects frozen into the run when it begins. */
+  riftTemporalArbitrageMultiplier?: number;
+  riftRelicLuckExcessMultiplier?: number;
+  riftObserverLuckMultiplier?: number;
+  riftLoadedDieMultiplier?: number;
+  riftFractureCascadeMultiplier?: number;
 }
 
 export interface PlayerState {
