@@ -151,7 +151,12 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /accrueRiftProgress/);
   assert.match(server, /progressFromGameState\(activeRun\.gameState\)/);
   assert.match(server, /export async function buyRiftUnlock/);
-  assert.match(server, /riftStolenMomentumLevel/);
+  assert.match(server, /legacyStolenMomentumRefund/);
+  assert.match(server, /archiveVersion < 6/);
+  assert.match(server, /safeInteger\(parsed\.version, 0\) < archive\.version/);
+  assert.match(server, /upgradeLevels: \{ fortune: 0, speed: 0, prosperity: 0, critical: 0 \}/);
+  assert.doesNotMatch(server, /riftStolenMomentumLevel|carriedUpgradeLevels|momentumLevel/);
+  assert.doesNotMatch(shared, /stolenMomentum/);
   assert.match(server, /probabilityDebtRolls/);
   assert.match(game, /riftProbabilityDebtMultiplier/);
   assert.match(shared, /const interestBonus =/);

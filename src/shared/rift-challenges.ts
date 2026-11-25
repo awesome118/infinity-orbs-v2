@@ -265,8 +265,7 @@ export type RiftPerkId =
   | 'riftYield'
   | 'riftStartCoins'
   | 'probabilityDebt'
-  | 'dimensionalInterest'
-  | 'stolenMomentum';
+  | 'dimensionalInterest';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -324,12 +323,6 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     description: 'Unspent Rift Points feed the Rift Bar, so saving a reserve becomes a strategy.',
     effect: '+0.5% Rift Bar rate per 100 unspent RP per level, capped at +100%.',
     baseCost: 15, costGrowth: 1.78, maxLevel: 10,
-  },
-  stolenMomentum: {
-    id: 'stolenMomentum', name: 'Stolen Momentum', category: 'rift',
-    description: 'Carry a fraction of the temporary upgrade levels from your previous completed run.',
-    effect: 'Carry 10% of previous run upgrade levels per level, up to 100%.',
-    baseCost: 20, costGrowth: 1.82, maxLevel: 10,
   },
 };
 
@@ -558,7 +551,7 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
   return {
     mainLuck: 0, mainCoins: 0, mainXp: 0,
     riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
-    probabilityDebt: 0, dimensionalInterest: 0, stolenMomentum: 0,
+    probabilityDebt: 0, dimensionalInterest: 0,
   };
 }
 
@@ -599,16 +592,10 @@ export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRolls
   return 1 + Math.min(2, Math.floor(debtRolls / 25) * 0.02 * perkLevel);
 }
 
-export function riftStolenMomentumLevel(previousLevelValue: unknown, perkLevelValue: unknown): number {
-  const previousLevel = Math.max(0, Math.min(10, Math.floor(Number(previousLevelValue) || 0)));
-  const perkLevel = Math.max(0, Math.min(RIFT_PERKS.stolenMomentum.maxLevel, Math.floor(Number(perkLevelValue) || 0)));
-  return Math.min(10, Math.floor(previousLevel * perkLevel / 10));
-}
-
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 5,
+    version: 6,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},

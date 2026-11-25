@@ -13,7 +13,6 @@ import {
   emptyRiftPerkLevels,
   emptyRiftUnlocks,
   RIFT_UNLOCKS,
-  riftStolenMomentumLevel,
   normalizeRiftModifierSettings,
   normalizeRiftChallengeToggles,
   RIFT_ASCENT,
@@ -133,6 +132,17 @@ function normalizeRun(value: unknown, maxRelicSlots = RIFT_RELIC_EQUIP_SLOTS): R
   };
 }
 
+// Stolen Momentum was removed in archive v6. Preserve its old purchase value
+// by returning every Rift Point paid for its ranks exactly once during migration.
+function legacyStolenMomentumRefund(value: unknown): number {
+  const level = safeInteger(value, 0, 10);
+  let refund = 0;
+  for (let rank = 0; rank < level; rank += 1) {
+    refund = Math.min(Number.MAX_SAFE_INTEGER, refund + Math.ceil(20 * Math.pow(1.82, rank)));
+  }
+  return refund;
+}
+
 function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchive {
   if (!isRecord(value)) return createEmptyRiftChallengeArchive(now);
   const completed = Array.isArray(value.completedChallengeIds)
@@ -148,6 +158,9 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
       bestRarityByChallenge[id] = Math.min(Number.MAX_SAFE_INTEGER, rarity);
     }
   }
+  const archiveVersion = safeInteger(value.version, 0);
+  const legacyPerks = isRecord(value.riftPerkLevels) ? value.riftPerkLevels : {};
+  const removedPerkRefund = archiveVersion < 6 ? legacyStolenMomentumRefund(legacyPerks.stolenMomentum) : 0;
   const riftPerkLevels = normalizePerkLevels(value.riftPerkLevels);
   const rawUnlocks = isRecord(value.riftUnlocks) ? value.riftUnlocks : {};
   const riftUnlocks = { timelineFork: rawUnlocks.timelineFork === true };
@@ -159,12 +172,12 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     ? activeRun
     : null;
   const archive: RiftChallengeArchive = {
-    version: 5,
+    version: 6,
     activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
     totalCompletedRuns: safeInteger(value.totalCompletedRuns),
-    riftPoints: safeInteger(value.riftPoints),
+    riftPoints: Math.min(Number.MAX_SAFE_INTEGER, safeInteger(value.riftPoints) + removedPerkRefund),
     riftProgress: Number.isFinite(riftProgressValue) ? Math.max(0, Math.min(0.999999999, riftProgressValue)) : 0,
     riftRatePerHour: 1,
     riftLastAccruedAt: Math.min(now, lastAccrued),
@@ -189,7 +202,12 @@ async function readArchive(): Promise<RiftChallengeArchive> {
   const raw = await redis.get(archiveKey());
   if (!raw) return createEmptyRiftChallengeArchive(Date.now());
   try {
-    return normalizeArchive(JSON.parse(String(raw)));
+    const parsed = JSON.parse(String(raw));
+    const archive = normalizeArchive(parsed);
+    if (isRecord(parsed) && safeInteger(parsed.version, 0) < archive.version) {
+      await writeArchive(archive);
+    }
+    return archive;
   } catch {
     console.error('[Rift Challenges] Stored archive could not be parsed; a clean archive was returned.');
     return createEmptyRiftChallengeArchive(Date.now());
@@ -370,21 +388,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
     state.saveGeneration = 0;
     state.stateRevision = 0;
     const riftProgress = progressFromGameState(state);
-    const momentumLevel = archive.riftPerkLevels.stolenMomentum;
-    const previousUpgradeLevels = previousCompletedRun?.upgradeLevels;
-    const carriedUpgradeLevels = {
-      fortune: riftStolenMomentumLevel(previousUpgradeLevels?.fortune, momentumLevel),
-      speed: riftStolenMomentumLevel(previousUpgradeLevels?.speed, momentumLevel),
-      prosperity: riftStolenMomentumLevel(previousUpgradeLevels?.prosperity, momentumLevel),
-      critical: riftStolenMomentumLevel(previousUpgradeLevels?.critical, momentumLevel),
-    };
-    const progressUnlocks = riftChallengeMechanicUnlocks(riftProgress);
-    const startMechanicUnlocks = {
-      fortune: progressUnlocks.fortune || carriedUpgradeLevels.fortune > 0,
-      speed: progressUnlocks.speed || carriedUpgradeLevels.speed > 0,
-      prosperity: progressUnlocks.prosperity || carriedUpgradeLevels.prosperity > 0,
-      critical: progressUnlocks.critical || carriedUpgradeLevels.critical > 0,
-    };
+    const startMechanicUnlocks = riftChallengeMechanicUnlocks(riftProgress);
     archive.activeRun = {
       runId: createRunId(),
       challengeId: challenge.id as RiftChallengeId,
@@ -396,7 +400,7 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
       totalRolls: state.totalRolls,
       bestRarity: Math.max(2, state.highestRarity),
       nextRollAt: 0,
-      upgradeLevels: carriedUpgradeLevels,
+      upgradeLevels: { fortune: 0, speed: 0, prosperity: 0, critical: 0 },
       mainProgressAtStart: mainProgress,
       mechanicUnlocks: startMechanicUnlocks,
       lastRoll: null,

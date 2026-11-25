@@ -16,7 +16,6 @@ import {
   riftPerkCost,
   riftRatePerHour,
   riftProbabilityDebtMultiplier,
-  riftStolenMomentumLevel,
   RIFT_UNLOCKS,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
@@ -128,6 +127,8 @@ test('Rift passive generation uses only the best-cleared configuration', () => {
 });
 
 test('Rift Point shop costs scale and perks have clear caps', () => {
+  assert.equal('stolenMomentum' in RIFT_PERKS, false);
+  assert.equal('stolenMomentum' in emptyRiftPerkLevels(), false);
   assert.equal(riftPerkCost('mainLuck', 0), RIFT_PERKS.mainLuck.baseCost);
   assert.ok(riftPerkCost('mainLuck', 1) > riftPerkCost('mainLuck', 0));
   assert.equal(RIFT_PERKS.mainLuck.maxLevel, 10);
@@ -154,7 +155,7 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftPerkLevels: {
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
-      probabilityDebt: 0, dimensionalInterest: 0, stolenMomentum: 0,
+      probabilityDebt: 0, dimensionalInterest: 0,
     },
     riftRelicLevels: {
       'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
@@ -241,14 +242,6 @@ test('Dimensional Interest rewards holding Rift Points and never exceeds double 
   assert.equal(riftRatePerHour(['rift-ascent'], perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES, 1_000), 1.5);
   assert.equal(riftRatePerHour(['rift-ascent'], perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES, 2_000), 2);
   assert.equal(riftRatePerHour(['rift-ascent'], perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES, 100_000), 2);
-});
-
-test('Stolen Momentum carries the purchased fraction of prior Rift upgrade levels', () => {
-  assert.equal(riftStolenMomentumLevel(10, 0), 0);
-  assert.equal(riftStolenMomentumLevel(10, 3), 3);
-  assert.equal(riftStolenMomentumLevel(7, 5), 3);
-  assert.equal(riftStolenMomentumLevel(10, 10), 10);
-  assert.equal(riftStolenMomentumLevel(99, 99), 10);
 });
 
 test('Timeline Fork is a permanent one-time research unlock', () => {
