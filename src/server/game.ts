@@ -6765,8 +6765,7 @@ export async function applyRolls(
     criticalDividendMultiplier(s, criticalRollsInBatch / Math.max(1, rollCount)) *
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
-    (1 + runeBonuses.coinGainPct / 100) *
-    (s.riftSession?.riftProgressCoinMultiplier ?? 1);
+    (1 + runeBonuses.coinGainPct / 100);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = lowRarityCoinsEstimate;
@@ -6804,7 +6803,9 @@ export async function applyRolls(
 
   // Persistent Rift perks multiply the complete Coin payout, including filtered and transmuted bonuses.
   coinsGained = normalizeCoinAmount(Math.round(
-    coinsGained * riftMultipliers.coinMultiplier * (s.riftSession?.challengeCoinMultiplier ?? 1),
+    coinsGained * riftMultipliers.coinMultiplier *
+      (s.riftSession?.challengeCoinMultiplier ?? 1) *
+      (s.riftSession?.riftProgressCoinMultiplier ?? 1),
   ));
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * liveBalance['rewards.coinMultiplier']));
   if (!previewOnly && !s.riftSession) {
