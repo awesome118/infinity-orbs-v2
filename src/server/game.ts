@@ -6171,9 +6171,6 @@ export async function applyRolls(
         equippedRunes?: unknown; orbFocusRarity?: unknown;
       };
       combatBossesBeaten = combatTotalBossesBeaten(parsed);
-      const bossShare = s.riftSession
-        ? Math.max(0, Math.min(1, (s.riftSession.bossResonanceLevel ?? 0) / 10))
-        : 1;
       const fullRuneBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
       const runeShare = s.riftSession
         ? Math.max(0, Math.min(1, (s.riftSession.runeReconnectionLevel ?? 0) / 10))
