@@ -504,7 +504,12 @@ export function riftRatePerHour(
     0,
   );
   const yieldLevel = Math.max(0, Math.min(RIFT_PERKS.riftYield.maxLevel, Math.floor(Number(perkLevels?.riftYield) || 0)));
-  const preview = riftModifierRewardPreview(modifierSettings, challengeToggles, yieldLevel);
+  // The configuration is only a preview until the player clears Rift Ascent.
+  // This prevents slider changes from granting passive Rift Points before a win.
+  const hasClearedAscent = completedChallengeIds.includes(RIFT_ASCENT.id);
+  const preview = hasClearedAscent
+    ? riftModifierRewardPreview(modifierSettings, challengeToggles, yieldLevel)
+    : { rpPerHour: RIFT_BASE_RATE_PER_HOUR };
   const rate = preview.rpPerHour + legacyFirstClearRate * (1 + yieldLevel * 0.05);
   return Number.isFinite(rate) ? Math.max(RIFT_BASE_RATE_PER_HOUR, Math.min(Number.MAX_SAFE_INTEGER, rate)) : Number.MAX_SAFE_INTEGER;
 }
