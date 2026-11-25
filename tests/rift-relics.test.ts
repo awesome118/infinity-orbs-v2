@@ -31,17 +31,19 @@ test('relic rank effects require the relic to be equipped', () => {
   const inactive = getRiftRelicEffects([], levels);
   assert.equal(inactive.temporalArbitrageEfficiency, 0);
   assert.equal(inactive.completionRewardMultiplier, 1);
-  const effects = getRiftRelicEffects(
-    ['clock-without-hands', 'temporal-arbitrage', 'unlucky-star', 'observer', 'loaded-die', 'fracture-cascade'],
-    levels,
-  );
-  assert.equal(effects.temporalDragPenaltyReduction, 0.4);
-  assert.equal(effects.temporalArbitrageEfficiency, 0.2);
-  assert.equal(effects.luckExcessMultiplier, 0.5);
-  assert.equal(effects.completionRewardMultiplier, 2.5);
-  assert.equal(effects.observerRank, 0); // The two-slot cap is enforced before effects are calculated.
-  assert.equal(effects.loadedDieMultiplier, 1);
-  assert.equal(effects.fractureCascadeRank, 0);
+  const tempo = getRiftRelicEffects(['clock-without-hands', 'temporal-arbitrage'], levels);
+  assert.equal(tempo.temporalDragPenaltyReduction, 0.4);
+  assert.equal(tempo.temporalArbitrageEfficiency, 0.2);
+  const risk = getRiftRelicEffects(['unlucky-star'], levels);
+  assert.equal(risk.luckExcessMultiplier, 0.5);
+  assert.equal(risk.completionRewardMultiplier, 2.5);
+  const observer = getRiftRelicEffects(['observer'], levels);
+  assert.equal(observer.observerRank, 3);
+  const loaded = getRiftRelicEffects(['loaded-die'], levels);
+  assert.equal(loaded.loadedDieMultiplier, 40);
+  const cascade = getRiftRelicEffects(['fracture-cascade'], levels);
+  assert.equal(cascade.fractureCascadeMultiplier, 1.75);
+  assert.equal(cascade.fractureCascadeRank, 3);
 });
 
 test('relic costs require both currencies and increase by rank', () => {
