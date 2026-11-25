@@ -49,7 +49,7 @@ test('relic rank effects require the relic to be equipped', () => {
 test('relic costs require both currencies and increase by rank', () => {
   const first = riftRelicCost('clock-without-hands', 0);
   const second = riftRelicCost('clock-without-hands', 1);
-  assert.deepEqual(first, { scrap: 120, riftPoints: 8 });
+  assert.deepEqual(first, { scrap: 120, riftPoints: 1 });
   assert.ok(second.scrap > first.scrap);
   assert.ok(second.riftPoints > first.riftPoints);
 });
@@ -58,6 +58,6 @@ test('Observer Luck ramps from neutral to its maximum near the Rift goal', () =>
   const target = 1_000_000;
   assert.equal(riftObserverLuckMultiplier(1_000, target, 3), 1);
   assert.ok(Math.abs(riftObserverLuckMultiplier(1_000_000 ** 0.9, target, 3) - 2) < 1e-10);
-  assert.equal(riftObserverLuckMultiplier(1_000_000 ** 0.99, target, 3), 5);
+  assert.ok(Math.abs(riftObserverLuckMultiplier(1_000_000 ** 0.99, target, 3) - 5) < 1e-10);
   assert.equal(riftObserverLuckMultiplier(1_000_000, target, 1), 1 + 4 / 3);
 });

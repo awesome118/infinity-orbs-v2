@@ -4443,7 +4443,7 @@ async function saveActiveRiftPlayerState(
         : Math.max(2, Number(storedState.highestRarity) || 2);
       const relicEffects = getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels);
       if (relicEffects.fractureCascadeRank > 0 && riftBestRarity > previousRunBest) {
-        run.fractureCascadeUntilRoll = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(storedState.totalRolls) + 5);
+        run.fractureCascadeUntilRoll = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(storedState.totalRolls) + 1);
       } else {
         run.fractureCascadeUntilRoll = safeNonNegativeInteger(run.fractureCascadeUntilRoll);
       }

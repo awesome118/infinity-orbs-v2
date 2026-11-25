@@ -495,7 +495,7 @@ export async function buyRiftRelic(relicIdValue: unknown): Promise<RiftChallenge
 export async function setEquippedRiftRelic(relicIdValue: unknown, equippedValue: unknown): Promise<RiftChallengeSnapshot> {
   const relicId = String(relicIdValue ?? '') as RiftRelicId;
   if (typeof equippedValue !== 'boolean') throw new Error('Choose whether to equip or unequip the relic.');
-  if (!Object.prototype.hasOwnProperty.call((await import('../shared/rift-relics.js')).RIFT_RELICS, relicId)) {
+  if (!Object.prototype.hasOwnProperty.call(RIFT_RELICS, relicId)) {
     throw new Error('Choose a valid Rift relic.');
   }
   return withPlayerMutationLock(async () => {
