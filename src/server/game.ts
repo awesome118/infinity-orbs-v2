@@ -21,6 +21,7 @@ import {
   riftTemporalArbitrageMultiplier,
   riftMutationPenaltyFactor,
   riftMutationDurationRolls,
+  riftObjectiveProgress,
   RIFT_MUTATIONS,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
@@ -4517,9 +4518,7 @@ async function saveActiveRiftPlayerState(
         awardMutationCompletion();
       }
 
-      const objectiveProgress = Math.max(0, Math.min(1,
-        Math.log10(Math.max(2, riftBestRarity)) / Math.max(1, Math.log10(challenge.targetRarity)),
-      ));
+      const objectiveProgress = riftObjectiveProgress(riftBestRarity, challenge.targetRarity);
       const lastMutationRoll = safeNonNegativeInteger(run.lastMutationRoll);
       const mutationReady = storedState.totalRolls >= 20 &&
         objectiveProgress >= 0.25 &&
@@ -6247,10 +6246,7 @@ export async function applyRolls(
     }
   }
   const objectiveProgress = s.riftSession
-    ? Math.max(0, Math.min(1,
-        Math.log10(Math.max(2, Number(s.highestRarity) || 2)) /
-        Math.max(1, Math.log10(s.riftSession.targetRarity)),
-      ))
+    ? riftObjectiveProgress(Number(s.highestRarity) || 2, s.riftSession.targetRarity)
     : 0;
   const milestoneCount = objectiveProgress >= 0.90 ? 4 : objectiveProgress >= 0.75 ? 3 :
     objectiveProgress >= 0.50 ? 2 : objectiveProgress >= 0.25 ? 1 : 0;
