@@ -1642,7 +1642,7 @@ export function createApp() {
             const subredditName = String(context.subredditName ?? '').trim();
             if (!subredditName) throw new Error('Subreddit context is unavailable for the Rift announcement.');
             const title = 'u/' + completion.ownerUsername + ' has completed the Rift ' + completion.challengeName + ' for the first time!';
-            const body = 'u/' + completion.ownerUsername + ' has completed the Rift ' + completion.challengeName + ' for the first time.\\n\\nThis is a first-clear achievement. Open Infinity Orbs to explore the Rift and attempt the next challenge.';
+            const body = 'u/' + completion.ownerUsername + ' has completed the Rift ' + completion.challengeName + ' for the first time.\n\nThis is a first-clear achievement. Open Infinity Orbs to explore the Rift and attempt the next challenge.';
             const post = await reddit.submitCustomPost({
               runAs: 'USER',
               subredditName,
