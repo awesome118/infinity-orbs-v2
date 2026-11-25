@@ -12,6 +12,7 @@ import {
   RIFT_ASCENT,
   normalizeRiftModifierSettings,
   normalizeRiftChallengeToggles,
+  normalizeRiftUnlocks,
   riftModifierRewardPreview,
   riftModifierDifficultyScore,
   riftRatePerHour,
@@ -4200,7 +4201,9 @@ interface ActiveRiftRunContext {
   riftLoadedDieMultiplier: number;
   riftFractureCascadeMultiplier: number;
   riftProbabilityDebtMultiplier: number;
-  riftCritChanceBonus: number;
+  riftBossBonusEnabled: boolean;
+  riftRuneConfluenceEnabled: boolean;
+  riftGlobalEffectsEnabled: boolean;
   riftMutation: {
     id: string;
     name: string;
@@ -4223,6 +4226,7 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
   if (typeof raw !== 'string' || !raw) return null;
   try {
     const archive = JSON.parse(raw) as Record<string, unknown>;
+    const riftUnlocks = normalizeRiftUnlocks(archive.riftUnlocks);
     const run = isPlainRecord(archive.activeRun) ? archive.activeRun : null;
     if (!run || run.status !== 'active' || typeof run.runId !== 'string') return null;
     const challenge = getRiftChallengeDefinition(run.challengeId);
@@ -4287,7 +4291,9 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
       challengeCoinMultiplier: (isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier) *
         (1 + Math.min(10, safeNonNegativeInteger(riftPerks.riftCoinYield)) * 0.03),
-      riftCritChanceBonus: Math.min(10, safeNonNegativeInteger(riftPerks.riftCrit)) * 0.005,
+      riftBossBonusEnabled: riftUnlocks.bossResonance,
+      riftRuneConfluenceEnabled: riftUnlocks.runeConfluence,
+      riftGlobalEffectsEnabled: riftUnlocks.globalConduit,
       luckSuppressionMultiplier: isModifierRun ? 1 / modifierSettings.fortuneSuppression : 1,
       secondBest: isModifierRun && challengeToggles.secondBest,
       noAutomation: isModifierRun && challengeToggles.noAutomation,
@@ -4908,7 +4914,9 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
-    globalBoosters: activeRiftRun ? createInitialState().globalBoosters : globalBoosters,
+    globalBoosters: activeRiftRun && !activeRiftRun.riftGlobalEffectsEnabled
+      ? createInitialState().globalBoosters
+      : globalBoosters,
     dailyStreakCommunity: activeRiftRun ? createInitialState().dailyStreakCommunity : dailyStreakCommunity,
   };
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
@@ -4927,7 +4935,9 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
       riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
-      riftCritChanceBonus: activeRiftRun.riftCritChanceBonus,
+      riftBossBonusEnabled: activeRiftRun.riftBossBonusEnabled,
+      riftRuneConfluenceEnabled: activeRiftRun.riftRuneConfluenceEnabled,
+      riftGlobalEffectsEnabled: activeRiftRun.riftGlobalEffectsEnabled,
       riftProgressCoinMultiplier: activeRiftRun.riftProgressCoinMultiplier,
       luckSuppressionMultiplier: activeRiftRun.luckSuppressionMultiplier,
       secondBest: activeRiftRun.secondBest,
@@ -6029,8 +6039,7 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo) +
-    (s.riftSession?.riftCritChanceBonus ?? 0)
+    guildComboCritChanceBonus(s.guildCombo)
   );
 }
 
@@ -6189,9 +6198,12 @@ export async function applyRolls(
 
   // These reads are independent. Keep them parallel so a roll does not spend
   // several sequential Redis round trips before it can even start rolling.
+  const riftGlobalEffectsEnabled = s.riftSession?.riftGlobalEffectsEnabled === true;
+  const riftBossBonusEnabled = s.riftSession?.riftBossBonusEnabled === true;
+  const riftRuneConfluenceEnabled = s.riftSession?.riftRuneConfluenceEnabled === true;
   const [freshGlobalBoosters, worldEvent, fakeCcuBonus, combatStateRaw] = await Promise.all([
-    s.riftSession ? Promise.resolve(createInitialState().globalBoosters!) : getGlobalBoosters(),
-    (s.riftSession ? Promise.resolve(null) : getCommunityEvent()).catch(error => {
+    s.riftSession && !riftGlobalEffectsEnabled ? Promise.resolve(createInitialState().globalBoosters!) : getGlobalBoosters(),
+    (s.riftSession && !riftGlobalEffectsEnabled ? Promise.resolve(null) : getCommunityEvent()).catch(error => {
       // The shared World Event is a bonus/progress feature, not a prerequisite
       // for ordinary roll rewards. Keep corrupted/unavailable event data intact,
       // but don't brick a player's roll because an admin-maintained side record
@@ -6200,7 +6212,9 @@ export async function applyRolls(
       return null;
     }),
     s.riftSession ? Promise.resolve(0) : getFakeCcuBonus(),
-    (s.riftSession ? Promise.resolve(null) : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
+    (s.riftSession && !riftBossBonusEnabled && !riftRuneConfluenceEnabled
+      ? Promise.resolve(null)
+      : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
       console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
@@ -6209,21 +6223,27 @@ export async function applyRolls(
   ]);
   s.globalBoosters = freshGlobalBoosters;
   const globalBoosters = s.globalBoosters;
-  const communityLuck = s.riftSession ? 1 : (worldEvent?.buffMultiplier ?? 1);
+  const communityLuck = s.riftSession && !riftGlobalEffectsEnabled ? 1 : (worldEvent?.buffMultiplier ?? 1);
   let combatBossesBeaten = 0;
   let runeBonuses = combatRuneBonuses([], []);
   let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
   if (typeof combatStateRaw === 'string') {
     try {
       const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; depth?: unknown; dungeonId?: unknown; depthCapCleared?: unknown; dungeonBestDepths?: unknown; dungeonBossesBeaten?: unknown; runes?: unknown; equippedRunes?: unknown };
-      combatBossesBeaten = combatTotalBossesBeaten(parsed);
-      runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
-      runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
+      if (!s.riftSession || riftBossBonusEnabled) {
+        combatBossesBeaten = combatTotalBossesBeaten(parsed);
+      }
+      if (!s.riftSession || riftRuneConfluenceEnabled) {
+        runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
+        runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
+      }
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
   }
-  const bossLuckBonus = combatBossLuckBonus(combatBossesBeaten);
+  const bossLuckBonus = !s.riftSession || riftBossBonusEnabled
+    ? combatBossLuckBonus(combatBossesBeaten)
+    : 0;
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
@@ -9500,8 +9520,8 @@ export async function activateGlobalBooster(
   });
 
   const s = await settleOffline(await loadRaw());
-  if (s.riftSession) {
-    throw new Error('Global Boosters are outside this isolated Rift run.');
+  if (s.riftSession && s.riftSession.riftGlobalEffectsEnabled !== true) {
+    throw new Error('Unlock Worldline Conduit to use Global Boosters inside a Rift run.');
   }
 
   await appendGlobalBoosterDebugLog('player:loaded-state', {
