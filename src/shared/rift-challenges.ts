@@ -128,14 +128,16 @@ export function riftMutationProgress(bestRarityValue: unknown, targetRarityValue
   return Math.max(0, Math.min(1, Math.log10(best) / denominator));
 }
 
-export function riftMutationRewardMultiplier(completedMutationsValue: unknown): number {
+export function riftMutationRewardMultiplier(completedMutationsValue: unknown, masteryLevelValue: unknown = 0): number {
   const completed = Number.isFinite(Number(completedMutationsValue))
     ? Math.max(0, Math.floor(Number(completedMutationsValue)))
     : 0;
-  return 1 + Math.min(
-    RIFT_MUTATION_MAX_REWARD_BONUS,
-    completed * RIFT_MUTATION_REWARD_PER_CLEAR,
-  );
+  const masteryLevel = Number.isFinite(Number(masteryLevelValue))
+    ? Math.max(0, Math.min(RIFT_PERKS.mutationMastery.maxLevel, Math.floor(Number(masteryLevelValue))))
+    : 0;
+  const rewardPerMutation = RIFT_MUTATION_REWARD_PER_CLEAR + masteryLevel * 0.01;
+  const rewardCap = Math.min(0.5, RIFT_MUTATION_MAX_REWARD_BONUS + masteryLevel * 0.05);
+  return 1 + Math.min(rewardCap, completed * rewardPerMutation);
 }
 
 export const RIFT_ASCENT = {
@@ -313,7 +315,12 @@ export type RiftPerkId =
   | 'riftYield'
   | 'riftStartCoins'
   | 'probabilityDebt'
-  | 'dimensionalInterest';
+  | 'dimensionalInterest'
+  | 'mutationPersistence'
+  | 'mutationCycle'
+  | 'mutationMastery'
+  | 'riftCoinYield'
+  | 'riftCrit';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -371,6 +378,36 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     description: 'Unspent Rift Points feed the Rift Bar, so saving a reserve becomes a strategy.',
     effect: '+0.5% Rift Bar rate per 100 unspent RP per level, capped at +100%.',
     baseCost: 15, costGrowth: 1.78, maxLevel: 10,
+  },
+  mutationPersistence: {
+    id: 'mutationPersistence', name: 'Anomaly Persistence', category: 'rift',
+    description: 'Keep each Rift mutation active for longer, giving its strange rules more time to matter.',
+    effect: '+1 mutation roll duration per rank. Maximum +5 rolls.',
+    baseCost: 18, costGrowth: 1.78, maxLevel: 5,
+  },
+  mutationCycle: {
+    id: 'mutationCycle', name: 'Fracture Rhythm', category: 'rift',
+    description: 'Stabilize the gaps between anomalies so the next mutation can emerge sooner.',
+    effect: '−1 roll between mutations per rank, down to a 2-roll minimum.',
+    baseCost: 22, costGrowth: 1.82, maxLevel: 5,
+  },
+  mutationMastery: {
+    id: 'mutationMastery', name: 'Mutagenic Dividend', category: 'rift',
+    description: 'Study completed mutations and extract a larger permanent Rift Point payout from each one.',
+    effect: '+1% Rift Point reward per completed mutation per rank; raises the mutation bonus cap by 5% per rank.',
+    baseCost: 32, costGrowth: 1.86, maxLevel: 5,
+  },
+  riftCoinYield: {
+    id: 'riftCoinYield', name: 'Fracture Exchange', category: 'rift',
+    description: 'Convert Rift turbulence into a steady increase in temporary-run Coin earnings.',
+    effect: '+3% Rift Coin earnings per rank.',
+    baseCost: 12, costGrowth: 1.68, maxLevel: 10,
+  },
+  riftCrit: {
+    id: 'riftCrit', name: 'Critical Resonance', category: 'rift',
+    description: 'Tune Rift energy toward more frequent critical Orbs without affecting the main save.',
+    effect: '+0.5 percentage points of Rift critical chance per rank.',
+    baseCost: 16, costGrowth: 1.74, maxLevel: 10,
   },
 };
 
@@ -519,6 +556,8 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
     mainLuck: 0, mainCoins: 0, mainXp: 0,
     riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
     probabilityDebt: 0, dimensionalInterest: 0,
+    mutationPersistence: 0, mutationCycle: 0, mutationMastery: 0,
+    riftCoinYield: 0, riftCrit: 0,
   };
 }
 
