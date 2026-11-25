@@ -6192,7 +6192,7 @@ export async function applyRolls(
         const focus = Number(parsed.orbFocusRarity);
         const normalizedFocus = Number.isFinite(focus) ? Math.max(2, focus) : 2;
         const focusShare = Math.max(0, Math.min(1, (s.riftSession.combatIntegrationLevel ?? 0) / 10));
-        combatFocusRarity = 2 + (normalizedFocus - 2) * focusShare;
+        combatFocusRarity = 2 + (combatOrbDamageMultiplier(normalizedFocus) - 1) * 10 * focusShare;
       }
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
