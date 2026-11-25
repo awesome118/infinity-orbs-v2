@@ -4246,6 +4246,16 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       gameState.stateRevision = 0;
     }
     const riftPerks = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+    if (safeNonNegativeInteger(riftPerks.automationOverride) > 0) {
+      gameState.upgrades = { ...gameState.upgrades, auto: Math.max(1, gameState.upgrades?.auto ?? 0) };
+      gameState.manualRolls = Math.max(3, gameState.manualRolls ?? 0);
+    }
+    if (safeNonNegativeInteger(riftPerks.chronoEngine) > 0) {
+      gameState.masterySkills = {
+        ...gameState.masterySkills,
+        cooldownReclaimer: Math.max(1, gameState.masterySkills?.cooldownReclaimer ?? 0),
+      };
+    }
     const runId = run.runId.slice(0, 120);
     const codexOwnerId = riftCodexOwnerId(userId, runId);
     const inlineCollection = isValidCollection(gameState.collection)
@@ -6094,7 +6104,12 @@ export async function applyRolls(
       return null;
     }),
     s.riftSession ? Promise.resolve(0) : getFakeCcuBonus(),
-    (s.riftSession ? Promise.resolve(null) : redis.get('infinity-orbs:combat:' + spyUserId)).catch((error: unknown) => {
+    ((!s.riftSession ||
+      (s.riftSession.bossResonanceLevel ?? 0) > 0 ||
+      (s.riftSession.runeReconnectionLevel ?? 0) > 0 ||
+      (s.riftSession.combatIntegrationLevel ?? 0) > 0)
+      ? redis.get('infinity-orbs:combat:' + spyUserId)
+      : Promise.resolve(null)).catch((error: unknown) => {
       // Combat progression is an optional cross-mode bonus. A transient failure
       // to read it must never prevent a normal orb roll.
       console.error('[Undercrypt Resonance] Read failed; rolling without the bonus.', error);
@@ -6107,17 +6122,44 @@ export async function applyRolls(
   let combatBossesBeaten = 0;
   let runeBonuses = combatRuneBonuses([], []);
   let runeAbilityEffects = combatRuneMajorAbilityEffects([], []);
+  let combatFocusRarity = 2;
   if (typeof combatStateRaw === 'string') {
     try {
-      const parsed = JSON.parse(combatStateRaw) as { bestDepth?: unknown; depth?: unknown; dungeonId?: unknown; depthCapCleared?: unknown; dungeonBestDepths?: unknown; dungeonBossesBeaten?: unknown; runes?: unknown; equippedRunes?: unknown };
+      const parsed = JSON.parse(combatStateRaw) as {
+        bestDepth?: unknown; depth?: unknown; dungeonId?: unknown; depthCapCleared?: unknown;
+        dungeonBestDepths?: unknown; dungeonBossesBeaten?: unknown; runes?: unknown;
+        equippedRunes?: unknown; orbFocusRarity?: unknown;
+      };
       combatBossesBeaten = combatTotalBossesBeaten(parsed);
-      runeBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
-      runeAbilityEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
+      const bossShare = s.riftSession
+        ? Math.max(0, Math.min(1, (s.riftSession.bossResonanceLevel ?? 0) / 10))
+        : 1;
+      const fullRuneBonuses = combatRuneBonuses(parsed?.runes, parsed?.equippedRunes);
+      const runeShare = s.riftSession
+        ? Math.max(0, Math.min(1, (s.riftSession.runeReconnectionLevel ?? 0) / 10))
+        : 1;
+      runeBonuses = {
+        luckPct: fullRuneBonuses.luckPct * runeShare,
+        coinGainPct: fullRuneBonuses.coinGainPct * runeShare,
+        shardChancePct: fullRuneBonuses.shardChancePct * runeShare,
+        xpGainPct: fullRuneBonuses.xpGainPct * runeShare,
+      };
+      const fullRuneEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
+      runeAbilityEffects = Object.fromEntries(
+        Object.entries(fullRuneEffects).map(([key, value]) => [key, Number(value) * runeShare]),
+      ) as typeof runeAbilityEffects;
+      if (s.riftSession && (s.riftSession.combatIntegrationLevel ?? 0) > 0) {
+        const focus = Number(parsed.orbFocusRarity);
+        const normalizedFocus = Number.isFinite(focus) ? Math.max(2, focus) : 2;
+        const focusShare = Math.max(0, Math.min(1, (s.riftSession.combatIntegrationLevel ?? 0) / 10));
+        combatFocusRarity = 2 + (normalizedFocus - 2) * focusShare;
+      }
     } catch {
       // Ignore invalid optional combat state and preserve ordinary orb luck.
     }
   }
-  const bossLuckBonus = combatBossLuckBonus(combatBossesBeaten);
+  const bossLuckBonus = combatBossLuckBonus(combatBossesBeaten) *
+    (s.riftSession ? Math.max(0, Math.min(1, (s.riftSession.bossResonanceLevel ?? 0) / 10)) : 1);
 
   // Fake CCU is an admin testing offset applied only to this player's luck calculation.
   // The underlying CCU metric and historical peaks always remain based on real players.
@@ -6130,12 +6172,66 @@ export async function applyRolls(
   // Community and boss-clear Luck are additive sources. Boss clears stack only with
   // themselves (1.01^n), and their bonus is added to ordinary Luck rather than multiplying it.
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
+  const mutation = s.riftSession?.activeMutation;
+  const mutationActive = Boolean(mutation && s.totalRolls < mutation.endsAtRoll);
+  const mutationPenalty = riftMutationPenaltyFactor(
+    s.riftSession?.mutationStabilizerLevel ?? 0,
+    s.riftSession?.mutationAmplifierLevel ?? 0,
+  );
+  const mutationBenefit = 1 + (s.riftSession?.mutationAmplifierLevel ?? 0) * 0.05;
+  let mutationLuckMultiplier = 1;
+  let mutationCoinMultiplier = 1;
+  let mutationCritChanceBonus = 0;
+  if (mutationActive && mutation) {
+    switch (mutation.id) {
+      case 'temporal-collapse':
+        mutationLuckMultiplier = 1 + 0.15 * mutationBenefit;
+        mutationCoinMultiplier = 1 + (0.75 - 1) * mutationPenalty;
+        break;
+      case 'gravitational-surge':
+        mutationLuckMultiplier = 1 + 0.45 * mutationBenefit;
+        mutationCoinMultiplier = 1 + (0.70 - 1) * mutationPenalty;
+        break;
+      case 'unstable-economy':
+        mutationCoinMultiplier = Math.floor(s.totalRolls / 5) % 2 === 0 ? 0.55 : 1.85;
+        break;
+      case 'critical-instability':
+        mutationLuckMultiplier = 1 + (0.85 - 1) * mutationPenalty;
+        mutationCritChanceBonus = 0.08 * mutationBenefit;
+        break;
+      case 'nullification':
+        mutationLuckMultiplier = 0.5;
+        mutationCoinMultiplier = 1.5 * mutationBenefit;
+        break;
+    }
+  }
+  const objectiveProgress = s.riftSession
+    ? Math.max(0, Math.min(1,
+        Math.log10(Math.max(2, Number(s.highestRarity) || 2)) /
+        Math.max(1, Math.log10(s.riftSession.targetRarity)),
+      ))
+    : 0;
+  const milestoneCount = objectiveProgress >= 0.90 ? 4 : objectiveProgress >= 0.75 ? 3 :
+    objectiveProgress >= 0.50 ? 2 : objectiveProgress >= 0.25 ? 1 : 0;
+  const calibrationLuck = 1 + (s.riftSession?.initialCalibrationLevel ?? 0) * 0.02;
+  const conditioningLuck = 1 + Math.min(0.30,
+    (s.riftSession?.riftConditioningCompletions ?? 0) *
+    (s.riftSession?.riftConditioningLevel ?? 0) * 0.01);
+  const reservoirLevel = s.riftSession?.fortuneReservoirLevel ?? 0;
+  const reservoirLuck = reservoirLevel > 0 && (s.totalRolls % 50) < 5 ? 1 + reservoirLevel * 0.10 : 1;
+  const criticalConversionLuck = 1 + Math.min(1,
+    Math.floor((s.totalCrits ?? 0) / 5) * (s.riftSession?.criticalConversionLevel ?? 0) * 0.01);
+  const milestoneLuck = 1 + milestoneCount * (s.riftSession?.milestoneAmplifierLevel ?? 0) * 0.05;
+  const emergencyLuck = (s.riftSession?.emergencyProtocolUntilRoll ?? 0) > s.totalRolls ? 1.5 : 1;
+  const nullificationScale = mutationActive && mutation?.id === 'nullification' ? 0.5 : 1;
   const challengeLuckMultiplier =
     (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
     (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05) *
-    riftTemporalArbitrageMultiplier(s.riftSession?.temporalDragMultiplier ?? 1, s.riftSession?.temporalArbitrageLevel ?? 0);
+    riftTemporalArbitrageMultiplier(s.riftSession?.temporalDragMultiplier ?? 1, s.riftSession?.temporalArbitrageLevel ?? 0) *
+    calibrationLuck * conditioningLuck * reservoirLuck * criticalConversionLuck * milestoneLuck *
+    emergencyLuck * nullificationScale;
   const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
-    riftMultipliers.luckMultiplier * challengeLuckMultiplier;
+    riftMultipliers.luckMultiplier * challengeLuckMultiplier * mutationLuckMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
   const rawRuneLuckMultiplier = combatRuneLuckMultiplier(runeBonuses.luckPct);
   const starseekerStacks = celestialAlignmentStackCount(s.alignmentActiveInstances, 'starseeker');
@@ -6160,7 +6256,9 @@ export async function applyRolls(
     (s.upgrades.valueBonus ?? 0) * 0.10 +
     (s.prestigeUpgrades?.cosmicValuation ?? 0) * 0.05;
 
-  const effectiveCritChance = effectiveRollCritChance(s, globalBoosters);
+  const effectiveCritChance = Math.max(0, Math.min(0.95,
+    effectiveRollCritChance(s, globalBoosters) + mutationCritChanceBonus,
+  ));
   // Rune bonus rolls are bounded per activation and never exceed the existing server batch cap.
   const runeBonusRollBudget = source === 'frenzy'
     ? 0
@@ -6283,7 +6381,11 @@ export async function applyRolls(
     const riftSampleLuck = Math.min(Number.MAX_VALUE,
       effectiveLuck * riftDebtMultiplier * riftCascadeMultiplier * riftSingularityMultiplier);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
-    const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
+    const runeRarityFloor = Math.max(
+      minimumRarity,
+      currentRuneSpec?.minRarity ?? minimumRarity,
+      s.riftSession ? combatFocusRarity : minimumRarity,
+    );
     let isInfinityOrb = false;
     let rolledRarity: number;
     let criticalMultiplierAppliedBeforeFloor = false;
@@ -6783,7 +6885,12 @@ export async function applyRolls(
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
     (1 + runeBonuses.coinGainPct / 100) *
-    (1 + (s.riftSession?.upgradeLevels.prosperity ?? 0) * 0.20);
+    (1 + (s.riftSession?.upgradeLevels.prosperity ?? 0) * 0.20) *
+    (s.riftSession
+      ? 1 + Math.min(2, Math.max(0, Math.log10(Math.max(1, bestRarity / s.riftSession.targetRarity))) *
+        (s.riftSession.fractureRecyclingLevel ?? 0) * 0.05)
+      : 1) *
+    mutationCoinMultiplier;
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = lowRarityCoinsEstimate;
@@ -7861,8 +7968,9 @@ export async function acknowledgeFrenzyShardPopup(): Promise<PlayerState> {
 export async function setAutoRollEnabled(enabled: boolean): Promise<PlayerState> {
   return withPlayerMutationLock(async () => {
   const s = await settleOffline(await loadRaw());
-  if (enabled && s.riftSession?.challengeId === 'first-spark') {
-    throw new Error('Auto Roll is disabled in The First Spark.');
+  if (enabled && s.riftSession?.challengeId === 'first-spark' &&
+      (s.riftSession.automationOverrideLevel ?? 0) <= 0) {
+    throw new Error('Auto Roll is disabled in The First Spark until Automation Override is unlocked.');
   }
   if ((s.upgrades.auto ?? 0) <= 0) {
     s.autoRollEnabled = false;
@@ -7931,8 +8039,9 @@ export async function roll(
       : null;
     const performRoll = async () => {
       const s = await settleOffline(loadedState);
-    if (isAuto && s.riftSession?.challengeId === 'first-spark') {
-      throw new Error('Auto Roll is disabled in The First Spark.');
+    if (isAuto && s.riftSession?.challengeId === 'first-spark' &&
+        (s.riftSession.automationOverrideLevel ?? 0) <= 0) {
+      throw new Error('Auto Roll is disabled in The First Spark until Automation Override is unlocked.');
     }
     if (isAuto && (s.upgrades.auto ?? 0) <= 0) {
       throw new Error('Auto Roll is not unlocked yet.');
