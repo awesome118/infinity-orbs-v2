@@ -7694,7 +7694,12 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   s.onlinePlayers = options.registerActivity === false
     ? await getOnlinePlayers()
     : await touchOnlinePresence();
-  s.globalBoosters = await getGlobalBoosters();
+  s.globalBoosters = s.riftSession
+    ? createInitialState().globalBoosters
+    : await getGlobalBoosters();
+  if (s.riftSession?.noShards === true) {
+    s.activeBoosters = {};
+  }
 
   // Show currently accumulated offline rolls without consuming/persisting them.
   const liveBalance = await getLiveBalanceConfig();

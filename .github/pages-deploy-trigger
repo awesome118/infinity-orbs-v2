@@ -104,3 +104,4 @@ Pages diagnostics fix: do not poll Global Chat until server availability is true
 
 # Final Rift modifier, second-best, and completion reveal integration
 Pages update: Rift rewards and passive generation use only verified best-cleared difficulty; logarithmic Goal/Luck sliders; No Shards disables all personal/global Booster effects.
+Pages validation: Rift state snapshots suppress Global Booster effects and presentation while a run is active.

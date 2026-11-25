@@ -69,6 +69,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /session\.noShards === true/);
   assert.match(game, /archive\.bestModifierSettings/);
   assert.match(game, /archive\.bestChallengeToggles/);
+  assert.match(game, /s\.globalBoosters = s\.riftSession/);
+  assert.match(game, /s\.activeBoosters = \{\}/);
   assert.match(game, /Premium Boosters are disabled by the No Shards Rift rule/);
   assert.match(game, /activeRiftRun\?\.noShards === true \? \{\}/);
   assert.match(challengeUi, /riftModifierFromSliderPosition/);
