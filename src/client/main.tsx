@@ -565,7 +565,7 @@ function App() {
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const riftActive = Boolean(state?.riftSession || state?.riftSaveContext?.startsWith('rift:'));
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
-  const riftChallengesMode = tab === 'challenges' || tab === 'rift-upgrades' || tab === 'rift-relics';
+  const riftChallengesMode = tab === 'challenges' || tab === 'rift-upgrades' || tab === 'rift-relics' || (tab === 'boosters' && state?.riftSession?.riftGlobalEffectsEnabled === true);
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
   const standalonePageMode = combatMode || riftChallengesMode;
   const combatModeRef = useRef(standalonePageMode);
@@ -1137,6 +1137,7 @@ function App() {
     if (nextTab === 'upgrades') return 'upgrades';
     if (nextTab === 'quests') return 'quests';
     if (nextTab === 'collection') return 'collection';
+    if (nextTab === 'boosters' && state?.riftSession?.riftGlobalEffectsEnabled === true) return null;
     if (nextTab === 'boosters') return 'boosters';
     if (nextTab === 'social') return 'social';
     if (nextTab === 'altar') return 'altar';
@@ -1798,11 +1799,13 @@ function App() {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [tab, splashEntered, state?.riftSession?.runId, state?.riftSaveContext]);
+  }, [tab, splashEntered, state?.riftSession?.runId, state?.riftSession?.riftGlobalEffectsEnabled, state?.riftSaveContext]);
 
   // Global Boosters are shared state, so refresh them independently of player-state polling.
   useEffect(() => {
-    if (!splashEntered || tab !== 'boosters' || state?.riftSession || state?.riftSaveContext?.startsWith('rift:')) return;
+    const isRiftSave = Boolean(state?.riftSession || state?.riftSaveContext?.startsWith('rift:'));
+    const canUseGlobalBoostersInRift = state?.riftSession?.riftGlobalEffectsEnabled === true;
+    if (!splashEntered || tab !== 'boosters' || (isRiftSave && !canUseGlobalBoostersInRift)) return;
     let cancelled = false;
     let inFlight = false;
     const refreshGlobalBoosters = async () => {
@@ -1810,7 +1813,9 @@ function App() {
       inFlight = true;
       try {
         const snapshot = await getJson<GlobalBoosterSnapshot>('/api/global-boosters');
-        if (cancelled || !snapshot || stateRef.current?.riftSession || stateRef.current?.riftSaveContext?.startsWith('rift:')) return;
+        const current = stateRef.current;
+        const currentIsRift = Boolean(current?.riftSession || current?.riftSaveContext?.startsWith('rift:'));
+        if (cancelled || !snapshot || (currentIsRift && current?.riftSession?.riftGlobalEffectsEnabled !== true)) return;
         latestGlobalBoostersRef.current = snapshot;
         if (stateRef.current) stateRef.current = { ...stateRef.current, globalBoosters: snapshot };
         setState(prev => prev ? { ...prev, globalBoosters: snapshot } : prev);
@@ -4427,6 +4432,7 @@ function App() {
                 {renderNavItem('challenges', 'Run', Compass)}
                 {renderNavItem('rift-upgrades', 'Upgrades', Zap)}
                 {renderNavItem('rift-relics', 'Relics', Gem)}
+                {state.riftSession?.riftGlobalEffectsEnabled === true && renderNavItem('boosters', 'Boosters', Dices)}
               </div>
               <div className="io-nav-trailing io-nav-combat-trailing">
                 <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
@@ -4495,30 +4501,48 @@ function App() {
         {combatMode ? (
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
         ) : riftChallengesMode ? (
-          <RiftChallengesSection
-            panel={tab === 'rift-upgrades' ? 'upgrades' : tab === 'rift-relics' ? 'relics' : 'run'}
-            onEnterGame={() => {
-              setTab('roll');
-              setMoreNavOpen(false);
-              setAutoRoll(false);
-              setLastOrb(null);
-              setLastBatch([]);
-              setBatchSummary(null);
-              setReadyAt(0);
-              void refreshAll({ allowSameRevisionBalanceChanges: true });
-            }}
-            onExit={() => {
-              setTab('roll');
-              setMoreNavOpen(false);
-              setAutoRoll(false);
-              setLastOrb(null);
-              setLastBatch([]);
-              setBatchSummary(null);
-              setReadyAt(0);
-              void refreshAll({ allowSameRevisionBalanceChanges: true });
-            }}
-            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
-          />
+          tab === 'boosters' ? (
+            <BoostersAndAutomation
+              state={state}
+              busy={false}
+              globalOnly
+              globalBoosters={state.globalBoosters ?? {
+                luck: { tier: 0, activationProgress: 0, endsAt: 0 },
+                speed: { tier: 0, activationProgress: 0, endsAt: 0 },
+                crit: { tier: 0, activationProgress: 0, endsAt: 0 },
+              }}
+              worldEvent={worldEvent}
+              onActivateBooster={handleActivatePremiumBooster}
+              onActivateGlobalBooster={handleActivateGlobalBooster}
+              onBuyAutomation={handleBuyAutomation}
+              onClaimCommunityReward={handleClaimCommunityReward}
+            />
+          ) : (
+            <RiftChallengesSection
+              panel={tab === 'rift-upgrades' ? 'upgrades' : tab === 'rift-relics' ? 'relics' : 'run'}
+              onEnterGame={() => {
+                setTab('roll');
+                setMoreNavOpen(false);
+                setAutoRoll(false);
+                setLastOrb(null);
+                setLastBatch([]);
+                setBatchSummary(null);
+                setReadyAt(0);
+                void refreshAll({ allowSameRevisionBalanceChanges: true });
+              }}
+              onExit={() => {
+                setTab('roll');
+                setMoreNavOpen(false);
+                setAutoRoll(false);
+                setLastOrb(null);
+                setLastBatch([]);
+                setBatchSummary(null);
+                setReadyAt(0);
+                void refreshAll({ allowSameRevisionBalanceChanges: true });
+              }}
+              onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
+            />
+          )
         ) : redditSimulatorMode ? (
           <RedditPostSimulator
             state={state}
