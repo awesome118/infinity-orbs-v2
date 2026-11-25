@@ -218,7 +218,6 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /archive\.riftPoints -= cost\.riftPoints/);
 
   // Rift presentation is active-save scoped and never replaces the real game UI.
-  const rollUi = read('src/client/components/RollSection.tsx');
   const riftTheme = read('src/client/rift-theme.css');
   assert.match(client, /const riftActive = Boolean/);
   assert.match(client, /newBestModalData && !riftActive/);
