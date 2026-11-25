@@ -103,3 +103,4 @@ Pages diagnostics fix: do not poll Global Chat until server availability is true
 # Include completion-title routing and expanded Rift regression coverage
 
 # Final Rift modifier, second-best, and completion reveal integration
+Pages update: Rift rewards and passive generation use only verified best-cleared difficulty; logarithmic Goal/Luck sliders; No Shards disables all personal/global Booster effects.

@@ -13,6 +13,7 @@ import {
   normalizeRiftModifierSettings,
   normalizeRiftChallengeToggles,
   riftModifierRewardPreview,
+  riftModifierDifficultyScore,
   riftRatePerHour,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
@@ -4278,8 +4279,11 @@ function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number
     ? archive.completedChallengeIds.filter((id): id is string => typeof id === 'string')
     : [];
   const levels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
-  const modifierSettings = normalizeRiftModifierSettings(archive.modifierSettings);
-  const challengeToggles = normalizeRiftChallengeToggles(archive.challengeToggles);
+  const legacyCompletedAscent = isPlainRecord(archive.activeRun) && archive.activeRun.status === 'completed' && archive.activeRun.challengeId === RIFT_ASCENT.id
+    ? archive.activeRun
+    : null;
+  const modifierSettings = normalizeRiftModifierSettings(archive.bestModifierSettings ?? legacyCompletedAscent?.modifierSettings);
+  const challengeToggles = normalizeRiftChallengeToggles(archive.bestChallengeToggles ?? legacyCompletedAscent?.challengeToggles);
   const rate = riftRatePerHour(completed, levels as never, modifierSettings, challengeToggles);
   const last = archive.riftLastAccruedAt == null ? now : safeNonNegativeInteger(archive.riftLastAccruedAt);
   const progress = Number(archive.riftProgress);
@@ -4330,6 +4334,10 @@ async function saveActiveRiftPlayerState(
     state.lifetimeShards = 0;
     state.freeShardsEarnedToday = 0;
     state.shardPityRolls = 0;
+  }
+  if (session.noShards === true) {
+    state.activeBoosters = {};
+    state.globalBoosters = createInitialState().globalBoosters;
   }
   const userId = currentUserId();
   const expectedTicketKey = rollTicketKey(userId, session.runId);
@@ -4417,7 +4425,7 @@ async function saveActiveRiftPlayerState(
         : Math.max(2, Number(storedState.highestRarity) || 2);
       run.bestRarity = riftBestRarity;
       run.updatedAt = now;
-      archive.version = 3;
+      archive.version = 4;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
@@ -4433,6 +4441,18 @@ async function saveActiveRiftPlayerState(
         const firstClear = !completedIds.includes(challenge.id);
         if (firstClear) completedIds.push(challenge.id);
         archive.completedChallengeIds = completedIds;
+        if (challenge.id === RIFT_ASCENT.id) {
+          const clearedSettings = normalizeRiftModifierSettings(run.modifierSettings ?? archive.modifierSettings);
+          const clearedToggles = normalizeRiftChallengeToggles(run.challengeToggles ?? archive.challengeToggles);
+          const bestSettings = normalizeRiftModifierSettings(archive.bestModifierSettings);
+          const bestToggles = normalizeRiftChallengeToggles(archive.bestChallengeToggles);
+          const clearedDifficulty = riftModifierDifficultyScore(clearedSettings, clearedToggles);
+          const bestDifficulty = riftModifierDifficultyScore(bestSettings, bestToggles);
+          if (clearedDifficulty > bestDifficulty) {
+            archive.bestModifierSettings = clearedSettings;
+            archive.bestChallengeToggles = clearedToggles;
+          }
+        }
         archive.riftPlayerProgress = {
           level: Math.max(1, safeNonNegativeInteger(storedState.level)),
           totalRolls: safeNonNegativeInteger(storedState.totalRolls),
@@ -4453,7 +4473,7 @@ async function saveActiveRiftPlayerState(
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
         bestByChallenge[challenge.id] = Math.max(Number(bestByChallenge[challenge.id]) || 0, riftBestRarity);
         archive.bestRarityByChallenge = bestByChallenge;
-        archive.riftRatePerHour = riftRatePerHour(completedIds, riftPerkLevels as never, archive.modifierSettings, archive.challengeToggles);
+        archive.riftRatePerHour = riftRatePerHour(completedIds, riftPerkLevels as never, archive.bestModifierSettings, archive.bestChallengeToggles);
       }
 
       await txn.multi();
@@ -4667,7 +4687,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     purchasedShardLots: normalizedPurchasedShardLots,
     globalBoosterCredits: normalizedGlobalBoosterCredits,
     globalBoosterCreditLots: normalizedGlobalBoosterCreditLots,
-    activeBoosters: normalizeActiveBoosters(parsed.activeBoosters),
+    activeBoosters: activeRiftRun?.noShards === true ? {} : normalizeActiveBoosters(parsed.activeBoosters),
     automations: normalizeAutomations(parsed.automations),
     turboRollUntil: normalizeSafeInteger(parsed.turboRollUntil, base.turboRollUntil),
     lastFrenzyAt: normalizeCooldownTimestamp(parsed.lastFrenzyAt, base.lastFrenzyAt ?? 0),
@@ -6757,7 +6777,7 @@ export async function applyRolls(
   // Ascension increases XP by 10× while preserving the existing level logic.
   const effectiveXpGained = Math.min(
     Number.MAX_SAFE_INTEGER,
-    Math.round(isPremiumBoosterActive(s, 'ascension') ? xpGained * 10 : xpGained),
+    Math.round(isPremiumBoosterActive(s, 'ascension') && s.riftSession?.noShards !== true ? xpGained * 10 : xpGained),
   );
   s.xp += effectiveXpGained;
   xpGained = effectiveXpGained;
@@ -9329,6 +9349,9 @@ export async function activatePremiumBooster(id: PremiumBoosterId): Promise<Play
   const s = await settleOffline(await loadRaw());
   const info = PREMIUM_BOOSTERS[id];
   if (!info) throw new Error('Unknown premium booster.');
+  if (s.riftSession?.noShards === true) {
+    throw new Error('Premium Boosters are disabled by the No Shards Rift rule.');
+  }
   if (!s.activeBoosters) s.activeBoosters = {};
   if ((s.shards ?? 0) < info.costShards) {
     throw new Error(info.name + ' requires ' + info.costShards + ' Shards.');

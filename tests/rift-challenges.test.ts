@@ -26,6 +26,8 @@ import {
   normalizeRiftChallengeToggles,
   riftModifierDifficultyScore,
   riftModifierRewardPreview,
+  riftModifierFromSliderPosition,
+  riftModifierSliderPosition,
 } from '../src/shared/rift-challenges.js';
 
 test('The First Spark retains its Level 5 unlock and original objective', () => {
@@ -109,6 +111,16 @@ test('the Rift Bar increases its hourly rate on first clears, not on replays', (
   assert.equal(riftRatePerHour([...cleared, 'first-spark'], emptyRiftPerkLevels()), 2.25);
 });
 
+test('Rift passive generation uses only the best-cleared configuration', () => {
+  const completed = ['rift-ascent'];
+  const perks = emptyRiftPerkLevels();
+  const neutralRate = riftRatePerHour(completed, perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES);
+  const clearedBest = { ...DEFAULT_RIFT_MODIFIERS, instability: 10 };
+  const bestRate = riftRatePerHour(completed, perks, clearedBest, DEFAULT_RIFT_CHALLENGES);
+  assert.equal(neutralRate, 1);
+  assert.ok(bestRate > neutralRate);
+});
+
 test('Rift Point shop costs scale and perks have clear caps', () => {
   assert.equal(riftPerkCost('mainLuck', 0), RIFT_PERKS.mainLuck.baseCost);
   assert.ok(riftPerkCost('mainLuck', 1) > riftPerkCost('mainLuck', 0));
@@ -118,7 +130,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 3,
+    version: 4,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -131,6 +143,8 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftPlayerProgress: null,
     modifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
     challengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
+    bestModifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
+    bestChallengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels: {
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
@@ -167,6 +181,17 @@ test('modifier settings normalize to safe, neutral minimums', () => {
     noCriticals: false,
     noShards: true,
   });
+});
+
+test('Rift Goal and Luck sliders use a logarithmic ×1..×100 scale', () => {
+  assert.equal(riftModifierFromSliderPosition(0), 1);
+  assert.equal(riftModifierFromSliderPosition(50), 10);
+  assert.equal(riftModifierFromSliderPosition(100), 100);
+  assert.equal(riftModifierSliderPosition(1), 0);
+  assert.equal(riftModifierSliderPosition(10), 50);
+  assert.equal(riftModifierSliderPosition(100), 100);
+  assert.equal(riftModifierFromSliderPosition(-10), 1);
+  assert.equal(riftModifierFromSliderPosition(110), 100);
 });
 
 test('Rift difficulty and rewards scale from continuous modifiers and challenge rules', () => {

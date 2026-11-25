@@ -7,6 +7,8 @@ import {
   RIFT_PERKS,
   normalizeRiftChallengeToggles,
   normalizeRiftModifierSettings,
+  riftModifierFromSliderPosition,
+  riftModifierSliderPosition,
   getRiftChallengeDefinition,
   riftChallengeUpgradeCost,
   riftModifierRewardPreview,
@@ -52,9 +54,9 @@ const MODIFIER_CONTROLS: Array<{
   description: string;
   effect: string;
 }> = [
-  { id: 'instability', name: 'Instability', description: 'Raises the rarity required to complete the Rift.', effect: 'Objective rarity × multiplier' },
+  { id: 'instability', name: 'Goal', description: 'Sets the rarity required to complete the Rift.', effect: 'Objective rarity × multiplier' },
   { id: 'temporalDrag', name: 'Temporal Drag', description: 'Slows the Rift’s base roll cadence.', effect: 'Base cooldown × multiplier' },
-  { id: 'fortuneSuppression', name: 'Fortune Suppression', description: 'Reduces all effective Rift Luck above the neutral baseline.', effect: 'Bonus Luck ÷ multiplier' },
+  { id: 'fortuneSuppression', name: 'Luck Suppression', description: 'Reduces all effective Rift Luck above the neutral baseline.', effect: 'Bonus Luck ÷ multiplier' },
   { id: 'coinScarcity', name: 'Coin Scarcity', description: 'Reduces Coins earned from every Rift roll.', effect: 'Coin earnings ÷ multiplier' },
   { id: 'upgradeInflation', name: 'Upgrade Inflation', description: 'Raises the Coin price of temporary Rift upgrades.', effect: 'Upgrade costs × multiplier' },
 ];
@@ -67,7 +69,7 @@ const CHALLENGE_TOGGLES: Array<{
   { id: 'secondBest', name: 'Second-best', description: 'The second-highest Orb in each roll batch determines whether the objective is reached.' },
   { id: 'noAutomation', name: 'No automation', description: 'Disables Auto Roll and offline progression during the run.' },
   { id: 'noCriticals', name: 'No criticals', description: 'Critical hits cannot occur in this run.' },
-  { id: 'noShards', name: 'No Shards', description: 'Shard drops and Shard rewards are disabled in this run.' },
+  { id: 'noShards', name: 'No Shards', description: 'Disables Shard drops, Shard rewards, and all personal/global Booster effects for this run.' },
 ];
 
 function multiplierLabel(value: number): string {
@@ -141,9 +143,9 @@ export const RiftChallengesSection: React.FC<{
   );
   const projectedRate = useMemo(
     () => archive
-      ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, modifierSettings, challengeToggles)
+      ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles)
       : rewardPreview.rpPerHour,
-    [archive?.completedChallengeIds, archive?.riftPerkLevels, modifierSettings, challengeToggles, rewardPreview.rpPerHour],
+    [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.bestModifierSettings, archive?.bestChallengeToggles, rewardPreview.rpPerHour],
   );
 
   const runTarget = Math.max(2, run?.targetRarity ?? challenge?.targetRarity ?? RIFT_ASCENT.targetRarity);
@@ -290,8 +292,8 @@ export const RiftChallengesSection: React.FC<{
             />
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
-            <span>Passive generation scales with your saved modifier setup.</span>
-            <span>Current configuration: {projectedRate.toFixed(2)} RP/h projected.</span>
+            <span>Passive generation only increases after you clear a run at a higher difficulty.</span>
+            <span>Best cleared setup: {projectedRate.toFixed(2)} RP/h earned.</span>
           </div>
         </div>
 
@@ -353,15 +355,13 @@ export const RiftChallengesSection: React.FC<{
                     min={control.id === 'instability' || control.id === 'fortuneSuppression' ? 0 : 1}
                     max="100"
                     step="1"
-                    value={
-                      control.id === 'instability' || control.id === 'fortuneSuppression'
-                        ? Math.round(Math.log10(Math.min(100, Math.max(1, value))) * 50)
-                        : Math.min(100, Math.max(1, value))
-                    }
+                    value={control.id === 'instability' || control.id === 'fortuneSuppression'
+                      ? riftModifierSliderPosition(value)
+                      : Math.min(100, Math.max(1, value))}
                     onChange={event => {
                       const sliderValue = Number(event.currentTarget.value);
                       const nextValue = control.id === 'instability' || control.id === 'fortuneSuppression'
-                        ? Math.pow(10, sliderValue / 50)
+                        ? riftModifierFromSliderPosition(sliderValue)
                         : sliderValue;
                       updateModifier(control.id, nextValue);
                     }}
@@ -404,11 +404,11 @@ export const RiftChallengesSection: React.FC<{
 
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Completion reward</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Reward preview on clear</div>
               <div className="mt-1 text-2xl font-black tabular-nums text-cyan-200">+{formatNumber(rewardPreview.pointsPerClear)} RP</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Projected generation</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Generation if this sets a new best</div>
               <div className="mt-1 text-2xl font-black tabular-nums text-violet-200">{rewardPreview.rpPerHour.toFixed(2)} RP/h</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
@@ -439,7 +439,7 @@ export const RiftChallengesSection: React.FC<{
             <p className="mt-3 text-[10px] text-amber-300">Reach Level {RIFT_ASCENT.requiredMainLevel} in the main game to enter the Rift.</p>
           )}
           <p className="mt-3 text-[10px] leading-relaxed text-slate-600">
-            Modifier values range from ×1 (neutral) to ×100. Higher values increase the target, slow the run, reduce its economy, or weaken Luck as described above. Rewards are calculated from the combined difficulty score.
+            Modifier values range from ×1 (neutral) to ×100. The Goal and Luck controls are logarithmic. The reward and generation figures are previews only; they are earned only after completing a run with these settings. Changing the draft never increases your existing Rift Point rate.
           </p>
         </section>
       )}

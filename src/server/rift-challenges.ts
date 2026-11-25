@@ -142,9 +142,13 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
   const riftPerkLevels = normalizePerkLevels(value.riftPerkLevels);
   const lastAccrued = safeInteger(value.riftLastAccruedAt, now);
   const riftProgressValue = Number(value.riftProgress);
+  const activeRun = normalizeRun(value.activeRun);
+  const legacyCompletedAscent = activeRun?.status === 'completed' && activeRun.challengeId === RIFT_ASCENT.id
+    ? activeRun
+    : null;
   const archive: RiftChallengeArchive = {
-    version: 3,
-    activeRun: normalizeRun(value.activeRun),
+    version: 4,
+    activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
     totalCompletedRuns: safeInteger(value.totalCompletedRuns),
@@ -158,9 +162,11 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
       : null,
     modifierSettings: normalizeRiftModifierSettings(value.modifierSettings),
     challengeToggles: normalizeRiftChallengeToggles(value.challengeToggles),
+    bestModifierSettings: normalizeRiftModifierSettings(value.bestModifierSettings ?? legacyCompletedAscent?.modifierSettings),
+    bestChallengeToggles: normalizeRiftChallengeToggles(value.bestChallengeToggles ?? legacyCompletedAscent?.challengeToggles),
     riftPerkLevels,
   };
-  archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.modifierSettings, archive.challengeToggles);
+  archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles);
   return archive;
 }
 
@@ -182,7 +188,7 @@ async function writeArchive(archive: RiftChallengeArchive): Promise<void> {
 function accrueRiftProgress(archive: RiftChallengeArchive, now = Date.now()): void {
   const safeNow = Math.max(archive.riftLastAccruedAt, Math.floor(now));
   const elapsedMs = Math.max(0, safeNow - archive.riftLastAccruedAt);
-  const rate = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.modifierSettings, archive.challengeToggles);
+  const rate = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles);
   const accumulated = archive.riftProgress + (elapsedMs / 3_600_000) * rate;
   const wholePoints = Number.isFinite(accumulated) ? Math.floor(accumulated) : Number.MAX_SAFE_INTEGER;
   const nextBalance = Math.min(Number.MAX_SAFE_INTEGER, archive.riftPoints + wholePoints);
@@ -426,11 +432,13 @@ export async function updateRiftModifiers(
     }
     archive.modifierSettings = normalizeRiftModifierSettings(modifierSettingsValue);
     archive.challengeToggles = normalizeRiftChallengeToggles(challengeTogglesValue);
+    // Saving a draft cannot raise the earned Rift Point rate. Only a completed
+    // run can replace the best-cleared configuration used for passive generation.
     archive.riftRatePerHour = riftRatePerHour(
       archive.completedChallengeIds,
       archive.riftPerkLevels,
-      archive.modifierSettings,
-      archive.challengeToggles,
+      archive.bestModifierSettings,
+      archive.bestChallengeToggles,
     );
     await writeArchive(archive);
     return snapshot(archive, await readMainProgress());
@@ -457,7 +465,7 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
       if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
       archive.activeRun.gameState.stateRevision = nextRevision;
     }
-    archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.modifierSettings, archive.challengeToggles);
+    archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles);
     await writeArchive(archive);
     return snapshot(archive, await readMainProgress());
   });

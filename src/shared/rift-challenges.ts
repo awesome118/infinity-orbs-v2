@@ -147,6 +147,20 @@ export function normalizeRiftModifierSettings(value: unknown): RiftModifierSetti
   };
 }
 
+/** Map a 0..100 range input position to a ×1..×100 logarithmic multiplier. */
+export function riftModifierFromSliderPosition(position: number): number {
+  const safePosition = Number.isFinite(Number(position)) ? Number(position) : 0;
+  const clampedPosition = Math.min(100, Math.max(0, safePosition));
+  return Math.pow(10, clampedPosition / 50);
+}
+
+/** Map a ×1..×100 multiplier back to its logarithmic 0..100 range input position. */
+export function riftModifierSliderPosition(value: number): number {
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : 1;
+  const clampedValue = Math.min(100, Math.max(1, safeValue));
+  return Math.round(Math.log10(clampedValue) * 50);
+}
+
 export function normalizeRiftChallengeToggles(value: unknown): RiftChallengeToggles {
   const raw = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -364,7 +378,7 @@ export interface RiftChallengeRun {
 }
 
 export interface RiftChallengeArchive {
-  version: 3;
+  version: 4;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -380,6 +394,9 @@ export interface RiftChallengeArchive {
   /** Player-selected Rift configuration, retained between runs and sessions. */
   modifierSettings: RiftModifierSettings;
   challengeToggles: RiftChallengeToggles;
+  /** Best Rift Ascent configuration actually beaten. Draft settings never affect earned generation. */
+  bestModifierSettings: RiftModifierSettings;
+  bestChallengeToggles: RiftChallengeToggles;
   riftPerkLevels: RiftPerkLevels;
 }
 
@@ -517,7 +534,7 @@ export function riftRatePerHour(
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 3,
+    version: 4,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -530,6 +547,8 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     riftPlayerProgress: null,
     modifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
     challengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
+    bestModifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
+    bestChallengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels,
   };
 }
