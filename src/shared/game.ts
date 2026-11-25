@@ -1148,6 +1148,16 @@ export interface RiftPlayerSession {
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  riftMutation?: {
+    id: string;
+    name: string;
+    description: string;
+    effect: string;
+    rollsRemaining: number;
+  } | null;
+  riftMutationLuckMultiplier?: number;
+  riftMutationCooldownMultiplier?: number;
+  riftMutationCoinMultiplier?: number;
   riftProgressCoinMultiplier: number;
   luckSuppressionMultiplier: number;
   secondBest: boolean;
@@ -2814,6 +2824,10 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   // can create a genuine sub-300ms overflow.
   cd *= Math.pow(0.95, chronoFlowLevel);
   if (s.riftSession) cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
+  if (s.riftSession) {
+    const mutationCooldownMultiplier = Number(s.riftSession.riftMutationCooldownMultiplier ?? 1);
+    if (Number.isFinite(mutationCooldownMultiplier) && mutationCooldownMultiplier > 0) cd *= mutationCooldownMultiplier;
+  }
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
