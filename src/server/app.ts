@@ -125,7 +125,7 @@ import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromX
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftChallengeUpgrade, buyRiftPerk, buyRiftRelic, buyRiftUnlock, setEquippedRiftRelic, abandonRiftChallenge, updateRiftModifiers } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftPerk, buyRiftRelic, buyRiftUnlock, setEquippedRiftRelic, abandonRiftChallenge, updateRiftModifiers } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1200,30 +1200,6 @@ export function createApp() {
       }
       const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
         : message === 'CHALLENGE_RUN_MISMATCH' ? 409
-        : transientContentionError(error) ? 503 : 500;
-      res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
-    }
-  });
-
-  app.post('/api/rift-challenges/upgrade', async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    try {
-      const upgradeId = req.body?.upgradeId;
-      if (typeof upgradeId !== 'string' || upgradeId.length > 40) {
-        return res.status(400).json({ error: 'Choose a valid challenge upgrade.' });
-      }
-      const runId = req.body?.runId;
-      if (typeof runId !== 'string' || runId.length > 120) {
-        return res.status(400).json({ error: 'The challenge run ID is missing. Refresh and try again.' });
-      }
-      res.json(await buyRiftChallengeUpgrade(upgradeId, runId));
-    } catch (error: any) {
-      const message = error?.message || 'Challenge upgrade failed.';
-      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
-        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
-        : message.startsWith('Need ') || message.startsWith('Main-game requirement') ||
-          message.includes('already at maximum') || message.includes('valid challenge upgrade') ||
-          message.includes('There is no active Rift Challenge') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message === 'CHALLENGE_RUN_MISMATCH' ? 'This challenge run changed in another tab. Refresh before continuing.' : message });
     }
