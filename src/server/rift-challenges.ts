@@ -41,6 +41,23 @@ import {
 
 const RIFT_ARCHIVE_KEY_PREFIX = 'io:rift-challenge:v1:';
 
+const RIFT_COMPLETION_POST_PREFIX = 'io:rift-completion:post:v1:';
+const RIFT_COMPLETION_RUN_PREFIX = 'io:rift-completion:run:v1:';
+const RIFT_POST_RECORD_TTL_MS = 7 * 24 * 60 * 60_000;
+
+interface RiftCompletionPostRecord {
+  version: 1;
+  postId: string;
+  runId: string;
+  ownerId: string;
+  ownerUsername: string;
+  challengeId: string;
+  challengeName: string;
+  subredditName: string;
+  createdAt: number;
+  previewOnly?: boolean;
+}
+
 export type { RiftChallengeSnapshot } from '../shared/rift-challenges.js';
 
 function currentUserId(): string {
@@ -639,4 +656,95 @@ export async function abandonRiftChallenge(expectedRunIdValue: unknown): Promise
     });
     return snapshot(archive, await readMainProgress());
   });
+}
+
+
+export async function registerRiftCompletionPost(
+  record: Omit<RiftCompletionPostRecord, 'version'>,
+): Promise<void> {
+  const postId = String(record.postId ?? '').trim();
+  const runId = String(record.runId ?? '').trim();
+  const ownerId = String(record.ownerId ?? '').trim();
+  const challenge = getRiftChallengeDefinition(record.challengeId);
+  if (!postId || !runId || !ownerId || !record.ownerUsername || !challenge) {
+    throw new Error('Rift completion post metadata is incomplete.');
+  }
+  const createdAt = safeInteger(record.createdAt, Date.now());
+  const value: RiftCompletionPostRecord = {
+    version: 1,
+    ...record,
+    postId,
+    runId,
+    ownerId,
+    ownerUsername: String(record.ownerUsername).replace(/^u\//i, '').slice(0, 32),
+    challengeId: challenge.id,
+    challengeName: challenge.name,
+    subredditName: String(record.subredditName ?? '').replace(/^r\//i, '').slice(0, 100),
+    createdAt,
+    previewOnly: record.previewOnly === true,
+  };
+  const expiresAt = createdAt + RIFT_POST_RECORD_TTL_MS;
+  await redis.set(RIFT_COMPLETION_POST_PREFIX + postId, JSON.stringify(value), { expiration: new Date(expiresAt) });
+  await redis.set(RIFT_COMPLETION_RUN_PREFIX + runId, postId, { expiration: new Date(expiresAt) });
+}
+
+export async function getRiftCompletionPostInfo(postIdValue?: unknown): Promise<{
+  postId: string;
+  ownerUsername: string;
+  challengeId: string;
+  challengeName: string;
+  subredditName: string;
+  createdAt: number;
+  previewOnly: boolean;
+}> {
+  const postId = String(postIdValue ?? context.postId ?? '').trim();
+  if (!postId) throw new Error('This is not a Rift completion post.');
+  const raw = await redis.get(RIFT_COMPLETION_POST_PREFIX + postId);
+  if (typeof raw !== 'string' || !raw) throw new Error('Rift completion post data was not found.');
+  let record: RiftCompletionPostRecord;
+  try { record = JSON.parse(raw) as RiftCompletionPostRecord; }
+  catch { throw new Error('Rift completion post data is corrupted.'); }
+  const challenge = getRiftChallengeDefinition(record.challengeId);
+  if (record.version !== 1 || record.postId !== postId || !record.ownerId || !challenge ||
+      !Number.isSafeInteger(record.createdAt) || record.createdAt < 0) {
+    throw new Error('Rift completion post data is invalid.');
+  }
+  return {
+    postId,
+    ownerUsername: String(record.ownerUsername ?? 'Redditor').slice(0, 32),
+    challengeId: challenge.id,
+    challengeName: challenge.name,
+    subredditName: String(record.subredditName ?? '').slice(0, 100),
+    createdAt: record.createdAt,
+    previewOnly: record.previewOnly === true,
+  };
+}
+
+export async function createRiftCompletionSimulatorPost(challengeIdValue: unknown): Promise<{
+  postId: string;
+  title: string;
+  body: string;
+  subredditName: string;
+  ownerUsername: string;
+  entry: 'rift';
+  challengeId: string;
+  challengeName: string;
+  createdAt: number;
+  previewOnly: true;
+}> {
+  const challenge = getRiftChallengeDefinition(challengeIdValue);
+  if (!challenge) throw new Error('Choose a valid Rift Challenge for the post preview.');
+  const ownerId = currentUserId();
+  const ownerUsername = String(context.username ?? 'Redditor').trim().replace(/^u\//i, '').slice(0, 32) || 'Redditor';
+  const subredditName = String(context.subredditName ?? 'infinityorbs').trim().replace(/^r\//i, '').slice(0, 100) || 'infinityorbs';
+  const createdAt = Date.now();
+  const postId = 'preview-' + createRunId();
+  const runId = 'preview-' + createRunId();
+  const title = 'u/' + ownerUsername + ' has completed the Rift ' + challenge.name + ' for the first time!';
+  const body = 'u/' + ownerUsername + ' has completed the Rift ' + challenge.name + ' for the first time.\n\nThis is a first-clear achievement. Open Infinity Orbs to explore the Rift and attempt the next challenge.';
+  await registerRiftCompletionPost({
+    postId, runId, ownerId, ownerUsername, challengeId: challenge.id,
+    challengeName: challenge.name, subredditName, createdAt, previewOnly: true,
+  });
+  return { postId, title, body, subredditName, ownerUsername, entry: 'rift', challengeId: challenge.id, challengeName: challenge.name, createdAt, previewOnly: true };
 }
