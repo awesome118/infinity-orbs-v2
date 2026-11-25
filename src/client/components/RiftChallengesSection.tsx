@@ -350,11 +350,21 @@ export const RiftChallengesSection: React.FC<{
                   </div>
                   <input
                     type="range"
-                    min="1"
+                    min="0"
                     max="100"
-                    step="0.1"
-                    value={Math.min(100, Math.max(1, value))}
-                    onChange={event => updateModifier(control.id, Number(event.currentTarget.value))}
+                    step="1"
+                    value={
+                      control.id === 'instability' || control.id === 'fortuneSuppression'
+                        ? Math.round(Math.log10(Math.min(100, Math.max(1, value))) * 50)
+                        : Math.min(100, Math.max(1, value))
+                    }
+                    onChange={event => {
+                      const sliderValue = Number(event.currentTarget.value);
+                      const nextValue = control.id === 'instability' || control.id === 'fortuneSuppression'
+                        ? Math.pow(10, sliderValue / 50)
+                        : sliderValue;
+                      updateModifier(control.id, nextValue);
+                    }}
                     disabled={busyAction !== null}
                     className="mt-4 w-full accent-violet-400"
                     aria-label={control.name}
