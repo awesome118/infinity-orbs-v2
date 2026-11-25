@@ -1150,6 +1150,13 @@ export interface RiftPlayerSession {
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
+  temporalDragMultiplier: number;
+  temporalArbitrageLevel: number;
+  temporalCompressionLevel: number;
+  probabilityDebtLevel: number;
+  fractureCascadeLevel: number;
+  echoChamberLevel: number;
+  singularityFocusLevel: number;
   challengeCoinMultiplier: number;
 }
 
@@ -1242,6 +1249,8 @@ export interface PlayerState {
   lastDailyReset: string;
   lastWeeklyReset: string;
   rollsSinceBest: number;
+  /** Remaining Rift-only Fracture Cascade rolls, persisted across activations. */
+  riftFractureCascadeRollsRemaining?: number;
   /** Best number of rolls between successive all-time rarity records. Persists through Prestige. */
   aftershockRecord?: number;
   /** Beginning of the current uninterrupted online rolling session. */
@@ -2805,7 +2814,12 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   // Chrono Flow compounds with all other effects so endgame Speed investments
   // can create a genuine sub-300ms overflow.
   cd *= Math.pow(0.95, chronoFlowLevel);
-  if (s.riftSession) cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
+  if (s.riftSession) {
+    cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
+    const timeDrag = Math.max(1, Math.min(20, Number(s.riftSession.temporalDragMultiplier) || 1));
+    const compression = Math.min(0.80, Math.max(0, s.riftSession.temporalCompressionLevel) * 0.04);
+    cd *= 1 + (timeDrag - 1) * (1 - compression);
+  }
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
 
