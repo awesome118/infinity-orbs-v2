@@ -105,8 +105,10 @@ export const RiftChallengesSection: React.FC<{
   const progressPercent = useMemo(() => {
     if (!run || !challenge) return 0;
     const best = Math.max(2, run.bestRarity);
-    return Math.max(0, Math.min(100, Math.log10(best) / Math.log10(challenge.targetRarity) * 100));
-  }, [run?.bestRarity, challenge?.targetRarity]);
+    const actualProgress = Math.log10(best) / Math.log10(challenge.targetRarity) * 100;
+    const calibrationProgress = archive?.riftPerkLevels.initialCalibration ?? 0;
+    return Math.max(0, Math.min(100, actualProgress + calibrationProgress));
+  }, [run?.bestRarity, challenge?.targetRarity, archive?.riftPerkLevels.initialCalibration]);
 
   const retryLoad = async () => {
     setLoading(true);
