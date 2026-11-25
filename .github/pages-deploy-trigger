@@ -101,3 +101,5 @@ Pages diagnostics fix: do not poll Global Chat until server availability is true
 # Retry after correcting Rift TypeScript validation
 
 # Include completion-title routing and expanded Rift regression coverage
+
+# Final Rift modifier, second-best, and completion reveal integration
