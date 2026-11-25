@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   accrueRiftDimensionalInterest,
+  riftMutationDurationRolls,
+  riftMutationPenaltyFactor,
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   normalizeRiftTemporalDragMultiplier,
@@ -27,6 +29,7 @@ import {
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
   RIFT_PERKS,
+  RIFT_MUTATIONS,
 } from '../src/shared/rift-challenges.js';
 
 test('The First Spark retains its Level 5 unlock and original objective', () => {
@@ -45,13 +48,21 @@ test('Rift challenge catalog is sequential and has increasing objectives', () =>
   assert.equal(RIFT_CHALLENGES[2].prerequisiteId, 'fractured-tempo');
 });
 
-test('Rift game progress independently unlocks challenge mechanics', () => {
+test('Rift game progress independently unlocks challenge mechanics and Early Authorization bypasses them in order', () => {
   assert.deepEqual(
     riftChallengeMechanicUnlocks({ level: 9, totalRolls: 24, totalCrits: 9 }),
     { fortune: true, speed: false, prosperity: false, critical: false },
   );
   assert.deepEqual(
     riftChallengeMechanicUnlocks({ level: 10, totalRolls: 25, totalCrits: 10 }),
+    { fortune: true, speed: true, prosperity: true, critical: true },
+  );
+  assert.deepEqual(
+    riftChallengeMechanicUnlocks({ level: 1, totalRolls: 0, totalCrits: 0 }, 2),
+    { fortune: true, speed: true, prosperity: false, critical: false },
+  );
+  assert.deepEqual(
+    riftChallengeMechanicUnlocks({ level: 1, totalRolls: 0, totalCrits: 0 }, 4),
     { fortune: true, speed: true, prosperity: true, critical: true },
   );
 });
@@ -122,6 +133,14 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
       temporalArbitrage: 0, probabilityDebt: 0, temporalCompression: 0,
       fractureCascade: 0, echoChamber: 0, dimensionalInterest: 0,
       overkill: 0, singularityFocus: 0,
+      bossResonance: 0, masteryBridge: 0, runeReconnection: 0,
+      automationOverride: 0, chronoEngine: 0, combatIntegration: 0,
+      initialCalibration: 0, preloadedBlueprint: 0, earlyAuthorization: 0,
+      riftConditioning: 0, advancedDeployment: 0, fortuneReservoir: 0,
+      criticalConversion: 0, fractureRecycling: 0, emergencyProtocol: 0,
+      milestoneAmplifier: 0, anomalyHarvesting: 0, anomalyForecaster: 0,
+      mutationStabilizer: 0, mutationAmplifier: 0, mutationExtraction: 0,
+      anomalyPersistence: 0,
     },
   });
 });
@@ -170,4 +189,24 @@ test('Dimensional Interest compounds once per elapsed minute and preserves fract
   assert.equal(result.lastInterestAt, 121_000);
   assert.ok(Math.abs(result.coins - 100 * Math.pow(1.0025, 2)) < 1e-10);
   assert.ok(result.lifetimeCoins >= result.coins);
+});
+
+
+test('Rift expansion perks have distinct unlock, integration, and mutation roles', () => {
+  assert.equal(RIFT_PERKS.bossResonance.maxLevel, 10);
+  assert.equal(RIFT_PERKS.automationOverride.maxLevel, 1);
+  assert.equal(RIFT_PERKS.chronoEngine.maxLevel, 1);
+  assert.equal(RIFT_PERKS.preloadedBlueprint.maxLevel, 4);
+  assert.equal(RIFT_PERKS.anomalyForecaster.maxLevel, 1);
+  assert.equal(RIFT_PERKS.mutationStabilizer.maxLevel, 10);
+  assert.equal(RIFT_MUTATIONS.length, 5);
+});
+
+test('Rift Mutation duration and stabilization scale within bounded ranges', () => {
+  assert.equal(riftMutationDurationRolls(0), 25);
+  assert.equal(riftMutationDurationRolls(10), 75);
+  assert.equal(riftMutationPenaltyFactor(0, 0), 1);
+  assert.equal(riftMutationPenaltyFactor(10, 0), 0.5);
+  assert.equal(riftMutationPenaltyFactor(0, 10), 1.2);
+  assert.equal(riftMutationPenaltyFactor(10, 10), 0.7);
 });
