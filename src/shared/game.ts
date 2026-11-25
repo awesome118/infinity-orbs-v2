@@ -1150,13 +1150,13 @@ export interface RiftPlayerSession {
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
-  temporalDragMultiplier: number;
-  temporalArbitrageLevel: number;
-  temporalCompressionLevel: number;
-  probabilityDebtLevel: number;
-  fractureCascadeLevel: number;
-  echoChamberLevel: number;
-  singularityFocusLevel: number;
+  temporalDragMultiplier?: number;
+  temporalArbitrageLevel?: number;
+  temporalCompressionLevel?: number;
+  probabilityDebtLevel?: number;
+  fractureCascadeLevel?: number;
+  echoChamberLevel?: number;
+  singularityFocusLevel?: number;
   challengeCoinMultiplier: number;
 }
 
@@ -2817,7 +2817,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   if (s.riftSession) {
     cd *= Math.max(0.65, 1 - s.riftSession.riftSpeedPerkLevel * 0.03);
     const timeDrag = Math.max(1, Math.min(20, Number(s.riftSession.temporalDragMultiplier) || 1));
-    const compression = Math.min(0.80, Math.max(0, s.riftSession.temporalCompressionLevel) * 0.04);
+    const compression = Math.min(0.80, Math.max(0, Number(s.riftSession.temporalCompressionLevel ?? 0)) * 0.04);
     cd *= 1 + (timeDrag - 1) * (1 - compression);
   }
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
