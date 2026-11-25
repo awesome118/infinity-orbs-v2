@@ -4742,7 +4742,10 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
-    globalBoosters: activeRiftRun ? createInitialState().globalBoosters : globalBoosters,
+    // No-Shards also suppresses shared Global Booster effects for this run.
+    globalBoosters: activeRiftRun
+      ? activeRiftRun.noShards ? createInitialState().globalBoosters : createInitialState().globalBoosters
+      : globalBoosters,
     dailyStreakCommunity: activeRiftRun ? createInitialState().dailyStreakCommunity : dailyStreakCommunity,
   };
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
