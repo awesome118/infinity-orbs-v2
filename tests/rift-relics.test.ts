@@ -11,6 +11,8 @@ import {
   riftRelicCost,
   riftEffectiveTemporalDragMultiplier,
   riftTemporalArbitrageMultiplier,
+  riftStartingMultiballLevel,
+  riftRelicProgressCoinMultiplier,
 } from '../src/shared/rift-relics.js';
 
 test('Rift relic levels are bounded and equipped loadouts contain only owned relics', () => {
@@ -26,6 +28,7 @@ test('Rift relic levels are bounded and equipped loadouts contain only owned rel
   assert.deepEqual(emptyRiftRelicLevels(), {
     'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
     observer: 0, 'loaded-die': 0, 'fracture-cascade': 0,
+    'mirror-array': 0, 'stillness-engine': 0, 'rift-tithe': 0,
   });
 });
 
@@ -85,4 +88,29 @@ test('Timeline Fork permits one additional owned relic without weakening the nor
   assert.deepEqual(normalizeEquippedRiftRelics(loadout, levels, RIFT_RELIC_FORKED_EQUIP_SLOTS), loadout);
   assert.equal(getRiftRelicEffects(loadout, levels).completionRewardMultiplier, 1);
   assert.equal(getRiftRelicEffects(loadout, levels, RIFT_RELIC_FORKED_EQUIP_SLOTS).completionRewardMultiplier, 2);
+});
+
+
+test('the free Rift Ascent Multiball level is gated by Second-best', () => {
+  assert.equal(riftStartingMultiballLevel(0, false, 0), 0);
+  assert.equal(riftStartingMultiballLevel(0, false, 3), 0);
+  assert.equal(riftStartingMultiballLevel(0, true, 0), 1);
+  assert.equal(riftStartingMultiballLevel(0, true, 3), 4);
+  assert.equal(riftStartingMultiballLevel(2, false, 3), 2);
+});
+
+test('Mirror Array, Stillness Engine, and Rift Tithe have distinct equipped effects', () => {
+  const levels = { ...emptyRiftRelicLevels(), 'mirror-array': 3, 'stillness-engine': 3, 'rift-tithe': 3 };
+  const effects = getRiftRelicEffects(['mirror-array', 'stillness-engine'], levels, 3);
+  assert.equal(effects.secondBestMultiballBonus, 3);
+  assert.equal(effects.noAutomationCooldownReduction, 0.2);
+  assert.equal(effects.progressCoinBonus, 0);
+  const tithe = getRiftRelicEffects(['rift-tithe'], levels);
+  assert.equal(tithe.progressCoinBonus, 0.75);
+  assert.equal(riftRelicProgressCoinMultiplier(1_000, 1_000_000, 0.75), 1);
+  assert.equal(riftRelicProgressCoinMultiplier(1_000_000, 1_000_000, 0.75), 1.75);
+});
+
+test('Stillness Engine compounds multiplicatively with Clock Without Hands', () => {
+  assert.equal(riftEffectiveTemporalDragMultiplier(6, 0.4, 0.2), 3.4);
 });
