@@ -133,3 +133,5 @@ Deploy prompt: fix JSX panel wrapper spacing after adopting native Rift navigati
 Deploy prompt: promote Rift Run, Upgrades, and Relics to sibling routes in the game's standalone top-level navigation; remove nested Rift Progression submenu.
 
 Pages deployment reliability: split build/upload and deploy into dependent jobs to avoid the intermittent Pages artifact-lookup race.
+
+Pages Rift upgrade redesign: replace the plain perk list with a permanent research array, split Reality and Rift branches, a core Probability Debt protocol panel, segmented rank tracks, and a Timeline Fork unlock console.

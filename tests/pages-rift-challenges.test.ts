@@ -94,6 +94,14 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
 
 
   assert.match(challengeUi, /activePanel === 'upgrades'/);
+  assert.match(challengeUi, /Rift technology division/);
+  assert.match(challengeUi, /Research the impossible\\./);
+  assert.match(challengeUi, /Reality anchors/);
+  assert.match(challengeUi, /Rift engineering/);
+  assert.match(challengeUi, /Archive synchronization/);
+  assert.match(challengeUi, /Protocol output/);
+  assert.match(challengeUi, /INSTALL RANK/);
+  assert.match(challengeUi, /aria-valuenow=\{level\}/);
   assert.match(challengeUi, /activePanel === 'relics'/);
   assert.match(challengeUi, /Configuration saved/);
   assert.match(challengeUi, /panel: 'run' \| 'upgrades' \| 'relics'/);

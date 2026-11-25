@@ -632,107 +632,258 @@ export const RiftChallengesSection: React.FC<{
           </div>
         )}
 
-        {activePanel === 'upgrades' && (
-          <div className="space-y-5">
-      <section className="rounded-3xl border border-violet-400/20 bg-slate-900/70 p-5 sm:p-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-[.2em] text-violet-300">Permanent upgrades</div>
-            <h2 className="mt-1 text-xl font-black text-white">Rift Point shop</h2>
-            <p className="mt-1 text-xs text-slate-400">These perks persist across runs and sessions. Main-game perks affect ordinary rolls outside the Rift.</p>
-          </div>
-          <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
-            <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Available</div>
-            <div className="text-xl font-black tabular-nums text-white">{formatNumber(riftProjection.points)} RP</div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-          {(['main-game', 'rift'] as const).map(category => (
-            <div key={category}>
-              <div className="mb-3 flex items-center gap-2 border-b border-slate-700/70 pb-2">
-                {category === 'main-game' ? <ArrowUpRight className="h-4 w-4 text-cyan-300" /> : <Zap className="h-4 w-4 text-violet-300" />}
-                <h3 className="text-xs font-black uppercase tracking-[.16em] text-slate-200">
-                  {category === 'main-game' ? 'Main-game perks' : 'Rift-only perks'}
-                </h3>
-              </div>
-              <div className="space-y-2">
-                {Object.values(RIFT_PERKS).filter(perk => perk.category === category).map(perk => {
-                  const level = archive.riftPerkLevels[perk.id] ?? 0;
-                  const maxed = level >= perk.maxLevel;
-                  const cost = riftPerkCost(perk.id, level);
-                  const canBuy = !maxed && riftProjection.points >= cost && busyAction === null;
-                  return (
-                    <article key={perk.id} className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="text-sm font-black text-white">{perk.name}</h4>
-                            <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[9px] font-black text-slate-400">Lv {level}/{perk.maxLevel}</span>
-                          </div>
-                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{perk.description}</p>
-                          <p className="mt-1 text-[10px] font-bold text-cyan-200">{perk.effect}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => buyPerk(perk.id)}
-                          disabled={!canBuy}
-                          className="min-w-24 rounded-lg border border-violet-300/25 bg-violet-500/10 px-3 py-2 text-[10px] font-black text-violet-100 hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-30"
-                        >
-                          {busyAction === perk.id ? 'Buying…' : maxed ? 'MAXED' : cost + ' RP'}
-                        </button>
-                      </div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                        <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400" style={{ width: (level / perk.maxLevel * 100) + '%' }} />
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-cyan-300/20 bg-slate-900/70 p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Permanent research</div>
-            <h2 className="mt-1 text-xl font-black text-white">One-time unlocks</h2>
-            <p className="mt-1 text-xs text-slate-400">These purchases permanently unlock new Rift options. They do not consume a relic rank or equipment slot.</p>
-          </div>
-          <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/5 px-3 py-2 text-right">
-            <div className="text-[9px] font-black uppercase tracking-widest text-cyan-200">Available</div>
-            <div className="text-xl font-black tabular-nums text-white">{formatNumber(riftProjection.points)} RP</div>
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {Object.values(RIFT_UNLOCKS).map(unlock => {
-            const unlocked = archive.riftUnlocks[unlock.id] === true;
-            const canBuy = !unlocked && !isActive && archive.completedChallengeIds.includes(RIFT_ASCENT.id) && riftProjection.points >= unlock.cost && busyAction === null;
+        {activePanel === 'upgrades' && (() => {
+          const allPerks = Object.values(RIFT_PERKS);
+          const realityPerks = allPerks.filter(perk => perk.category === 'main-game');
+          const riftPerks = allPerks.filter(perk => perk.category === 'rift');
+          const totalRanks = allPerks.reduce((sum, perk) => sum + (archive.riftPerkLevels[perk.id] ?? 0), 0);
+          const maxRanks = allPerks.reduce((sum, perk) => sum + perk.maxLevel, 0);
+          const installedNodes = allPerks.filter(perk => (archive.riftPerkLevels[perk.id] ?? 0) > 0).length;
+          const ascentCleared = archive.completedChallengeIds.includes(RIFT_ASCENT.id);
+          const renderPerkNode = (perk: (typeof RIFT_PERKS)[RiftPerkId], index: number, branch: 'reality' | 'rift') => {
+            const level = archive.riftPerkLevels[perk.id] ?? 0;
+            const maxed = level >= perk.maxLevel;
+            const cost = riftPerkCost(perk.id, level);
+            const canBuy = !maxed && riftProjection.points >= cost && busyAction === null;
+            const reality = branch === 'reality';
             return (
-              <article key={unlock.id} className={'rounded-2xl border p-4 ' + (unlocked ? 'border-cyan-300/30 bg-cyan-300/[.05]' : 'border-slate-700 bg-slate-950/55')}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-black text-white">{unlock.name}</h3>
-                  <span className="rounded-md bg-slate-800 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200">{unlocked ? 'UNLOCKED' : 'ONE-TIME'}</span>
+              <article key={perk.id} className={'group relative isolate overflow-hidden rounded-[1.5rem] border p-4 transition duration-200 hover:-translate-y-1 sm:p-5 ' + (reality
+                ? 'border-cyan-300/20 bg-gradient-to-br from-[#102b37] via-[#101b2a] to-[#0b101e] hover:border-cyan-200/40'
+                : 'border-violet-300/20 bg-gradient-to-br from-[#27163d] via-[#191329] to-[#0e0a1b] hover:border-violet-200/40')}>
+                <div className={'pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full blur-3xl opacity-20 ' + (reality ? 'bg-cyan-300' : 'bg-fuchsia-400')} />
+                <div className="relative">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={'grid h-11 w-11 shrink-0 place-items-center rounded-2xl border text-xs font-black tabular-nums ' + (reality
+                        ? 'border-cyan-200/25 bg-cyan-200/10 text-cyan-100'
+                        : 'border-violet-200/25 bg-violet-200/10 text-violet-100')}>
+                        {String(index + 1).padStart(2, '0')}
+                      </div>
+                      <div>
+                        <div className={'text-[9px] font-black uppercase tracking-[.2em] ' + (reality ? 'text-cyan-300/80' : 'text-violet-300/80')}>
+                          {reality ? 'Reality anchor' : 'Rift protocol'}
+                        </div>
+                        <div className="mt-1 text-xs font-black uppercase tracking-widest text-slate-500">
+                          {level >= perk.maxLevel ? 'Fully synchronized' : level > 0 ? 'Synchronization active' : 'Awaiting installation'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-1.5 text-right">
+                      <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rank</div>
+                      <div className="mt-0.5 text-sm font-black tabular-nums text-white">{level}<span className="text-slate-500">/{perk.maxLevel}</span></div>
+                    </div>
+                  </div>
+
+                  <h4 className="mt-5 text-lg font-black tracking-tight text-white">{perk.name}</h4>
+                  <p className="mt-2 min-h-[2.8rem] text-[11px] leading-relaxed text-slate-400">{perk.description}</p>
+
+                  <div className={'mt-4 rounded-xl border px-3 py-3 ' + (reality ? 'border-cyan-200/15 bg-cyan-200/[.045]' : 'border-violet-200/15 bg-violet-200/[.045]')}>
+                    <div className={'text-[8px] font-black uppercase tracking-[.2em] ' + (reality ? 'text-cyan-300/75' : 'text-violet-300/75')}>Research output</div>
+                    <div className="mt-1.5 text-xs font-extrabold leading-relaxed text-white">{perk.effect}</div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-500">
+                      <span>Synchronization</span>
+                      <span>{Math.floor(level / perk.maxLevel * 100)}%</span>
+                    </div>
+                    <div className="flex gap-1" role="progressbar" aria-label={perk.name + ' research level'} aria-valuemin={0} aria-valuemax={perk.maxLevel} aria-valuenow={level}>
+                      {Array.from({ length: perk.maxLevel }, (_, segment) => (
+                        <span key={segment} className={'h-1.5 min-w-0 flex-1 rounded-full ' + (segment < level
+                          ? (reality ? 'bg-cyan-300 shadow-[0_0_8px_rgba(103,232,249,.35)]' : 'bg-violet-300 shadow-[0_0_8px_rgba(196,181,253,.35)]')
+                          : 'bg-slate-800')} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[8px] font-black uppercase tracking-widest text-slate-600">Next investment</div>
+                      <div className="mt-1 text-sm font-black tabular-nums text-white">{maxed ? 'Complete' : formatNumber(cost) + ' RP'}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => buyPerk(perk.id)}
+                      disabled={!canBuy}
+                      aria-label={maxed ? perk.name + ' is maxed' : 'Invest Rift Points in ' + perk.name}
+                      className={'min-h-10 min-w-[8.5rem] rounded-xl border px-3 py-2 text-[9px] font-black tracking-[.12em] transition disabled:cursor-not-allowed disabled:opacity-35 ' + (reality
+                        ? 'border-cyan-200/25 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20'
+                        : 'border-violet-200/25 bg-violet-300/10 text-violet-100 hover:bg-violet-300/20')}>
+                      {busyAction === perk.id ? 'INSTALLING…' : maxed ? 'MAX RANK' : 'INSTALL RANK'}
+                    </button>
+                  </div>
                 </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{unlock.description}</p>
-                <p className="mt-2 text-[10px] font-bold text-cyan-200">{unlock.effect}</p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-slate-500">{unlocked ? 'Permanent unlock' : formatNumber(unlock.cost) + ' Rift Points'}</span>
-                  <button type="button" onClick={() => buyUnlock(unlock.id)} disabled={!canBuy}
-                    className="rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-[10px] font-black text-cyan-100 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-35">
-                    {busyAction === 'unlock-' + unlock.id ? 'Unlocking…' : unlocked ? 'UNLOCKED' : 'UNLOCK'}
-                  </button>
-                </div>
-                {!archive.completedChallengeIds.includes(RIFT_ASCENT.id) && <p className="mt-2 text-[10px] text-amber-300">Complete Rift Ascent to unlock permanent research.</p>}
               </article>
             );
-          })}
-        </div>
-      </section>
-          </div>
-        )}
+          };
+
+          const corePerk = RIFT_PERKS.probabilityDebt;
+          const coreLevel = archive.riftPerkLevels[corePerk.id] ?? 0;
+          const coreMaxed = coreLevel >= corePerk.maxLevel;
+          const coreCost = riftPerkCost(corePerk.id, coreLevel);
+          const coreCanBuy = !coreMaxed && riftProjection.points >= coreCost && busyAction === null;
+          const timelineFork = RIFT_UNLOCKS.timelineFork;
+          const timelineUnlocked = archive.riftUnlocks.timelineFork === true;
+          const timelineCanBuy = !timelineUnlocked && !isActive && ascentCleared && riftProjection.points >= timelineFork.cost && busyAction === null;
+
+          return (
+            <div className="io-rift-research space-y-7">
+              <section className="relative isolate overflow-hidden rounded-[2rem] border border-violet-200/20 bg-[#0b0816] shadow-[0_24px_80px_rgba(0,0,0,.32)]">
+                <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-90" style={{ background: 'radial-gradient(ellipse at 12% 0%, rgba(85,228,255,.16), transparent 42%), radial-gradient(ellipse at 88% 18%, rgba(177,105,255,.24), transparent 46%), linear-gradient(135deg, transparent 38%, rgba(114,73,185,.08) 100%)' }} />
+                <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full border border-violet-200/10 shadow-[0_0_0_26px_rgba(177,130,255,.025),0_0_0_58px_rgba(177,130,255,.02),0_0_90px_rgba(150,96,255,.12)]" />
+                <div className="relative p-5 sm:p-7">
+                  <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/20 bg-violet-200/[.07] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.22em] text-violet-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,.9)]" />
+                        Rift technology division · permanent archive
+                      </div>
+                      <h2 className="mt-4 text-3xl font-black tracking-[-.05em] text-white sm:text-4xl">Research the impossible.</h2>
+                      <p className="mt-3 max-w-xl text-xs leading-relaxed text-slate-400 sm:text-sm">
+                        Rewire the rules of ordinary reality and the Rift itself. Installed ranks survive every run. Each investment permanently changes the system.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 sm:min-w-[23rem]">
+                      <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Research nodes</div>
+                        <div className="mt-1.5 text-2xl font-black tabular-nums text-white">{allPerks.length}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Installed</div>
+                        <div className="mt-1.5 text-2xl font-black tabular-nums text-cyan-200">{installedNodes}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Total ranks</div>
+                        <div className="mt-1.5 text-2xl font-black tabular-nums text-violet-200">{totalRanks}<span className="text-sm text-slate-500">/{maxRanks}</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,.72fr)]">
+                    <div className="rounded-2xl border border-violet-200/15 bg-black/30 p-4 sm:p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[9px] font-black uppercase tracking-[.2em] text-violet-200">Unspent research energy</div>
+                        <div className="rounded-lg border border-violet-200/15 bg-violet-200/[.06] px-2 py-1 text-[8px] font-black uppercase tracking-widest text-violet-200">Available now</div>
+                      </div>
+                      <div className="mt-2 text-3xl font-black tabular-nums tracking-tight text-white sm:text-4xl">{formatNumber(riftProjection.points)} <span className="text-xs font-bold tracking-normal text-violet-200">RIFT POINTS</span></div>
+                      <p className="mt-2 text-[10px] leading-relaxed text-slate-500">Your balance updates as the Rift Bar generates points. Spending never resets your completed records.</p>
+                    </div>
+                    <div className="flex flex-col justify-center rounded-2xl border border-cyan-200/15 bg-cyan-200/[.045] p-4 sm:p-5">
+                      <div className="flex items-center justify-between gap-3 text-[9px] font-black uppercase tracking-[.18em] text-cyan-200">
+                        <span>Archive synchronization</span><span>{Math.floor(totalRanks / Math.max(1, maxRanks) * 100)}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/50">
+                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 shadow-[0_0_16px_rgba(185,150,255,.4)]" style={{ width: (totalRanks / Math.max(1, maxRanks) * 100) + '%' }} />
+                      </div>
+                      <p className="mt-3 text-[10px] leading-relaxed text-slate-400">Every rank is permanent. The full archive contains {maxRanks} research levels.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-cyan-200/15 pb-3">
+                  <div>
+                    <div className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Branch 01 · outside the anomaly</div>
+                    <h3 className="mt-1 text-2xl font-black tracking-tight text-white">Reality anchors</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">These upgrades affect your ordinary game save.</p>
+                  </div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-cyan-200">{realityPerks.length} nodes · persistent</div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {realityPerks.map((perk, index) => renderPerkNode(perk, index, 'reality'))}
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-violet-200/15 pb-3">
+                  <div>
+                    <div className="text-[9px] font-black uppercase tracking-[.24em] text-violet-300">Branch 02 · inside the anomaly</div>
+                    <h3 className="mt-1 text-2xl font-black tracking-tight text-white">Rift engineering</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">These systems shape challenge runs and passive Rift generation.</p>
+                  </div>
+                  <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">{riftPerks.length} nodes · persistent</div>
+                </div>
+
+                <article className="relative isolate overflow-hidden rounded-[1.7rem] border border-fuchsia-200/25 bg-[#160d25] shadow-[0_18px_60px_rgba(0,0,0,.24)]">
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-90" style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(209,89,255,.18), transparent 54%), radial-gradient(ellipse at 100% 0%, rgba(109,76,255,.15), transparent 48%)' }} />
+                  <div className="relative grid grid-cols-1 gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-center">
+                    <div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200/20 bg-fuchsia-200/[.07] px-3 py-1.5 text-[8px] font-black uppercase tracking-[.22em] text-fuchsia-200">Core protocol · first-order anomaly</div>
+                      <h4 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">{corePerk.name}</h4>
+                      <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-400">{corePerk.description}</p>
+                      <div className="mt-4 rounded-xl border border-fuchsia-200/15 bg-black/25 px-4 py-3">
+                        <div className="text-[8px] font-black uppercase tracking-[.2em] text-fuchsia-200/70">Protocol output</div>
+                        <div className="mt-1.5 text-sm font-extrabold leading-relaxed text-white">{corePerk.effect}</div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-fuchsia-200/15 bg-black/30 p-4">
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Protocol rank</div>
+                          <div className="mt-1 text-3xl font-black tabular-nums text-white">{coreLevel}<span className="text-lg text-slate-500">/{corePerk.maxLevel}</span></div>
+                        </div>
+                        <div className="text-right text-[9px] font-black uppercase tracking-widest text-fuchsia-200">{Math.floor(coreLevel / corePerk.maxLevel * 100)}% online</div>
+                      </div>
+                      <div className="mt-3 flex gap-1" role="progressbar" aria-label="Probability Debt research level" aria-valuemin={0} aria-valuemax={corePerk.maxLevel} aria-valuenow={coreLevel}>
+                        {Array.from({ length: corePerk.maxLevel }, (_, segment) => <span key={segment} className={'h-2 min-w-0 flex-1 rounded-full ' + (segment < coreLevel ? 'bg-fuchsia-300 shadow-[0_0_9px_rgba(240,171,252,.45)]' : 'bg-slate-800')} />)}
+                      </div>
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[8px] font-black uppercase tracking-widest text-slate-600">Next rank</div>
+                          <div className="mt-1 text-sm font-black tabular-nums text-white">{coreMaxed ? 'Complete' : formatNumber(coreCost) + ' RP'}</div>
+                        </div>
+                        <button type="button" onClick={() => buyPerk(corePerk.id)} disabled={!coreCanBuy} className="min-h-10 rounded-xl border border-fuchsia-200/25 bg-fuchsia-300/10 px-3 py-2 text-[9px] font-black tracking-[.1em] text-fuchsia-100 transition hover:bg-fuchsia-300/20 disabled:cursor-not-allowed disabled:opacity-35">
+                          {busyAction === corePerk.id ? 'INSTALLING…' : coreMaxed ? 'MAX RANK' : 'INSTALL'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {riftPerks.filter(perk => perk.id !== 'probabilityDebt').map((perk, index) => renderPerkNode(perk, index + 1, 'rift'))}
+                </div>
+              </section>
+
+              <section className="relative isolate overflow-hidden rounded-[1.7rem] border border-amber-200/20 bg-gradient-to-r from-[#241a12] via-[#171320] to-[#11101d] p-5 sm:p-6">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border border-amber-200/10 shadow-[0_0_0_24px_rgba(251,191,36,.025),0_0_0_52px_rgba(251,191,36,.02)]" />
+                <div className="relative grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,.7fr)] lg:items-center">
+                  <div>
+                    <div className="text-[9px] font-black uppercase tracking-[.24em] text-amber-300">Restricted protocol · one-time unlock</div>
+                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">One-time unlocks</h3>
+                    <h4 className="mt-3 text-lg font-black text-amber-100">{timelineFork.name}</h4>
+                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">{timelineFork.description}</p>
+                    <p className="mt-2 text-xs font-bold text-amber-200">{timelineFork.effect}</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200/15 bg-black/25 p-4">
+                    <div className="flex items-center justify-center gap-2" aria-label={timelineUnlocked ? 'Three relic slots unlocked' : 'Two relic slots available, third slot locked'}>
+                      <span className="h-9 w-9 rounded-xl border border-amber-200/40 bg-amber-200/15 shadow-[0_0_16px_rgba(251,191,36,.14)]" />
+                      <span className="h-px w-5 bg-amber-200/30" />
+                      <span className="h-9 w-9 rounded-xl border border-amber-200/40 bg-amber-200/15 shadow-[0_0_16px_rgba(251,191,36,.14)]" />
+                      <span className="h-px w-5 bg-amber-200/30" />
+                      <span className={'grid h-9 w-9 place-items-center rounded-xl border text-[9px] font-black ' + (timelineUnlocked ? 'border-amber-200/50 bg-amber-200/20 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,.2)]' : 'border-dashed border-slate-600 bg-slate-900/80 text-slate-500')}>
+                        {timelineUnlocked ? 'III' : 'LOCK'}
+                      </span>
+                    </div>
+                    <div className="mt-3 text-center text-[8px] font-black uppercase tracking-[.2em] text-slate-500">{timelineUnlocked ? 'Three relic slots online' : 'Third relic slot sealed'}</div>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+                      <div>
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-600">Unlock cost</div>
+                        <div className="mt-1 text-sm font-black tabular-nums text-white">{timelineUnlocked ? 'Unlocked permanently' : formatNumber(timelineFork.cost) + ' RP'}</div>
+                      </div>
+                      <button type="button" onClick={() => buyUnlock(timelineFork.id)} disabled={!timelineCanBuy} className="min-h-10 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 py-2 text-[9px] font-black tracking-[.12em] text-amber-100 transition hover:bg-amber-200/20 disabled:cursor-not-allowed disabled:opacity-35">
+                        {busyAction === 'unlock-' + timelineFork.id ? 'UNLOCKING…' : timelineUnlocked ? 'INSTALLED' : 'UNLOCK'}
+                      </button>
+                    </div>
+                    {!ascentCleared && <p className="mt-3 text-[9px] leading-relaxed text-amber-200/80">Complete Rift Ascent once to access restricted research.</p>}
+                    {ascentCleared && isActive && !timelineUnlocked && <p className="mt-3 text-[9px] leading-relaxed text-amber-200/80">Finish or abandon the active run before changing your relic loadout capacity.</p>}
+                  </div>
+                </div>
+              </section>
+            </div>
+          );
+        })()}
 
         {activePanel === 'relics' && (
           <div className="space-y-5">
