@@ -275,6 +275,11 @@ function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): v
 async function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChallengeMainProgress): Promise<RiftChallengeSnapshot> {
   const activeRun = archive.activeRun?.status === 'active' ? archive.activeRun : null;
   if (activeRun) syncRunSummaryFromGameState(activeRun);
+  return {
+    challenge: RIFT_FIRST_SPARK,
+    challenges: RIFT_CHALLENGES,
+    archive,
+    mainProgress: currentMainProgress,
     challengeAvailable: riftChallengeIsAvailable(currentMainProgress),
     scrapBalance: await getCombatScrapBalance(),
   };
