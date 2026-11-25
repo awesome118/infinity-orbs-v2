@@ -4304,7 +4304,7 @@ function App() {
             <>
               <div className="io-nav-primary" role="group" aria-label="Main game">
                 {renderNavItem('roll', 'Roll', Sparkles)}
-                {renderNavItem('upgrades', 'Upgrades', Zap)}
+                {renderNavItem('upgrades', 'Research', Zap)}
                 {renderNavItem('collection', 'Collection', BookOpen)}
                 {renderNavItem('quests', 'Quests', Calendar, streakReady || questsReady)}
                 {renderNavItem('social', 'Guilds', Users)}
