@@ -3,7 +3,6 @@ import {
   DEFAULT_RIFT_CHALLENGES,
   DEFAULT_RIFT_MODIFIERS,
   RIFT_ASCENT,
-  RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
   RIFT_UNLOCKS,
   normalizeRiftChallengeToggles,
@@ -11,12 +10,10 @@ import {
   riftModifierFromSliderPosition,
   riftModifierSliderPosition,
   getRiftChallengeDefinition,
-  riftChallengeUpgradeCost,
   riftModifierRewardPreview,
   riftRatePerHour,
   riftPerkCost,
   type RiftChallengeSnapshot,
-  type RiftChallengeUpgradeId,
   type RiftChallengeToggles,
   type RiftModifierId,
   type RiftModifierSettings,
@@ -61,7 +58,6 @@ const MODIFIER_CONTROLS: Array<{
   { id: 'temporalDrag', name: 'Temporal Drag', description: 'Slows the Rift’s base roll cadence.', effect: 'Base cooldown × multiplier' },
   { id: 'fortuneSuppression', name: 'Luck Suppression', description: 'Reduces all effective Rift Luck above the neutral baseline.', effect: 'Bonus Luck ÷ multiplier' },
   { id: 'coinScarcity', name: 'Coin Scarcity', description: 'Reduces Coins earned from every Rift roll.', effect: 'Coin earnings ÷ multiplier' },
-  { id: 'upgradeInflation', name: 'Upgrade Inflation', description: 'Raises the Coin price of temporary Rift upgrades.', effect: 'Upgrade costs × multiplier' },
 ];
 
 const CHALLENGE_TOGGLES: Array<{
@@ -237,9 +233,6 @@ export const RiftChallengesSection: React.FC<{
     '/api/rift-challenges/modifiers',
     { modifierSettings, challengeToggles },
   );
-  const buyUpgrade = (id: RiftChallengeUpgradeId) => void performAction(
-    id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
-  );
   const buyPerk = (id: RiftPerkId) => void performAction(id, '/api/rift-challenges/perk', { perkId: id });
   const buyUnlock = (id: RiftUnlockId) => void performAction('unlock-' + id, '/api/rift-challenges/unlock', { unlockId: id });
   const forgeRelic = (id: RiftRelicId) => void performAction('forge-' + id, '/api/rift-challenges/relic/forge', { relicId: id });
@@ -352,6 +345,93 @@ export const RiftChallengesSection: React.FC<{
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{error}</div>}
 
+      {run && (
+        <section className="rounded-2xl border border-indigo-400/25 bg-slate-900/75 p-4 shadow-lg shadow-slate-950/20 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-300">
+                {isCompleted ? 'Rift run completed' : 'Active Rift run'}
+              </div>
+              <h2 className="mt-1 text-xl font-black text-white">
+                {runIsLegacyChallenge ? (challenge?.name ?? 'Legacy trial') : RIFT_ASCENT.name}
+              </h2>
+              <p className="mt-1 text-[10px] text-slate-500">Started {new Date(run.startedAt).toLocaleString()} · Isolated Rift save</p>
+            </div>
+            {isActive && (
+              <button type="button" onClick={() => setConfirmAbandon(true)} disabled={busyAction !== null}
+                className="rounded-lg border border-rose-500/25 px-3 py-2 text-[10px] font-bold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40">
+                Abandon run
+              </button>
+            )}
+          </div>
+          {confirmAbandon && (
+            <div className="mt-3 rounded-xl border border-rose-400/25 bg-rose-500/5 p-3" role="alertdialog" aria-label="Confirm abandoning this Rift run">
+              <div className="text-sm font-black text-white">Abandon this Rift run?</div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">The isolated Rift save will be discarded. Your main save, Rift Points, permanent research, and completed records remain unchanged.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => void performAction('abandon', '/api/rift-challenges/abandon', { runId: run.runId })} disabled={busyAction !== null} className="rounded-lg bg-rose-500 px-3 py-2 text-[10px] font-black text-white hover:bg-rose-400 disabled:opacity-40">
+                  {busyAction === 'abandon' ? 'Abandoning…' : 'Confirm abandon'}
+                </button>
+                <button type="button" onClick={() => setConfirmAbandon(false)} disabled={busyAction !== null} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40">Keep playing</button>
+              </div>
+            </div>
+          )}
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Rift Coins</div>
+              <div className="mt-1 text-lg font-black tabular-nums text-amber-200">{formatNumber(run.coins)}</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Rolls</div>
+              <div className="mt-1 text-lg font-black tabular-nums text-white">{formatNumber(run.totalRolls)}</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Selected best</div>
+              <div className="mt-1 text-lg font-black tabular-nums text-cyan-200">{formatRarity(run.bestRarity)}</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Objective</div>
+              <div className="mt-1 text-lg font-black tabular-nums text-white">1/{formatRarity(runTarget)}</div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <span>Rift objective progress</span><span>{Math.floor(progressPercent)}%</span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-950">
+              <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all" style={{ width: progressPercent + '%' }} />
+            </div>
+          </div>
+          {run.lastRoll && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-3 py-2.5">
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-cyan-300">Latest result</div>
+                <div className="mt-1 text-sm font-black text-white">1 / {formatRarity(run.lastRoll.rarity)} {run.lastRoll.isCritical ? '· CRITICAL' : ''}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-amber-200">+{formatNumber(run.lastRoll.coinsGained)} Coins</div>
+                <div className="text-[10px] text-slate-500">Rift wallet only</div>
+              </div>
+            </div>
+          )}
+          {isActive && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-400/20 bg-violet-400/5 p-3">
+              <p className="min-w-0 flex-1 text-xs leading-relaxed text-slate-300">Normal game menus now use this isolated Rift save. Your main save remains untouched.</p>
+              <button type="button" onClick={() => onEnterGame?.()} disabled={busyAction !== null || !onEnterGame}
+                className="min-h-10 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-400 px-4 py-2 text-[10px] font-black text-slate-950 shadow-lg shadow-violet-950/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40">
+                ENTER RIFT GAME
+              </button>
+            </div>
+          )}
+          {isCompleted && (
+            <div className="mt-4 rounded-xl border border-emerald-400/25 bg-emerald-400/5 p-3">
+              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Objective achieved</div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">The completion reward was credited using the settings captured when this run began. Adjust the configuration above and start another ascent.</p>
+            </div>
+          )}
+        </section>
+      )}
+
 
 
       <div className="space-y-5">
@@ -368,7 +448,7 @@ export const RiftChallengesSection: React.FC<{
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
                 Set each modifier independently, then combine them with optional challenge rules. The configuration is saved to your Rift archive and locked for the duration of a run.
               </p>
-              <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">Every run starts with +1 free Multiball.</p>
+              <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">Second-best starts with +1 Multiball level.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
@@ -489,146 +569,7 @@ export const RiftChallengesSection: React.FC<{
           </p>
         </section>
       )}
-      {run && (
-        <section className="rounded-3xl border border-indigo-400/25 bg-slate-900/80 p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-300">
-                {isCompleted ? 'Rift run completed' : runIsLegacyChallenge ? 'Legacy trial in progress' : 'Active Rift save'}
-              </div>
-              <h2 className="mt-1 text-2xl font-black text-white">{runIsLegacyChallenge ? ((challenge?.name ?? 'Legacy trial') + ' · legacy save') : RIFT_ASCENT.name}</h2>
-              <p className="mt-1 text-xs text-slate-500">Started {new Date(run.startedAt).toLocaleString()} · Isolated Rift player save</p>
-            </div>
-            {isActive && (
-              <button
-                type="button"
-                onClick={() => setConfirmAbandon(true)}
-                disabled={busyAction !== null}
-                className="rounded-lg border border-rose-500/25 px-3 py-2 text-[11px] font-bold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40"
-              >
-                Abandon run
-              </button>
-            )}
-          </div>
 
-          {confirmAbandon && (
-            <div className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/5 p-4" role="alertdialog" aria-label="Confirm abandoning this Rift run">
-              <div className="text-sm font-black text-white">Abandon this Rift run?</div>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">The isolated Rift player save will be discarded. Your main save, Rift Points, permanent perks, and completed records will remain unchanged.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => void performAction('abandon', '/api/rift-challenges/abandon', { runId: run.runId })} disabled={busyAction !== null} className="rounded-lg bg-rose-500 px-3 py-2 text-[10px] font-black text-white hover:bg-rose-400 disabled:opacity-40">
-                  {busyAction === 'abandon' ? 'Abandoning…' : 'Confirm abandon'}
-                </button>
-                <button type="button" onClick={() => setConfirmAbandon(false)} disabled={busyAction !== null} className="rounded-lg border border-slate-700 px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40">Keep playing</button>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Rift Coins</div>
-              <div className="mt-1 text-xl font-black tabular-nums text-amber-200">{formatNumber(run.coins)}</div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Rolls</div>
-              <div className="mt-1 text-xl font-black tabular-nums text-white">{formatNumber(run.totalRolls)}</div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Selected best</div>
-              <div className="mt-1 text-xl font-black tabular-nums text-cyan-200">{formatRarity(run.bestRarity)}</div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Objective</div>
-              <div className="mt-1 text-xl font-black tabular-nums text-white">1/{formatRarity(runTarget)}</div>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between gap-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              <span>Rift objective progress</span><span>{Math.floor(progressPercent)}%</span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-slate-950">
-              <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all" style={{ width: progressPercent + '%' }} />
-            </div>
-          </div>
-
-          {run.lastRoll && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-3">
-              <div>
-                <div className="text-[9px] font-black uppercase tracking-widest text-cyan-300">Latest result</div>
-                <div className="mt-1 text-lg font-black text-white">1 / {formatRarity(run.lastRoll.rarity)} {run.lastRoll.isCritical ? '· CRITICAL' : ''}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs font-bold text-amber-200">+{formatNumber(run.lastRoll.coinsGained)} Coins</div>
-                <div className="text-[10px] text-slate-500">Rift wallet only</div>
-              </div>
-            </div>
-          )}
-
-          {isActive && (
-            <>
-              <div className="mt-5 rounded-xl border border-violet-400/20 bg-violet-400/5 p-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-violet-300">Rift game active</div>
-                <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                  Normal game menus now read and write this isolated Rift save. Your main save remains untouched. Complete the selected rarity objective to earn the previewed Rift Point reward.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onEnterGame?.()}
-                  disabled={busyAction !== null || !onEnterGame}
-                  className="mt-3 min-h-12 w-full rounded-xl bg-gradient-to-r from-violet-500 to-cyan-400 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-violet-950/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ENTER RIFT GAME
-                </button>
-              </div>
-
-              <div className="mt-6">
-                <div className="text-[10px] font-black uppercase tracking-[.2em] text-purple-300">Temporary Rift upgrades</div>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {(['fortune', 'speed', 'prosperity', 'critical'] as RiftChallengeUpgradeId[]).map(id => {
-                    const definition = RIFT_CHALLENGE_UPGRADES[id];
-                    const unlocked = snapshot.mechanicUnlocks[id] === true;
-                    const level = run.upgradeLevels[id] ?? 0;
-                    const maxed = level >= definition.maxLevel;
-                    const inflation = run.modifierSettings?.upgradeInflation ?? 1;
-                    const cost = Math.ceil(riftChallengeUpgradeCost(id, level, run.totalRolls) * inflation);
-                    return (
-                      <article key={id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h4 className="text-sm font-black text-white">{definition.name}</h4>
-                            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{definition.description}</p>
-                          </div>
-                          <span className="shrink-0 rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-300">Lv {level}/{definition.maxLevel}</span>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-slate-500">
-                            {!unlocked ? definition.mainRequirement : maxed ? 'Maximum level' : formatNumber(cost) + ' Coins'}
-                          </span>
-                          <button type="button" onClick={() => buyUpgrade(id)} disabled={!unlocked || maxed || run.coins < cost || busyAction !== null} className="rounded-lg border border-indigo-400/25 bg-indigo-500/10 px-3 py-2 text-[10px] font-black text-indigo-200 hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-30">
-                            {busyAction === id ? 'Buying…' : maxed ? 'MAXED' : 'UPGRADE'}
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-                <p className="mt-3 text-[10px] leading-relaxed text-slate-600">Modifier-based Upgrade Inflation is included in the displayed price. The price also retains the existing per-10-roll Dimensional Tax.</p>
-              </div>
-            </>
-          )}
-
-          {isCompleted && (
-            <div className="mt-5 rounded-2xl border border-emerald-400/25 bg-emerald-400/5 p-4">
-              <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Objective achieved</div>
-              <h3 className="mt-1 text-xl font-black text-white">{runIsLegacyChallenge ? (challenge?.name ?? 'Legacy trial') + ' cleared.' : 'Rift Ascent cleared.'}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                The completion reward was credited using the difficulty settings captured when this run began. Adjust the configuration above and start another ascent.
-              </p>
-            </div>
-          )}
-        </section>
-      )}
           </div>
         )}
 
