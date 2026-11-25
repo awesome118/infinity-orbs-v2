@@ -7628,7 +7628,7 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   resetFreeShardBudgetIfNeeded(s, now);
   // Mutations settle the active player's state; read-only paths must not call this.
   s.onlinePlayers = await touchOnlinePresence();
-  s.globalBoosters = s.riftSession
+  s.globalBoosters = s.riftSession && s.riftSession.riftGlobalEffectsEnabled !== true
     ? createInitialState().globalBoosters
     : await getGlobalBoosters();
   // No-Shards suppresses any booster state as well as Shard drops. This is
@@ -7881,7 +7881,7 @@ export async function getState(options: { registerActivity?: boolean } = {}): Pr
   s.onlinePlayers = options.registerActivity === false
     ? await getOnlinePlayers()
     : await touchOnlinePresence();
-  s.globalBoosters = s.riftSession
+  s.globalBoosters = s.riftSession && (s.riftSession.riftGlobalEffectsEnabled !== true || s.riftSession.noShards === true)
     ? createInitialState().globalBoosters
     : await getGlobalBoosters();
   if (s.riftSession?.noShards === true) {
@@ -9519,6 +9519,9 @@ export async function activateGlobalBooster(
   });
 
   const s = await settleOffline(await loadRaw());
+  if (s.riftSession?.noShards === true) {
+    throw new Error('Global Boosters are disabled by this Rift challenge.');
+  }
   if (s.riftSession && s.riftSession.riftGlobalEffectsEnabled !== true) {
     throw new Error('Unlock Worldline Conduit to use Global Boosters inside a Rift run.');
   }
