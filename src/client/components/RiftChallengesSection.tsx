@@ -3,8 +3,11 @@ import {
   RIFT_CHALLENGES,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
+  normalizeRiftTemporalDragMultiplier,
   riftChallengeUpgradeCost,
   riftPerkCost,
+  riftTemporalArbitrageMultiplier,
+  riftTemporalCooldownMultiplier,
   type RiftChallengeId,
   type RiftChallengeSnapshot,
   type RiftChallengeUpgradeId,
@@ -48,6 +51,7 @@ export const RiftChallengesSection: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [temporalDragDraft, setTemporalDragDraft] = useState(1);
 
   const refresh = useCallback(async () => {
     const result = await challengeRequest<RiftChallengeSnapshot>('/api/rift-challenges');
@@ -72,6 +76,10 @@ export const RiftChallengesSection: React.FC<{
   const archive = snapshot?.archive;
   const run = archive?.activeRun ?? null;
   const challenge = run ? RIFT_CHALLENGES.find(item => item.id === run.challengeId) : null;
+
+  useEffect(() => {
+    if (run?.status === 'active') setTemporalDragDraft(run.temporalDragMultiplier ?? 1);
+  }, [run?.runId, run?.temporalDragMultiplier, run?.status]);
   const riftProjection = useMemo(() => {
     if (!archive) return { points: 0, progress: 0, rate: 1, nextPointMs: 3_600_000 };
     const elapsed = Math.max(0, now - archive.riftLastAccruedAt);
@@ -133,6 +141,11 @@ export const RiftChallengesSection: React.FC<{
     id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
   );
   const buyPerk = (id: RiftPerkId) => void performAction(id, '/api/rift-challenges/perk', { perkId: id });
+  const saveTemporalDrag = () => void performAction(
+    'temporal-drag',
+    '/api/rift-challenges/temporal-drag',
+    { runId: run?.runId, multiplier: normalizeRiftTemporalDragMultiplier(temporalDragDraft) },
+  );
 
   if (loading) {
     return <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-8 text-center text-sm text-slate-400">Loading Rift records…</section>;
@@ -447,6 +460,49 @@ export const RiftChallengesSection: React.FC<{
 
           {isActive && (
             <>
+              <div className="mt-5 rounded-2xl border border-violet-400/25 bg-violet-500/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-violet-300">Temporal Drag</div>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">Choose how much slower Rift rolls become. Temporal Arbitrage converts the added time into Luck; Temporal Compression reduces the cooldown cost without removing that Luck.</p>
+                  </div>
+                  <div className="rounded-lg border border-violet-300/20 bg-slate-950/60 px-3 py-2 text-right">
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-violet-300">Selected</div>
+                    <div className="text-lg font-black tabular-nums text-white">×{normalizeRiftTemporalDragMultiplier(temporalDragDraft).toFixed(1)}</div>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  step={0.5}
+                  value={normalizeRiftTemporalDragMultiplier(temporalDragDraft)}
+                  onChange={event => setTemporalDragDraft(Number(event.target.value))}
+                  disabled={busyAction !== null}
+                  className="mt-4 h-2 w-full cursor-pointer accent-violet-400 disabled:cursor-not-allowed"
+                  aria-label="Temporal Drag multiplier"
+                />
+                <div className="mt-2 flex justify-between text-[9px] font-bold text-slate-500"><span>×1 · Normal time</span><span>×20 · Extreme drag</span></div>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-slate-950/60 p-3">
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Arbitrage Luck</div>
+                    <div className="mt-1 text-lg font-black text-cyan-200">×{riftTemporalArbitrageMultiplier(temporalDragDraft, archive.riftPerkLevels.temporalArbitrage).toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-lg bg-slate-950/60 p-3">
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Cooldown cost</div>
+                    <div className="mt-1 text-lg font-black text-amber-200">×{riftTemporalCooldownMultiplier(temporalDragDraft, archive.riftPerkLevels.temporalCompression).toFixed(2)}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveTemporalDrag}
+                  disabled={busyAction !== null || normalizeRiftTemporalDragMultiplier(temporalDragDraft) === normalizeRiftTemporalDragMultiplier(run.temporalDragMultiplier ?? 1)}
+                  className="mt-3 w-full rounded-lg border border-violet-300/25 bg-violet-500/15 px-3 py-2.5 text-[10px] font-black text-violet-100 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  {busyAction === 'temporal-drag' ? 'Applying…' : 'Apply Temporal Drag'}
+                </button>
+              </div>
+
               <div className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4">
                 <div className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Rift game active</div>
                 <p className="mt-1 text-xs leading-relaxed text-slate-300">
