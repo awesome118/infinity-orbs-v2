@@ -147,7 +147,7 @@ test('Mutation Mastery scales completed-mutation Rift Point rewards within its c
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 8,
+    version: 9,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
