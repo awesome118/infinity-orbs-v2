@@ -74,6 +74,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /Premium Boosters are disabled by the No Shards Rift rule/);
   assert.match(game, /activeRiftRun\?\.noShards === true \? \{\}/);
   assert.match(challengeUi, /riftModifierFromSliderPosition/);
+  assert.match(challengeUi, /configuredBestRate/);
   assert.match(game, /s\.riftSession\?\.noAutomation === true/);
   assert.match(game, /Auto Roll is disabled by this Rift challenge/);
   assert.match(game, /Offline rolls are disabled in The First Spark/);
@@ -101,9 +102,9 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.doesNotMatch(client, /renderNavItem\('challenges', 'Challenges', Compass\)/);
 
   assert.match(challengeUi, /Rift game active/);
-  assert.match(challengeUi, /Instability/);
+  assert.match(challengeUi, /Goal/);
   assert.match(challengeUi, /Temporal Drag/);
-  assert.match(challengeUi, /Fortune Suppression/);
+  assert.match(challengeUi, /Luck Suppression/);
   assert.match(challengeUi, /Coin Scarcity/);
   assert.match(challengeUi, /Upgrade Inflation/);
   assert.match(challengeUi, /Second-best/);

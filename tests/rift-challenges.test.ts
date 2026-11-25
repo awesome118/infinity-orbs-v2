@@ -117,8 +117,10 @@ test('Rift passive generation uses only the best-cleared configuration', () => {
   const neutralRate = riftRatePerHour(completed, perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES);
   const clearedBest = { ...DEFAULT_RIFT_MODIFIERS, instability: 10 };
   const bestRate = riftRatePerHour(completed, perks, clearedBest, DEFAULT_RIFT_CHALLENGES);
+  const bestRateWithYield = riftRatePerHour(completed, { ...perks, riftYield: 1 }, clearedBest, DEFAULT_RIFT_CHALLENGES);
   assert.equal(neutralRate, 1);
   assert.ok(bestRate > neutralRate);
+  assert.ok(Math.abs(bestRateWithYield - bestRate * 1.05) < 1e-12);
 });
 
 test('Rift Point shop costs scale and perks have clear caps', () => {

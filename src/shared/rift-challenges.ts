@@ -525,9 +525,9 @@ export function riftRatePerHour(
   // This prevents slider changes from granting passive Rift Points before a win.
   const hasClearedAscent = completedChallengeIds.includes(RIFT_ASCENT.id);
   const preview = hasClearedAscent
-    ? riftModifierRewardPreview(modifierSettings, challengeToggles, yieldLevel)
+    ? riftModifierRewardPreview(modifierSettings, challengeToggles, 0)
     : { rpPerHour: RIFT_BASE_RATE_PER_HOUR };
-  const rate = preview.rpPerHour + legacyFirstClearRate * (1 + yieldLevel * 0.05);
+  const rate = (preview.rpPerHour + legacyFirstClearRate) * (1 + yieldLevel * 0.05);
   return Number.isFinite(rate) ? Math.max(RIFT_BASE_RATE_PER_HOUR, Math.min(Number.MAX_SAFE_INTEGER, rate)) : Number.MAX_SAFE_INTEGER;
 }
 

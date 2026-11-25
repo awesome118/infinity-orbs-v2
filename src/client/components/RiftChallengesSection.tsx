@@ -147,6 +147,16 @@ export const RiftChallengesSection: React.FC<{
       : rewardPreview.rpPerHour,
     [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.bestModifierSettings, archive?.bestChallengeToggles, rewardPreview.rpPerHour],
   );
+  const configuredBestRate = useMemo(() => {
+    if (!archive) return rewardPreview.rpPerHour;
+    const candidateRate = riftRatePerHour(
+      [...archive.completedChallengeIds, RIFT_ASCENT.id],
+      archive.riftPerkLevels,
+      modifierSettings,
+      challengeToggles,
+    );
+    return Math.max(projectedRate, candidateRate);
+  }, [archive?.completedChallengeIds, archive?.riftPerkLevels, modifierSettings, challengeToggles, projectedRate, rewardPreview.rpPerHour]);
 
   const runTarget = Math.max(2, run?.targetRarity ?? challenge?.targetRarity ?? RIFT_ASCENT.targetRarity);
   const progressPercent = useMemo(() => {
@@ -408,8 +418,8 @@ export const RiftChallengesSection: React.FC<{
               <div className="mt-1 text-2xl font-black tabular-nums text-cyan-200">+{formatNumber(rewardPreview.pointsPerClear)} RP</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Generation if this sets a new best</div>
-              <div className="mt-1 text-2xl font-black tabular-nums text-violet-200">{rewardPreview.rpPerHour.toFixed(2)} RP/h</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Best rate after clear</div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-violet-200">{configuredBestRate.toFixed(2)} RP/h</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Completion target</div>
