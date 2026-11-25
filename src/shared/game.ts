@@ -1157,6 +1157,28 @@ export interface RiftPlayerSession {
   fractureCascadeLevel?: number;
   echoChamberLevel?: number;
   singularityFocusLevel?: number;
+  bossResonanceLevel?: number;
+  masteryBridgeLevel?: number;
+  runeReconnectionLevel?: number;
+  automationOverrideLevel?: number;
+  chronoEngineLevel?: number;
+  combatIntegrationLevel?: number;
+  initialCalibrationLevel?: number;
+  earlyAuthorizationLevel?: number;
+  riftConditioningLevel?: number;
+  fortuneReservoirLevel?: number;
+  criticalConversionLevel?: number;
+  fractureRecyclingLevel?: number;
+  milestoneAmplifierLevel?: number;
+  anomalyHarvestingLevel?: number;
+  anomalyForecasterLevel?: number;
+  mutationStabilizerLevel?: number;
+  mutationAmplifierLevel?: number;
+  mutationExtractionLevel?: number;
+  anomalyPersistenceLevel?: number;
+  activeMutation?: { id: string; startedAtRoll: number; endsAtRoll: number } | null;
+  emergencyProtocolUntilRoll?: number;
+  emergencyProtocolCharges?: number;
   challengeCoinMultiplier: number;
 }
 
