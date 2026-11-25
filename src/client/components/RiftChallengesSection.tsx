@@ -64,7 +64,7 @@ const CHALLENGE_TOGGLES: Array<{
   name: string;
   description: string;
 }> = [
-  { id: 'secondBest', name: 'Second-best', description: 'Complete the Rift using the second-highest Orb in each roll activation.' },
+  { id: 'secondBest', name: 'Second-best', description: 'The second-highest Orb in each roll batch determines whether the objective is reached.' },
   { id: 'noAutomation', name: 'No automation', description: 'Disables Auto Roll and offline progression during the run.' },
   { id: 'noCriticals', name: 'No criticals', description: 'Critical hits cannot occur in this run.' },
   { id: 'noShards', name: 'No Shards', description: 'Shard drops and Shard rewards are disabled in this run.' },
