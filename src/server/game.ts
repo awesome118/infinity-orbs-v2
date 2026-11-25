@@ -4286,8 +4286,8 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
       challengeCoinMultiplier: (isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier) *
-        (1 + safeNonNegativeInteger(riftPerks.riftCoinYield) * 0.03),
-      riftCritChanceBonus: safeNonNegativeInteger(riftPerks.riftCrit) * 0.005,
+        (1 + Math.min(10, safeNonNegativeInteger(riftPerks.riftCoinYield)) * 0.03),
+      riftCritChanceBonus: Math.min(10, safeNonNegativeInteger(riftPerks.riftCrit)) * 0.005,
       luckSuppressionMultiplier: isModifierRun ? 1 / modifierSettings.fortuneSuppression : 1,
       secondBest: isModifierRun && challengeToggles.secondBest,
       noAutomation: isModifierRun && challengeToggles.noAutomation,
