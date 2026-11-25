@@ -1148,6 +1148,7 @@ export interface RiftPlayerSession {
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  riftCritChanceBonus?: number;
   riftMutation?: {
     id: string;
     name: string;
