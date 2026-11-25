@@ -7,14 +7,17 @@ export type RiftRelicId =
   | 'unlucky-star'
   | 'observer'
   | 'loaded-die'
-  | 'fracture-cascade';
+  | 'fracture-cascade'
+  | 'mirror-array'
+  | 'stillness-engine'
+  | 'rift-tithe';
 
 export type RiftRelicLevels = Record<RiftRelicId, number>;
 
 export interface RiftRelicDefinition {
   id: RiftRelicId;
   name: string;
-  category: 'tempo' | 'fortune' | 'risk' | 'precision' | 'burst' | 'chain';
+  category: 'tempo' | 'fortune' | 'risk' | 'precision' | 'burst' | 'chain' | 'economy';
   description: string;
   rankEffects: [string, string, string];
   baseScrapCost: number;
@@ -60,6 +63,24 @@ export const RIFT_RELICS: Record<RiftRelicId, RiftRelicDefinition> = {
     rankEffects: ['Next roll activation gains ×1.25 Luck', 'Next roll activation gains ×1.5 Luck', 'Next roll activation gains ×1.75 Luck'],
     baseScrapCost: 650, baseRiftPointCost: 6, costGrowth: 2.3, maxLevel: 3,
   },
+  'mirror-array': {
+    id: 'mirror-array', name: 'Mirror Array', category: 'chain',
+    description: 'Adds extra Multiball levels when the Second-best rule is enabled.',
+    rankEffects: ['+1 Multiball level with Second-best', '+2 Multiball levels with Second-best', '+3 Multiball levels with Second-best'],
+    baseScrapCost: 720, baseRiftPointCost: 7, costGrowth: 2.35, maxLevel: 3,
+  },
+  'stillness-engine': {
+    id: 'stillness-engine', name: 'Stillness Engine', category: 'tempo',
+    description: 'No Automation runs reduce more of the Temporal Drag cooldown penalty.',
+    rankEffects: ['10% less Temporal Drag penalty with No Automation', '15% less Temporal Drag penalty with No Automation', '20% less Temporal Drag penalty with No Automation'],
+    baseScrapCost: 780, baseRiftPointCost: 8, costGrowth: 2.35, maxLevel: 3,
+  },
+  'rift-tithe': {
+    id: 'rift-tithe', name: 'Rift Tithe', category: 'economy',
+    description: 'Rift Coin rewards increase as your best Orb approaches the objective.',
+    rankEffects: ['Up to +25% Rift Coins at the objective', 'Up to +50% Rift Coins at the objective', 'Up to +75% Rift Coins at the objective'],
+    baseScrapCost: 900, baseRiftPointCost: 10, costGrowth: 2.4, maxLevel: 3,
+  },
 };
 
 export const RIFT_RELIC_IDS = Object.keys(RIFT_RELICS) as RiftRelicId[];
@@ -72,6 +93,9 @@ export function emptyRiftRelicLevels(): RiftRelicLevels {
     observer: 0,
     'loaded-die': 0,
     'fracture-cascade': 0,
+    'mirror-array': 0,
+    'stillness-engine': 0,
+    'rift-tithe': 0,
   };
 }
 
@@ -111,12 +135,16 @@ export function riftRelicCost(id: RiftRelicId, currentLevel: number): { scrap: n
   };
 }
 
-export function riftEffectiveTemporalDragMultiplier(temporalDragValue: unknown, penaltyReductionValue: unknown): number {
+export function riftEffectiveTemporalDragMultiplier(temporalDragValue: unknown, penaltyReductionValue: unknown, noAutomationReductionValue: unknown = 0): number {
   const rawDrag = Number(temporalDragValue);
   const drag = Number.isFinite(rawDrag) ? Math.max(1, Math.min(100, rawDrag)) : 1;
   const rawReduction = Number(penaltyReductionValue);
   const reduction = Number.isFinite(rawReduction) ? Math.max(0, Math.min(1, rawReduction)) : 0;
-  return 1 + (drag - 1) * (1 - reduction);
+  const rawNoAutomationReduction = Number(noAutomationReductionValue);
+  const noAutomationReduction = Number.isFinite(rawNoAutomationReduction)
+    ? Math.max(0, Math.min(1, rawNoAutomationReduction))
+    : 0;
+  return 1 + (drag - 1) * (1 - reduction) * (1 - noAutomationReduction);
 }
 
 export function riftTemporalArbitrageMultiplier(temporalDragValue: unknown, efficiencyValue: unknown): number {
@@ -136,6 +164,9 @@ export interface RiftRelicEffects {
   loadedDieMultiplier: number;
   fractureCascadeMultiplier: number;
   fractureCascadeRank: number;
+  secondBestMultiballBonus: number;
+  noAutomationCooldownReduction: number;
+  progressCoinBonus: number;
 }
 
 export function getRiftRelicEffects(equippedValue: unknown, levelsValue: unknown, maxSlotsValue: unknown = RIFT_RELIC_EQUIP_SLOTS): RiftRelicEffects {
@@ -148,6 +179,9 @@ export function getRiftRelicEffects(equippedValue: unknown, levelsValue: unknown
   const observer = level('observer');
   const loaded = level('loaded-die');
   const cascade = level('fracture-cascade');
+  const mirrorArray = level('mirror-array');
+  const stillnessEngine = level('stillness-engine');
+  const riftTithe = level('rift-tithe');
   return {
     temporalDragPenaltyReduction: [0, 0.2, 0.3, 0.4][clock] ?? 0,
     temporalArbitrageEfficiency: [0, 0.05, 0.1, 0.2][arbitrage] ?? 0,
@@ -157,6 +191,9 @@ export function getRiftRelicEffects(equippedValue: unknown, levelsValue: unknown
     loadedDieMultiplier: [1, 10, 20, 40][loaded] ?? 1,
     fractureCascadeMultiplier: [1, 1.25, 1.5, 1.75][cascade] ?? 1,
     fractureCascadeRank: cascade,
+    secondBestMultiballBonus: [0, 1, 2, 3][mirrorArray] ?? 0,
+    noAutomationCooldownReduction: [0, 0.1, 0.15, 0.2][stillnessEngine] ?? 0,
+    progressCoinBonus: [0, 0.25, 0.5, 0.75][riftTithe] ?? 0,
   };
 }
 
@@ -172,4 +209,26 @@ export function riftObserverLuckMultiplier(bestRarityValue: unknown, targetRarit
   else if (progress >= 0.9) fullStrength = 2 + ((progress - 0.9) / 0.09) * 3;
   else if (progress > 0.5) fullStrength = 1 + ((progress - 0.5) / 0.4);
   return 1 + (fullStrength - 1) * (rank / 3);
+}
+
+
+/** A Rift Ascent's free Multiball level exists only when Second-best is enabled. */
+export function riftStartingMultiballLevel(currentLevelValue: unknown, secondBestValue: unknown, relicBonusValue: unknown): number {
+  const current = Number.isSafeInteger(Number(currentLevelValue)) ? Math.max(0, Math.floor(Number(currentLevelValue))) : 0;
+  if (secondBestValue !== true) return current;
+  const bonus = Number.isSafeInteger(Number(relicBonusValue))
+    ? Math.max(0, Math.min(3, Math.floor(Number(relicBonusValue))))
+    : 0;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, current) + bonus);
+}
+
+/** Rift Tithe converts logarithmic objective progress into a Coin multiplier. */
+export function riftRelicProgressCoinMultiplier(bestRarityValue: unknown, targetRarityValue: unknown, bonusValue: unknown): number {
+  const rawBonus = Number(bonusValue);
+  const bonus = Number.isFinite(rawBonus) ? Math.max(0, Math.min(0.75, rawBonus)) : 0;
+  if (bonus <= 0) return 1;
+  const best = Math.max(2, Number(bestRarityValue) || 2);
+  const target = Math.max(2, Number(targetRarityValue) || 2);
+  const progress = Math.max(0, Math.min(1, Math.log10(best) / Math.log10(target)));
+  return 1 + progress * bonus;
 }
