@@ -26,7 +26,6 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(api, /updateRiftModifiers\(body\.modifierSettings, body\.challengeToggles\)/);
   assert.match(api, /startRiftChallenge\(body\.challengeId\)/);
   assert.match(api, /rollRiftChallenge/);
-  assert.match(api, /buyRiftChallengeUpgrade/);
   assert.match(api, /buyRiftPerk\(body\.perkId\)/);
   assert.match(api, /riftChallenges\.buyRiftUnlock\(body\.unlockId\)/);
   assert.match(api, /riftChallenges\.buyRiftRelic\(body\.relicId\)/);
@@ -43,7 +42,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /if \(s\.riftSession\) \{/);
   assert.match(game, /run\.gameState = storedState/);
   assert.match(server, /updateRiftModifiers/);
-  assert.match(server, /state\.upgrades\.multi = Math\.max\(1, state\.upgrades\.multi \?\? 0\)/);
+  assert.match(server, /riftStartingMultiballLevel/);
+  assert.match(server, /isModifierRun && challengeToggles\.secondBest/);
   assert.match(server, /targetRarity = isModifierRun/);
   assert.match(server, /const mainProgress = await readMainProgress\(\)/);
   assert.match(server, /riftChallengeUnlockStatus\(challenge, mainProgress, archive\.completedChallengeIds\)/);
@@ -87,6 +87,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
 
   assert.match(sharedGame, /interface RiftPlayerSession/);
   assert.match(sharedGame, /riftTemporalArbitrageMultiplier/);
+  assert.match(sharedGame, /riftProgressCoinMultiplier/);
   assert.match(game, /getRiftRelicEffects/);
   assert.match(game, /loadedDieCrossedMilestone/);
   assert.match(game, /fractureCascadeUntilRoll/);
@@ -108,6 +109,9 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(challengeUi, /const activePanel = panel/);
   assert.doesNotMatch(challengeUi, /Rift menu|setActivePanel/);
   assert.match(challengeUi, /The Relic Forge/);
+  assert.match(challengeUi, /Active Rift run/);
+  assert.match(challengeUi, /Selected best/);
+  assert.doesNotMatch(challengeUi, /Temporary Rift upgrades|Upgrade Inflation|buyUpgrade/);
   assert.match(challengeUi, /One-time unlocks/);
   assert.match(challengeUi, /START RIFT/);
   assert.match(challengeUi, /id=\"start-rift-button\"/);
@@ -138,7 +142,6 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(challengeUi, /Temporal Drag/);
   assert.match(challengeUi, /Luck Suppression/);
   assert.match(challengeUi, /Coin Scarcity/);
-  assert.match(challengeUi, /Upgrade Inflation/);
   assert.match(challengeUi, /Second-best/);
   assert.match(challengeUi, /START RIFT/);
   assert.match(challengeUi, /Best rate after clear/i);
@@ -154,13 +157,15 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /legacyStolenMomentumRefund/);
   assert.match(server, /archiveVersion < 6/);
   assert.match(server, /safeInteger\(parsed\.version, 0\) < archive\.version/);
-  assert.match(server, /upgradeLevels: \{ fortune: 0, speed: 0, prosperity: 0, critical: 0 \}/);
   assert.doesNotMatch(server, /riftStolenMomentumLevel|carriedUpgradeLevels|momentumLevel/);
   assert.doesNotMatch(shared, /stolenMomentum/);
   assert.match(server, /probabilityDebtRolls/);
   assert.match(game, /riftProbabilityDebtMultiplier/);
   assert.match(shared, /const interestBonus =/);
   assert.match(server, /export async function buyRiftRelic/);
+  assert.doesNotMatch(server, /RIFT_CHALLENGE_UPGRADES|buyRiftChallengeUpgrade|upgradeLevels/);
+  assert.doesNotMatch(game, /upgradeLevels/);
+  assert.doesNotMatch(api, /rift-challenges\\/upgrade/);
   assert.match(server, /export async function setEquippedRiftRelic/);
   assert.match(server, /spendCombatScrapForRiftForge/);
   assert.match(server, /archive\.riftPoints -= cost\.riftPoints/);
