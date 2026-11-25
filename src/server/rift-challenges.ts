@@ -385,16 +385,6 @@ export async function getRiftChallengeAdminStatus(userIdValue: unknown): Promise
     const now = Date.now();
     const archive = await readArchive(userId);
     accrueRiftProgress(archive, now);
-    if (archive.activeRun?.status === 'active') {
-      const run = archive.activeRun;
-      const accruedMinutes = accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest, now);
-      if (accruedMinutes > 0) {
-        const nextRevision = safeInteger(ensureRunGameState(run).stateRevision) + 1;
-        if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
-        ensureRunGameState(run).stateRevision = nextRevision;
-      }
-      syncRunSummaryFromGameState(run, now);
-    }
     await writeArchive(archive, userId);
     return {
       archive,
