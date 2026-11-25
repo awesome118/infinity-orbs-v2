@@ -4520,7 +4520,11 @@ async function saveActiveRiftPlayerState(
       if (
         !mutationAlreadyActive &&
         riftBestRarity < targetRarity &&
-        safeNonNegativeInteger(storedState.totalRolls) >= safeNonNegativeInteger(run.nextMutationAtRoll, RIFT_MUTATION_UNLOCK_ROLLS) &&
+        safeNonNegativeInteger(storedState.totalRolls) >= (
+          Number.isSafeInteger(Number(run.nextMutationAtRoll))
+            ? Math.max(0, Number(run.nextMutationAtRoll))
+            : RIFT_MUTATION_UNLOCK_ROLLS
+        ) &&
         riftMutationProgress(riftBestRarity, targetRarity) >= RIFT_MUTATION_UNLOCK_PROGRESS
       ) {
         const candidates = RIFT_MUTATIONS.filter(mutation => mutation.id !== run.lastMutationId);
