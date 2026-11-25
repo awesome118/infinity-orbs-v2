@@ -6441,7 +6441,13 @@ export async function applyRolls(
     if (s.riftSession && !suppressOtherRuneProcs && riftEchoChance > 0) {
       const riftEchoCount = sampleBinomialCount(sampleWeight, riftEchoChance, rng);
       if (riftEchoCount > 0) {
-        addRuneBonusRolls(riftEchoCount, { exactRarity: rarity, isInfinityOrb, skipAllProcs: true });
+        // For a compressed multi-roll group, rewardRarity is sampled from an individual Orb;
+        // copying it avoids cloning the group's maximum dozens of times.
+        const echoSourceRarity = sampleWeight > 1 ? rewardRarity : rarity;
+        const echoIsInfinityOrb = !Number.isFinite(echoSourceRarity) || echoSourceRarity > MAX_ORB_RARITY;
+        const echoRarity = Math.max(minimumRarity, Math.min(MAX_ORB_RARITY,
+          Number.isFinite(echoSourceRarity) ? echoSourceRarity : MAX_ORB_RARITY));
+        addRuneBonusRolls(riftEchoCount, { exactRarity: echoRarity, isInfinityOrb: echoIsInfinityOrb, skipAllProcs: true });
       }
     }
 
