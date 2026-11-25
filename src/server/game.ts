@@ -16,6 +16,14 @@ import {
   riftModifierDifficultyScore,
   riftRatePerHour,
   riftProbabilityDebtMultiplier,
+  RIFT_MUTATIONS,
+  RIFT_MUTATION_UNLOCK_ROLLS,
+  RIFT_MUTATION_UNLOCK_PROGRESS,
+  RIFT_MUTATION_DURATION_ROLLS,
+  RIFT_MUTATION_BREAK_ROLLS,
+  getRiftMutationDefinition,
+  riftMutationProgress,
+  riftMutationRewardMultiplier,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
@@ -4192,6 +4200,16 @@ interface ActiveRiftRunContext {
   riftLoadedDieMultiplier: number;
   riftFractureCascadeMultiplier: number;
   riftProbabilityDebtMultiplier: number;
+  riftMutation: {
+    id: string;
+    name: string;
+    description: string;
+    effect: string;
+    rollsRemaining: number;
+  } | null;
+  riftMutationLuckMultiplier: number;
+  riftMutationCooldownMultiplier: number;
+  riftMutationCoinMultiplier: number;
   gameState: PlayerState;
 }
 
@@ -4233,6 +4251,19 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       gameState.stateRevision = 0;
     }
     const riftPerks = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+    const mutationDefinition = getRiftMutationDefinition(run.mutationId);
+    const mutationRollsRemaining = mutationDefinition
+      ? Math.max(0, safeNonNegativeInteger(run.mutationEndsAtRoll) - safeNonNegativeInteger(gameState.totalRolls))
+      : 0;
+    const activeMutation = mutationDefinition && mutationRollsRemaining > 0
+      ? {
+          id: mutationDefinition.id,
+          name: mutationDefinition.name,
+          description: mutationDefinition.description,
+          effect: mutationDefinition.effect,
+          rollsRemaining: mutationRollsRemaining,
+        }
+      : null;
     const runId = run.runId.slice(0, 120);
     const codexOwnerId = riftCodexOwnerId(userId, runId);
     const inlineCollection = isValidCollection(gameState.collection)
@@ -4269,6 +4300,10 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
         safeNonNegativeInteger(run.fractureCascadeUntilRoll) > safeNonNegativeInteger(gameState.totalRolls)
         ? relicEffects.fractureCascadeMultiplier : 1,
       riftProbabilityDebtMultiplier: riftProbabilityDebtMultiplier(riftPerks.probabilityDebt, run.probabilityDebtRolls),
+      riftMutation: activeMutation,
+      riftMutationLuckMultiplier: activeMutation ? mutationDefinition!.luckMultiplier : 1,
+      riftMutationCooldownMultiplier: activeMutation ? mutationDefinition!.cooldownMultiplier : 1,
+      riftMutationCoinMultiplier: activeMutation ? mutationDefinition!.coinMultiplier : 1,
       riftProgressCoinMultiplier: riftRelicProgressCoinMultiplier(
         Math.max(2, safeNonNegativeInteger(run.bestRarity)),
         targetRarity,
@@ -4461,11 +4496,50 @@ async function saveActiveRiftPlayerState(
       }
       run.bestRarity = riftBestRarity;
       run.updatedAt = now;
-      archive.version = 5;
+      const targetRarity = safeNonNegativeInteger(run.targetRarity) || challenge.targetRarity;
+
+      // Mutations stay dormant until the player has made real progress.
+      // Each condition lasts 12 rolls, followed by an 8-roll quiet interval.
+      const currentMutation = getRiftMutationDefinition(run.mutationId);
+      let mutationsCompleted = safeNonNegativeInteger(run.mutationsCompleted);
+      if (
+        currentMutation &&
+        safeNonNegativeInteger(run.mutationEndsAtRoll) > 0 &&
+        safeNonNegativeInteger(storedState.totalRolls) >= safeNonNegativeInteger(run.mutationEndsAtRoll)
+      ) {
+        mutationsCompleted = Math.min(Number.MAX_SAFE_INTEGER, mutationsCompleted + 1);
+        run.lastMutationId = currentMutation.id;
+        run.mutationId = null;
+        run.mutationEndsAtRoll = 0;
+        run.nextMutationAtRoll = Math.min(
+          Number.MAX_SAFE_INTEGER,
+          safeNonNegativeInteger(storedState.totalRolls) + RIFT_MUTATION_BREAK_ROLLS,
+        );
+      }
+      const mutationAlreadyActive = Boolean(getRiftMutationDefinition(run.mutationId));
+      if (
+        !mutationAlreadyActive &&
+        riftBestRarity < targetRarity &&
+        safeNonNegativeInteger(storedState.totalRolls) >= safeNonNegativeInteger(run.nextMutationAtRoll, RIFT_MUTATION_UNLOCK_ROLLS) &&
+        riftMutationProgress(riftBestRarity, targetRarity) >= RIFT_MUTATION_UNLOCK_PROGRESS
+      ) {
+        const candidates = RIFT_MUTATIONS.filter(mutation => mutation.id !== run.lastMutationId);
+        const pool = candidates.length > 0 ? candidates : RIFT_MUTATIONS;
+        const randomWord = new Uint32Array(1);
+        globalThis.crypto.getRandomValues(randomWord);
+        const selectedMutation = pool[randomWord[0] % pool.length] ?? RIFT_MUTATIONS[0];
+        run.mutationId = selectedMutation.id;
+        run.mutationEndsAtRoll = Math.min(
+          Number.MAX_SAFE_INTEGER,
+          safeNonNegativeInteger(storedState.totalRolls) + RIFT_MUTATION_DURATION_ROLLS,
+        );
+        run.nextMutationAtRoll = 0;
+      }
+      run.mutationsCompleted = mutationsCompleted;
+      archive.version = 8;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
-      const targetRarity = safeNonNegativeInteger(run.targetRarity) || challenge.targetRarity;
       if (riftBestRarity >= targetRarity) {
         completed = true;
         run.status = 'completed';
@@ -4506,7 +4580,11 @@ async function saveActiveRiftPlayerState(
           : firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
         const completionRelicSlotCount = isPlainRecord(archive.riftUnlocks) && archive.riftUnlocks.timelineFork === true
           ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
-        const reward = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(baseReward * getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels, completionRelicSlotCount).completionRewardMultiplier));
+        const reward = Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(
+          baseReward *
+            getRiftRelicEffects(run.equippedRelics, archive.riftRelicLevels, completionRelicSlotCount).completionRewardMultiplier *
+            riftMutationRewardMultiplier(run.mutationsCompleted),
+        ));
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
@@ -4832,6 +4910,10 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLoadedDieMultiplier: activeRiftRun.riftLoadedDieMultiplier,
       riftFractureCascadeMultiplier: activeRiftRun.riftFractureCascadeMultiplier,
       riftProbabilityDebtMultiplier: activeRiftRun.riftProbabilityDebtMultiplier,
+      riftMutation: activeRiftRun.riftMutation,
+      riftMutationLuckMultiplier: activeRiftRun.riftMutationLuckMultiplier,
+      riftMutationCooldownMultiplier: activeRiftRun.riftMutationCooldownMultiplier,
+      riftMutationCoinMultiplier: activeRiftRun.riftMutationCoinMultiplier,
     };
   }
   // Persist one-time migrations rather than only changing the read view.
@@ -6132,6 +6214,7 @@ export async function applyRolls(
     (s.riftSession?.riftObserverLuckMultiplier ?? 1) *
     (s.riftSession?.riftFractureCascadeMultiplier ?? 1) *
     (s.riftSession?.riftProbabilityDebtMultiplier ?? 1) *
+    (s.riftSession?.riftMutationLuckMultiplier ?? 1) *
     relicLoadedDieMultiplier;
   const unsuppressedLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
     riftMultipliers.luckMultiplier * challengeLuckMultiplier;
@@ -6805,6 +6888,7 @@ export async function applyRolls(
   coinsGained = normalizeCoinAmount(Math.round(
     coinsGained * riftMultipliers.coinMultiplier *
       (s.riftSession?.challengeCoinMultiplier ?? 1) *
+      (s.riftSession?.riftMutationCoinMultiplier ?? 1) *
       (s.riftSession?.riftProgressCoinMultiplier ?? 1),
   ));
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * liveBalance['rewards.coinMultiplier']));
