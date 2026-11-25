@@ -89,6 +89,18 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(sharedGame, /interface RiftPlayerSession/);
   assert.match(sharedGame, /riftTemporalArbitrageMultiplier/);
   assert.match(sharedGame, /riftProgressCoinMultiplier/);
+  assert.match(sharedGame, /riftMutationCooldownMultiplier/);
+  assert.match(shared, /RIFT_MUTATION_UNLOCK_ROLLS = 20/);
+  assert.match(shared, /RIFT_MUTATION_UNLOCK_PROGRESS = 0.2/);
+  assert.match(shared, /RIFT_MUTATION_DURATION_ROLLS = 12/);
+  assert.match(server, /mutationEndsAtRoll/);
+  assert.match(game, /riftMutationRewardMultiplier\(run\.mutationsCompleted\)/);
+  assert.match(game, /riftMutationLuckMultiplier/);
+  assert.match(rollUi, /Rift mutation active/);
+  assert.match(challengeUi, /Rift mutations/);
+  assert.match(game, /archive\.version = 8/);
+  assert.match(game, /RIFT_MUTATION_BREAK_ROLLS/);
+  assert.match(game, /riftMutationCoinMultiplier/);
   assert.match(game, /getRiftRelicEffects/);
   assert.match(game, /loadedDieCrossedMilestone/);
   assert.match(game, /fractureCascadeUntilRoll/);
