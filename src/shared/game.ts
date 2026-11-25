@@ -1172,6 +1172,8 @@ export interface RiftPlayerSession {
   milestoneAmplifierLevel?: number;
   anomalyHarvestingLevel?: number;
   anomalyForecasterLevel?: number;
+  emergencyProtocolLevel?: number;
+  riftConditioningCompletions?: number;
   mutationStabilizerLevel?: number;
   mutationAmplifierLevel?: number;
   mutationExtractionLevel?: number;
