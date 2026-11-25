@@ -350,7 +350,7 @@ export const RiftChallengesSection: React.FC<{
                   </div>
                   <input
                     type="range"
-                    min="0"
+                    min={control.id === 'instability' || control.id === 'fortuneSuppression' ? 0 : 1}
                     max="100"
                     step="1"
                     value={
