@@ -50,6 +50,7 @@ interface BoostersAndAutomationProps {
   worldEvent?: WorldEvent | null;
   onBuyAutomation: (id: AutomationId) => Promise<void>;
   onClaimCommunityReward: () => Promise<void>;
+  globalOnly?: boolean;
 }
 
 const boosterIcons: Record<PremiumBoosterId, React.ReactNode> = {
@@ -89,6 +90,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
   onActivateGlobalBooster,
   onBuyAutomation,
   onClaimCommunityReward,
+  globalOnly = false,
 }) => {
   const [now, setNow] = useState(Date.now());
   const [activatingGlobalBooster, setActivatingGlobalBooster] = useState<GlobalBoosterId | null>(null);
@@ -219,10 +221,10 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-black text-white">Boosters & Automation</h2>
+              <h2 className="text-xl font-black text-white">{globalOnly ? 'Rift Global Boosters' : 'Boosters & Automation'}</h2>
               <Sparkles className="w-4 h-4 text-purple-300" />
             </div>
-            <p className="mt-1 text-xs text-slate-400">Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases. Every activation adds 2 hours to its timer.</p>
+            <p className="mt-1 text-xs text-slate-400">{globalOnly ? 'Worldline Conduit reconnects this isolated Rift run to the shared Global Booster system. Activations here affect the world and your Rift rolls.' : 'Global Boosters affect everyone, Premium Boosters run on your own timers, and Automation unlocks are permanent purchases. Every activation adds 2 hours to its timer.'}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -376,7 +378,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         </div>
       </section>
 
-      {alignmentInstances.length > 0 && (
+      {!globalOnly && alignmentInstances.length > 0 && (
         <section className="rounded-3xl border border-indigo-400/25 bg-gradient-to-br from-slate-900 via-indigo-950/15 to-slate-900 p-5 shadow-xl" data-testid="stacked-alignment-buffs">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -399,6 +401,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
         </section>
       )}
 
+      {!globalOnly && (
       <section className="space-y-3">
         <div className="flex items-center gap-2 px-1">
           <Zap className="w-4 h-4 text-amber-300" />
@@ -454,7 +457,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           })}
         </div>
       </section>
+      )}
 
+      {!globalOnly && (
       <section className="rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-slate-900 via-emerald-950/10 to-slate-900 p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
@@ -514,7 +519,9 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           </div>
         </div>
       </section>
+      )}
 
+      {!globalOnly && (
       <section className="space-y-3">
         <div className="flex items-start gap-2 px-1">
           <Bot className="w-4 h-4 text-cyan-300 shrink-0 mt-0.5" />
@@ -590,6 +597,7 @@ export const BoostersAndAutomation: React.FC<BoostersAndAutomationProps> = ({
           })}
         </div>
       </section>
+      )}
     </div>
   );
 };
