@@ -95,7 +95,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
 
   assert.match(challengeUi, /activePanel === 'upgrades'/);
   assert.match(challengeUi, /Rift technology division/);
-  assert.match(challengeUi, /Research the impossible\\./);
+  assert.match(challengeUi, /Research the impossible/);
   assert.match(challengeUi, /Reality anchors/);
   assert.match(challengeUi, /Rift engineering/);
   assert.match(challengeUi, /Archive synchronization/);

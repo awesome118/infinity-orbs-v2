@@ -135,3 +135,5 @@ Deploy prompt: promote Rift Run, Upgrades, and Relics to sibling routes in the g
 Pages deployment reliability: split build/upload and deploy into dependent jobs to avoid the intermittent Pages artifact-lookup race.
 
 Pages Rift upgrade redesign: replace the plain perk list with a permanent research array, split Reality and Rift branches, a core Probability Debt protocol panel, segmented rank tracks, and a Timeline Fork unlock console.
+
+Pages Rift upgrade test correction: use a plain text assertion for the research hero heading.
