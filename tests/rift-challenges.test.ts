@@ -133,7 +133,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
   assert.equal(riftPerkCost('mutationPersistence', 0), RIFT_PERKS.mutationPersistence.baseCost);
   assert.ok(riftPerkCost('mutationCycle', 1) > riftPerkCost('mutationCycle', 0));
   assert.equal(emptyRiftPerkLevels().mutationPersistence, 0);
-  assert.equal(emptyRiftPerkLevels().riftCrit, 0);
+  assert.equal('riftCrit' in emptyRiftPerkLevels(), false);
   assert.equal(Object.keys(emptyRiftPerkLevels()).length, Object.keys(RIFT_PERKS).length);
 });
 
