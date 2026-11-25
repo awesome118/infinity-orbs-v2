@@ -180,7 +180,9 @@ export const RiftChallengesSection: React.FC<{
   const mutationRollsRemaining = currentMutation && run
     ? Math.max(0, run.mutationEndsAtRoll - run.totalRolls)
     : 0;
-  const mutationRewardBonusPercent = Math.round((riftMutationRewardMultiplier(run?.mutationsCompleted ?? 0) - 1) * 100);
+  const mutationRewardBonusPercent = Math.round((
+    riftMutationRewardMultiplier(run?.mutationsCompleted ?? 0, archive?.riftPerkLevels.mutationMastery ?? 0) - 1
+  ) * 100);
   const mutationGateReached = Boolean(run &&
     run.totalRolls >= RIFT_MUTATION_UNLOCK_ROLLS &&
     progressPercent >= RIFT_MUTATION_UNLOCK_PROGRESS * 100);
