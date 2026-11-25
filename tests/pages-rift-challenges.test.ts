@@ -91,12 +91,13 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /loadedDieCrossedMilestone/);
   assert.match(game, /fractureCascadeUntilRoll/);
   assert.match(challengeUi, /aria-label="Rift menu"/);
-  assert.match(challengeUi, /role="tablist"/);
-  assert.match(challengeUi, /role="tab"/);
-  assert.match(challengeUi, /aria-selected=\{activePanel === 'run'\}/);
-  assert.match(challengeUi, /role="tabpanel"/);
-  assert.match(challengeUi, /handlePanelTabKeyDown/);
-  assert.match(challengeUi, /ArrowRight/);
+  assert.match(challengeUi, /className="nav-list"/);
+  assert.match(challengeUi, /nav-tab io-nav-item/);
+  assert.match(challengeUi, /aria-current=\{activePanel === 'run' \? 'page' : undefined\}/);
+  assert.match(challengeUi, /io-nav-icon/);
+  assert.match(challengeUi, /Compass/);
+  assert.match(challengeUi, /Gem/);
+
 
   assert.match(challengeUi, /setActivePanel\('run'\)/);
   assert.match(challengeUi, /activePanel === 'upgrades'/);

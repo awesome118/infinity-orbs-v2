@@ -25,7 +25,7 @@ import {
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
 import { RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS, getRiftRelicEffects, riftRelicCost, type RiftRelicId } from '../../shared/rift-relics.js';
-import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert } from 'lucide-react';
+import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert, Compass, Gem } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -89,22 +89,7 @@ export const RiftChallengesSection: React.FC<{
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [activePanel, setActivePanel] = useState<'run' | 'upgrades' | 'relics'>('run');
-  const handlePanelTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
-    const currentIndex = tabs.indexOf(event.currentTarget);
-    if (currentIndex < 0 || tabs.length === 0) return;
-    let nextIndex = currentIndex;
-    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
-    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = tabs.length - 1;
-    else return;
-    event.preventDefault();
-    tabs[nextIndex]?.focus();
-    tabs[nextIndex]?.click();
-  };
-  const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [activePanel, setActivePanel] = useState<'run' | 'upgrades' | 'relics'>('run');  const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [modifierSettings, setModifierSettings] = useState<RiftModifierSettings>({ ...DEFAULT_RIFT_MODIFIERS });
   const [challengeToggles, setChallengeToggles] = useState<RiftChallengeToggles>({ ...DEFAULT_RIFT_CHALLENGES });
   const [configDirty, setConfigDirty] = useState(false);
@@ -365,21 +350,43 @@ export const RiftChallengesSection: React.FC<{
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{error}</div>}
 
-      <nav className="flex items-center gap-6 overflow-x-auto border-b border-slate-700/80 px-2" role="tablist" aria-label="Rift menu">
-        <button id="rift-tab-run" type="button" role="tab" aria-selected={activePanel === 'run'} aria-controls="rift-panel-run" tabIndex={activePanel === 'run' ? 0 : -1} onClick={() => setActivePanel('run')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'run' ? 'border-violet-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
-          Run
+      <nav className="nav-list" aria-label="Rift menu">
+        <button
+          id="rift-tab-run"
+          type="button"
+          onClick={() => setActivePanel('run')}
+          aria-current={activePanel === 'run' ? 'page' : undefined}
+          className={'nav-tab io-nav-item' + (activePanel === 'run' ? ' is-active' : '')}
+        >
+          <Compass className="io-nav-icon" />
+          <span className="io-nav-label">Run</span>
         </button>
-        <button id="rift-tab-upgrades" type="button" role="tab" aria-selected={activePanel === 'upgrades'} aria-controls="rift-panel-upgrades" tabIndex={activePanel === 'upgrades' ? 0 : -1} onClick={() => setActivePanel('upgrades')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'upgrades' ? 'border-cyan-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
-          Upgrades
+        <button
+          id="rift-tab-upgrades"
+          type="button"
+          onClick={() => setActivePanel('upgrades')}
+          aria-current={activePanel === 'upgrades' ? 'page' : undefined}
+          className={'nav-tab io-nav-item' + (activePanel === 'upgrades' ? ' is-active' : '')}
+        >
+          <Zap className="io-nav-icon" />
+          <span className="io-nav-label">Upgrades</span>
         </button>
-        <button id="rift-tab-relics" type="button" role="tab" aria-selected={activePanel === 'relics'} aria-controls="rift-panel-relics" tabIndex={activePanel === 'relics' ? 0 : -1} onClick={() => setActivePanel('relics')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'relics' ? 'border-amber-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
-          Relics <span className="ml-1 text-[9px] font-semibold normal-case tracking-normal text-current/70">{archive.equippedRiftRelics.length}/{relicSlotLimit}</span>
+        <button
+          id="rift-tab-relics"
+          type="button"
+          onClick={() => setActivePanel('relics')}
+          aria-current={activePanel === 'relics' ? 'page' : undefined}
+          className={'nav-tab io-nav-item' + (activePanel === 'relics' ? ' is-active' : '')}
+        >
+          <Gem className="io-nav-icon" />
+          <span className="io-nav-label">Relics</span>
+          <span className="io-nav-unlock">{archive.equippedRiftRelics.length}/{relicSlotLimit}</span>
         </button>
       </nav>
 
       <div className="space-y-5">
         {activePanel === 'run' && (
-          <div id="rift-panel-run" role="tabpanel" aria-labelledby="rift-tab-run" tabIndex={0} className="space-y-5 focus-visible:outline-none">
+          <divclassName="space-y-5">
       {!isActive && (
         <section className="rounded-3xl border border-violet-400/25 bg-slate-900/75 p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -656,7 +663,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'upgrades' && (
-          <div id="rift-panel-upgrades" role="tabpanel" aria-labelledby="rift-tab-upgrades" tabIndex={0} className="space-y-5 focus-visible:outline-none">
+          <divclassName="space-y-5">
       <section className="rounded-3xl border border-violet-400/20 bg-slate-900/70 p-5 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -758,7 +765,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'relics' && (
-          <div id="rift-panel-relics" role="tabpanel" aria-labelledby="rift-tab-relics" tabIndex={0} className="space-y-5 focus-visible:outline-none">
+          <divclassName="space-y-5">
       <section className="overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#211b13] via-[#15131a] to-[#101629] p-5 shadow-xl shadow-slate-950/30 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
