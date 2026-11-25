@@ -199,6 +199,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await riftChallenges.buyRiftChallengeUpgrade(body.upgradeId, body.runId));
       case '/api/rift-challenges/perk':
         return jsonResponse(await riftChallenges.buyRiftPerk(body.perkId));
+      case '/api/rift-challenges/unlock':
+        return jsonResponse(await riftChallenges.buyRiftUnlock(body.unlockId));
       case '/api/rift-challenges/relic/forge':
         return jsonResponse(await riftChallenges.buyRiftRelic(body.relicId));
       case '/api/rift-challenges/relic/equip':
