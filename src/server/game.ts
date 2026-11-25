@@ -19,7 +19,7 @@ import {
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
-import { getRiftRelicEffects, riftObserverLuckMultiplier, riftTemporalArbitrageMultiplier, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS } from '../shared/rift-relics.js';
+import { getRiftRelicEffects, riftObserverLuckMultiplier, riftTemporalArbitrageMultiplier, riftRelicProgressCoinMultiplier, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS } from '../shared/rift-relics.js';
 
 const notifications = (notificationsModule as any).notifications;
 import { APP_VERSION } from '../shared/version.js';
@@ -4185,7 +4185,6 @@ interface ActiveRiftRunContext {
   noAutomation: boolean;
   noCriticals: boolean;
   noShards: boolean;
-  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   riftTemporalArbitrageMultiplier: number;
   riftRelicLuckExcessMultiplier: number;
   riftObserverLuckMultiplier: number;
@@ -4208,7 +4207,6 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
     if (!run || run.status !== 'active' || typeof run.runId !== 'string') return null;
     const challenge = getRiftChallengeDefinition(run.challengeId);
     if (!challenge) return null;
-    const levels = isPlainRecord(run.upgradeLevels) ? run.upgradeLevels : {};
     const modifierSettings = normalizeRiftModifierSettings(run.modifierSettings ?? archive.modifierSettings);
     const challengeToggles = normalizeRiftChallengeToggles(run.challengeToggles ?? archive.challengeToggles);
     const isModifierRun = challenge.id === RIFT_ASCENT.id;
@@ -4270,12 +4268,11 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
         safeNonNegativeInteger(run.fractureCascadeUntilRoll) > safeNonNegativeInteger(gameState.totalRolls)
         ? relicEffects.fractureCascadeMultiplier : 1,
       riftProbabilityDebtMultiplier: riftProbabilityDebtMultiplier(riftPerks.probabilityDebt, run.probabilityDebtRolls),
-      upgradeLevels: {
-        fortune: safeNonNegativeInteger(levels.fortune),
-        speed: safeNonNegativeInteger(levels.speed),
-        prosperity: safeNonNegativeInteger(levels.prosperity),
-        critical: safeNonNegativeInteger(levels.critical),
-      },
+      riftProgressCoinMultiplier: riftRelicProgressCoinMultiplier(
+        Math.max(2, safeNonNegativeInteger(run.bestRarity)),
+        targetRarity,
+        relicEffects.progressCoinBonus,
+      ),
       gameState,
     };
   } catch (error) {
@@ -4833,7 +4830,6 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLoadedDieMultiplier: activeRiftRun.riftLoadedDieMultiplier,
       riftFractureCascadeMultiplier: activeRiftRun.riftFractureCascadeMultiplier,
       riftProbabilityDebtMultiplier: activeRiftRun.riftProbabilityDebtMultiplier,
-      upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
   }
   // Persist one-time migrations rather than only changing the read view.
@@ -5920,7 +5916,6 @@ function effectiveRollCritChance(
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
     guildComboCritChanceBonus(s.guildCombo) +
-    (s.riftSession?.upgradeLevels.critical ?? 0) * 0.015,
   );
 }
 
@@ -6130,7 +6125,6 @@ export async function applyRolls(
     Math.floor((s.totalRolls + rollCount) / 100) > Math.floor(s.totalRolls / 100));
   const relicLoadedDieMultiplier = loadedDieCrossedMilestone ? (s.riftSession?.riftLoadedDieMultiplier ?? 1) : 1;
   const challengeLuckMultiplier =
-    (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
     (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05) *
     (s.riftSession?.riftTemporalArbitrageMultiplier ?? 1) *
     (s.riftSession?.riftObserverLuckMultiplier ?? 1) *
@@ -6770,7 +6764,7 @@ export async function applyRolls(
     (1 + (s.masterySkills?.prosperity ?? 0) * 0.12) *
     (1 + (s.guildPerks?.coinRank ?? 0) * 0.10) *
     (1 + runeBonuses.coinGainPct / 100) *
-    (1 + (s.riftSession?.upgradeLevels.prosperity ?? 0) * 0.20);
+    (s.riftSession?.riftProgressCoinMultiplier ?? 1);
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
   const lowRarityCoins = lowRarityCoinsEstimate;
