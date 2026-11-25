@@ -178,7 +178,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     ? activeRun
     : null;
   const archive: RiftChallengeArchive = {
-    version: 8,
+    version: 9,
     activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
