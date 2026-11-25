@@ -128,6 +128,20 @@ export function riftMutationProgress(bestRarityValue: unknown, targetRarityValue
   return Math.max(0, Math.min(1, Math.log10(best) / denominator));
 }
 
+export function riftStartingProgressRarity(
+  previousBestRarityValue: unknown,
+  previousTargetRarityValue: unknown,
+  nextTargetRarityValue: unknown,
+): number {
+  const previousBest = Math.max(2, Number(previousBestRarityValue) || 2);
+  const previousTarget = Math.max(2, Number(previousTargetRarityValue) || 2);
+  const nextTarget = Math.max(2, Math.floor(Number(nextTargetRarityValue) || 2));
+  if (nextTarget <= 2) return 2;
+  const previousProgress = riftMutationProgress(previousBest, previousTarget);
+  const carriedProgress = Math.min(0.2, Math.max(0, previousProgress * 0.2));
+  return Math.max(2, Math.min(nextTarget - 1, Math.ceil(Math.pow(nextTarget, carriedProgress))));
+}
+
 export function riftMutationRewardMultiplier(completedMutationsValue: unknown, masteryLevelValue: unknown = 0): number {
   const completed = Number.isFinite(Number(completedMutationsValue))
     ? Math.max(0, Math.floor(Number(completedMutationsValue)))
@@ -318,9 +332,7 @@ export type RiftPerkId =
   | 'dimensionalInterest'
   | 'mutationPersistence'
   | 'mutationCycle'
-  | 'mutationMastery'
-  | 'riftCoinYield'
-  | 'riftCrit';
+  | 'mutationMastery';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -397,21 +409,9 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     effect: '+1% Rift Point reward per completed mutation per rank; raises the mutation bonus cap by 5% per rank.',
     baseCost: 32, costGrowth: 1.86, maxLevel: 5,
   },
-  riftCoinYield: {
-    id: 'riftCoinYield', name: 'Fracture Exchange', category: 'rift',
-    description: 'Convert Rift turbulence into a steady increase in temporary-run Coin earnings.',
-    effect: '+3% Rift Coin earnings per rank.',
-    baseCost: 12, costGrowth: 1.68, maxLevel: 10,
-  },
-  riftCrit: {
-    id: 'riftCrit', name: 'Critical Resonance', category: 'rift',
-    description: 'Tune Rift energy toward more frequent critical Orbs without affecting the main save.',
-    effect: '+0.5 percentage points of Rift critical chance per rank.',
-    baseCost: 16, costGrowth: 1.74, maxLevel: 10,
-  },
 };
 
-export type RiftUnlockId = 'timelineFork';
+export type RiftUnlockId = 'timelineFork' | 'bossResonance' | 'runeConfluence' | 'globalConduit' | 'riftMemory';
 export type RiftUnlocks = Record<RiftUnlockId, boolean>;
 
 export interface RiftUnlockDefinition {
@@ -430,10 +430,57 @@ export const RIFT_UNLOCKS: Record<RiftUnlockId, RiftUnlockDefinition> = {
     effect: 'Equip 3 relics instead of 2.',
     cost: 120,
   },
+  bossResonance: {
+    id: 'bossResonance',
+    name: 'Boss Resonance',
+    description: 'Reconnect the Rift to the victories recorded in your Combat archive.',
+    effect: 'Your lifetime Combat Boss Luck bonus applies to Rift rolls.',
+    cost: 90,
+  },
+  runeConfluence: {
+    id: 'runeConfluence',
+    name: 'Rune Confluence',
+    description: 'Let equipped Combat Runes cross the boundary into the Rift.',
+    effect: 'Equipped Combat Rune stats and major abilities affect Rift rolls.',
+    cost: 150,
+  },
+  globalConduit: {
+    id: 'globalConduit',
+    name: 'Worldline Conduit',
+    description: 'Reconnect isolated runs to the live global systems instead of leaving them outside the experiment.',
+    effect: 'Active Global Boosters and community event buffs work in the Rift. You can also activate Global Boosters from inside a run.',
+    cost: 130,
+  },
+  riftMemory: {
+    id: 'riftMemory',
+    name: 'Echoed Momentum',
+    description: 'A completed run leaves a usable imprint in the next fracture.',
+    effect: 'Start each new run with up to 20% of the objective progress achieved in your previous completed Rift run.',
+    cost: 100,
+  },
 };
 
 export function emptyRiftUnlocks(): RiftUnlocks {
-  return { timelineFork: false };
+  return {
+    timelineFork: false,
+    bossResonance: false,
+    runeConfluence: false,
+    globalConduit: false,
+    riftMemory: false,
+  };
+}
+
+export function normalizeRiftUnlocks(value: unknown): RiftUnlocks {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    timelineFork: raw.timelineFork === true,
+    bossResonance: raw.bossResonance === true,
+    runeConfluence: raw.runeConfluence === true,
+    globalConduit: raw.globalConduit === true,
+    riftMemory: raw.riftMemory === true,
+  };
 }
 
 export const RIFT_BASE_RATE_PER_HOUR = 1;
@@ -481,7 +528,7 @@ export interface RiftChallengeRun {
 }
 
 export interface RiftChallengeArchive {
-  version: 9;
+  version: 10;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -557,7 +604,6 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
     riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
     probabilityDebt: 0, dimensionalInterest: 0,
     mutationPersistence: 0, mutationCycle: 0, mutationMastery: 0,
-    riftCoinYield: 0, riftCrit: 0,
   };
 }
 
@@ -601,7 +647,7 @@ export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRolls
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 9,
+    version: 10,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
