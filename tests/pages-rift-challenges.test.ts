@@ -23,6 +23,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(build, /main\.tsx/);
   assert.match(build, /dist-pages/);
   assert.match(api, /getRiftChallengeStatus/);
+  assert.match(server, /return \{\\s*challenge: RIFT_FIRST_SPARK,\\s*challenges: RIFT_CHALLENGES/);
   assert.match(api, /updateRiftModifiers\(body\.modifierSettings, body\.challengeToggles\)/);
   assert.match(api, /startRiftChallenge\(body\.challengeId\)/);
   assert.match(api, /rollRiftChallenge/);
@@ -165,7 +166,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /export async function buyRiftRelic/);
   assert.doesNotMatch(server, /RIFT_CHALLENGE_UPGRADES|buyRiftChallengeUpgrade|upgradeLevels/);
   assert.doesNotMatch(game, /upgradeLevels/);
-  assert.doesNotMatch(api, /rift-challenges\\/upgrade/);
+  assert.equal(api.includes("case '/api/rift-challenges/upgrade'"), false);
   assert.match(server, /export async function setEquippedRiftRelic/);
   assert.match(server, /spendCombatScrapForRiftForge/);
   assert.match(server, /archive\.riftPoints -= cost\.riftPoints/);
