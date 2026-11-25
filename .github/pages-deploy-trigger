@@ -118,3 +118,5 @@ Pages Rift upgrades: Probability Debt, Dimensional Interest, Stolen Momentum, Ti
 Pages Rift upgrades final validation: updated Start Rift assertion, Timeline Fork third-slot enforcement, and immediate interest-rate recalculation.
 
 Pages Rift integration validation: assert Dimensional Interest in its shared Rift economy implementation.
+
+Deploy prompt: restructure the Rift menu into Run, Upgrades, and Relics workspaces with a consolidated resource header and full-width launch action.
