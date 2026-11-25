@@ -1,5 +1,5 @@
 import type { PlayerState } from './game.js';
-import type { RiftRelicId, RiftRelicLevels } from './rift-relics.js';
+import { emptyRiftRelicLevels, type RiftRelicId, type RiftRelicLevels } from './rift-relics.js';
 export type RiftChallengeRunStatus = 'active' | 'completed';
 
 export const RIFT_CHALLENGES = [
@@ -663,7 +663,7 @@ export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallenge
     bestModifierSettings: { ...DEFAULT_RIFT_MODIFIERS },
     bestChallengeToggles: { ...DEFAULT_RIFT_CHALLENGES },
     riftPerkLevels,
-    riftRelicLevels: { 'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0, observer: 0, 'loaded-die': 0, 'fracture-cascade': 0 },
+    riftRelicLevels: emptyRiftRelicLevels(),
     equippedRiftRelics: [],
     riftUnlocks: emptyRiftUnlocks(),
   };
