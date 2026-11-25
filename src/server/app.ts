@@ -1283,7 +1283,7 @@ export function createApp() {
         : message === 'CHALLENGE_RUN_MISMATCH' ? 409
         : message.includes('Temporal Drag must be') ? 400
         : transientContentionError(error) ? 503 : 500;
-      res.status(status).json({ error });
+      res.status(status).json({ error: message });
     }
   });
 
