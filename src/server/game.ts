@@ -20,6 +20,7 @@ import {
   riftSingularityFocusMultiplier,
   riftTemporalArbitrageMultiplier,
   riftMutationPenaltyFactor,
+  riftMutationDurationRolls,
   RIFT_MUTATIONS,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
@@ -4501,10 +4502,49 @@ async function saveActiveRiftPlayerState(
       archive.version = 3;
       advanceStoredRiftProgress(archive, now);
 
+      const mutationLevels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+      const awardMutationCompletion = () => {
+        run.completedMutations = safeNonNegativeInteger(run.completedMutations) + 1;
+        const baseMutationReward = 1 +
+          safeNonNegativeInteger(mutationLevels.anomalyHarvesting) +
+          safeNonNegativeInteger(mutationLevels.mutationExtraction);
+        const mutationMultiplier = run.activeMutation?.id === 'nullification' ? 2 : 1;
+        const mutationReward = Math.min(Number.MAX_SAFE_INTEGER, baseMutationReward * mutationMultiplier);
+        archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + mutationReward);
+        archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + mutationReward);
+        run.activeMutation = null;
+      };
+      if (run.activeMutation && storedState.totalRolls >= safeNonNegativeInteger(run.activeMutation.endsAtRoll)) {
+        awardMutationCompletion();
+      }
+
+      const objectiveProgress = Math.max(0, Math.min(1,
+        Math.log10(Math.max(2, riftBestRarity)) / Math.max(1, Math.log10(challenge.targetRarity)),
+      ));
+      const lastMutationRoll = safeNonNegativeInteger(run.lastMutationRoll);
+      const mutationReady = storedState.totalRolls >= 20 &&
+        objectiveProgress >= 0.25 &&
+        (lastMutationRoll === 0 || storedState.totalRolls - lastMutationRoll >= 40);
+      if (!run.activeMutation && (!Array.isArray(run.pendingMutationChoices) || run.pendingMutationChoices.length === 0) &&
+          mutationReady && riftBestRarity < challenge.targetRarity) {
+        const shuffled = RIFT_MUTATIONS.map(mutation => mutation.id);
+        for (let index = shuffled.length - 1; index > 0; index -= 1) {
+          const random = new Uint32Array(1);
+          globalThis.crypto.getRandomValues(random);
+          const swapIndex = random[0] % (index + 1);
+          [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+        }
+        const choiceCount = safeNonNegativeInteger(mutationLevels.anomalyForecaster) > 0 ? 3 : 1;
+        run.pendingMutationChoices = shuffled.slice(0, choiceCount);
+        run.lastMutationRoll = storedState.totalRolls;
+      }
+
       let completed = false;
       let firstClear = false;
       if (riftBestRarity >= challenge.targetRarity) {
         completed = true;
+        if (run.activeMutation) awardMutationCompletion();
+        run.pendingMutationChoices = [];
         run.status = 'completed';
         run.completedAt = now;
         archive.totalCompletedRuns = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalCompletedRuns) + 1);
