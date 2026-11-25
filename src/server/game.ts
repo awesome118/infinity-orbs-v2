@@ -6265,7 +6265,9 @@ export async function applyRolls(
     Math.floor((s.totalCrits ?? 0) / 5) * (s.riftSession?.criticalConversionLevel ?? 0) * 0.01);
   const milestoneLuck = 1 + milestoneCount * (s.riftSession?.milestoneAmplifierLevel ?? 0) * 0.05;
   const emergencyLuck = (s.riftSession?.emergencyProtocolUntilRoll ?? 0) > s.totalRolls ? 1.5 : 1;
-  const nullificationScale = mutationActive && mutation?.id === 'nullification' ? 0.5 : 1;
+  const nullificationScale = mutationActive && mutation?.id === 'nullification'
+    ? 1 - 0.5 * mutationPenalty
+    : 1;
   const challengeLuckMultiplier =
     (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
     (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05) *
