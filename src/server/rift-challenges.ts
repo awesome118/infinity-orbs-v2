@@ -689,6 +689,7 @@ export async function buyRiftChallengeUpgrade(
     if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
     assertExpectedRunId(run, expectedRunIdValue);
     const gameState = ensureRunGameState(run);
+    accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest);
     const progress = progressFromGameState(gameState);
     const mechanicUnlocks = riftChallengeMechanicUnlocks(progress);
     if (!mechanicUnlocks[upgradeId]) {
