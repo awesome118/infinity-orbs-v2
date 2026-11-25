@@ -4180,6 +4180,7 @@ interface ActiveRiftRunContext {
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  riftProgressCoinMultiplier: number;
   luckSuppressionMultiplier: number;
   secondBest: boolean;
   noAutomation: boolean;
@@ -4819,6 +4820,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
       riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
+      riftProgressCoinMultiplier: activeRiftRun.riftProgressCoinMultiplier,
       luckSuppressionMultiplier: activeRiftRun.luckSuppressionMultiplier,
       secondBest: activeRiftRun.secondBest,
       noAutomation: activeRiftRun.noAutomation,
@@ -5915,7 +5917,7 @@ function effectiveRollCritChance(
     (s.masterySkills?.critMastery ?? 0) * 0.03 +
     (s.guildPerks?.critRank ?? 0) * 0.015 +
     globalBoosterCritChanceBonus(globalBoosters?.crit) +
-    guildComboCritChanceBonus(s.guildCombo) +
+    guildComboCritChanceBonus(s.guildCombo)
   );
 }
 
