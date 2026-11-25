@@ -24,6 +24,8 @@ import {
   riftRatePerHour,
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
+  RIFT_MUTATION_UNLOCK_ROLLS,
+  getRiftMutationDefinition,
   RIFT_PERKS,
   type RiftChallengeArchive,
   type RiftChallengeId,
@@ -111,6 +113,11 @@ function normalizeRun(value: unknown, maxRelicSlots = RIFT_RELIC_EQUIP_SLOTS): R
     equippedRelics: normalizeEquippedRiftRelics(value.equippedRelics, undefined, maxRelicSlots),
     fractureCascadeUntilRoll: safeInteger(value.fractureCascadeUntilRoll),
     probabilityDebtRolls: safeInteger(value.probabilityDebtRolls),
+    mutationId: getRiftMutationDefinition(value.mutationId)?.id ?? null,
+    mutationEndsAtRoll: safeInteger(value.mutationEndsAtRoll),
+    nextMutationAtRoll: safeInteger(value.nextMutationAtRoll, RIFT_MUTATION_UNLOCK_ROLLS),
+    mutationsCompleted: safeInteger(value.mutationsCompleted),
+    lastMutationId: getRiftMutationDefinition(value.lastMutationId)?.id ?? null,
     gameState: isRecord(value.gameState) ? value.gameState as unknown as PlayerState : null,
   };
 }
@@ -171,7 +178,7 @@ function normalizeArchive(value: unknown, now = Date.now()): RiftChallengeArchiv
     ? activeRun
     : null;
   const archive: RiftChallengeArchive = {
-    version: 7,
+    version: 8,
     activeRun,
     completedChallengeIds: [...new Set(completed)],
     bestRarityByChallenge,
@@ -401,6 +408,11 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
       equippedRelics: [...archive.equippedRiftRelics],
       fractureCascadeUntilRoll: 0,
       probabilityDebtRolls: 0,
+      mutationId: null,
+      mutationEndsAtRoll: 0,
+      nextMutationAtRoll: RIFT_MUTATION_UNLOCK_ROLLS,
+      mutationsCompleted: 0,
+      lastMutationId: null,
       gameState: state,
     };
     await writeArchive(archive);
