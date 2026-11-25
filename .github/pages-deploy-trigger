@@ -147,3 +147,4 @@ Rift first-clear post and simulator support
 Rift relic initializer compatibility fix
 Rift test declaration and obsolete perk assertion fixes
 Rift run banner assertion updated
+Rift active-save progress-path assertion updated
