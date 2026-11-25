@@ -127,7 +127,15 @@ export type RiftPerkId =
   | 'echoChamber'
   | 'dimensionalInterest'
   | 'overkill'
-  | 'singularityFocus';
+  | 'singularityFocus'
+  | 'bossResonance' | 'masteryBridge' | 'runeReconnection'
+  | 'automationOverride' | 'chronoEngine' | 'combatIntegration'
+  | 'initialCalibration' | 'preloadedBlueprint' | 'earlyAuthorization'
+  | 'riftConditioning' | 'advancedDeployment' | 'fortuneReservoir'
+  | 'criticalConversion' | 'fractureRecycling' | 'emergencyProtocol'
+  | 'milestoneAmplifier' | 'anomalyHarvesting' | 'anomalyForecaster'
+  | 'mutationStabilizer' | 'mutationAmplifier' | 'mutationExtraction'
+  | 'anomalyPersistence';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -222,7 +230,55 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     effect: 'At level 10, reach ×2 Luck at 90% and ×5 at 99% objective progress.',
     baseCost: 7, costGrowth: 1.75, maxLevel: 10,
   },
+  bossResonance: { id: 'bossResonance', name: 'Boss Resonance', category: 'rift', description: 'Reconnect the permanent Combat boss-clear bonus to Rift rolls.', effect: 'Restores 10% of your Combat Boss Luck per level, up to 100%.', baseCost: 18, costGrowth: 1.78, maxLevel: 10 },
+  masteryBridge: { id: 'masteryBridge', name: 'Mastery Bridge', category: 'rift', description: 'Carry your main-game Mastery skills into new Rift runs.', effect: 'Transfers 10% of each unlocked Mastery skill level per level.', baseCost: 16, costGrowth: 1.78, maxLevel: 10 },
+  runeReconnection: { id: 'runeReconnection', name: 'Rune Reconnection', category: 'rift', description: 'Reconnect equipped Combat Runes to Rift rolls.', effect: 'Restores 10% of equipped Rune effects per level, up to 100%.', baseCost: 20, costGrowth: 1.82, maxLevel: 10 },
+  automationOverride: { id: 'automationOverride', name: 'Automation Override', category: 'rift', description: 'Bypass the Rift restriction on Auto Roll, including in The First Spark.', effect: 'Unlocks Auto Roll inside all Rift challenges.', baseCost: 32, costGrowth: 1.9, maxLevel: 1 },
+  chronoEngine: { id: 'chronoEngine', name: 'Chrono Engine', category: 'rift', description: 'Unlock Time Energy generation and spending inside Rift runs.', effect: 'Enables Cooldown Reclaimer and instant Time Energy activations in the Rift.', baseCost: 36, costGrowth: 1.9, maxLevel: 1 },
+  combatIntegration: { id: 'combatIntegration', name: 'Combat Integration', category: 'rift', description: 'Let your equipped Combat Orb focus influence Rift rarity floors.', effect: 'Transfers 10% of Combat Orb Focus per level, up to 100%.', baseCost: 22, costGrowth: 1.82, maxLevel: 10 },
+  initialCalibration: { id: 'initialCalibration', name: 'Initial Calibration', category: 'rift', description: 'Begin each challenge with a small amount of objective calibration.', effect: '+1% displayed objective progress and +2% Rift Luck per level. Calibration never counts as a real discovery.', baseCost: 9, costGrowth: 1.7, maxLevel: 10 },
+  preloadedBlueprint: { id: 'preloadedBlueprint', name: 'Preloaded Blueprint', category: 'rift', description: 'Choose one challenge upgrade to install before a run begins.', effect: 'The selected challenge upgrade starts with one free level per perk level, up to 4.', baseCost: 15, costGrowth: 1.82, maxLevel: 4 },
+  earlyAuthorization: { id: 'earlyAuthorization', name: 'Early Authorization', category: 'rift', description: 'Pre-authorize challenge mechanics instead of waiting for their usual in-run requirements.', effect: 'Unlocks one additional challenge upgrade requirement per level, up to all four.', baseCost: 12, costGrowth: 1.75, maxLevel: 4 },
+  riftConditioning: { id: 'riftConditioning', name: 'Rift Conditioning', category: 'rift', description: 'Completed challenges permanently condition future Rift expeditions.', effect: '+1% Rift Luck per previously cleared challenge per level.', baseCost: 11, costGrowth: 1.75, maxLevel: 10 },
+  advancedDeployment: { id: 'advancedDeployment', name: 'Advanced Deployment', category: 'rift', description: 'Prepare additional Emergency Protocol charges before entering a challenge.', effect: '+1 Emergency Protocol use per level at the start of each run.', baseCost: 14, costGrowth: 1.78, maxLevel: 5 },
+  fortuneReservoir: { id: 'fortuneReservoir', name: 'Fortune Reservoir', category: 'rift', description: 'Store unused fortune and release it in regular bursts.', effect: 'Every 50 rolls, the next 5 rolls gain +10% Luck per level.', baseCost: 13, costGrowth: 1.78, maxLevel: 10 },
+  criticalConversion: { id: 'criticalConversion', name: 'Critical Conversion', category: 'rift', description: 'Convert every fifth critical roll into a growing Luck charge.', effect: '+1% Luck per level for every five critical rolls, capped at +100%.', baseCost: 15, costGrowth: 1.8, maxLevel: 10 },
+  fractureRecycling: { id: 'fractureRecycling', name: 'Fracture Recycling', category: 'rift', description: 'Recycle rarity that exceeds the current challenge objective into Coins.', effect: '+5% bonus Rift Coin yield per excess order of magnitude per level.', baseCost: 13, costGrowth: 1.8, maxLevel: 10 },
+  emergencyProtocol: { id: 'emergencyProtocol', name: 'Emergency Protocol', category: 'rift', description: 'Activate a one-use emergency sequence during an active run.', effect: 'Gain one charge per run. An activation clears the roll cooldown and grants 5 rolls of ×1.5 Luck.', baseCost: 25, costGrowth: 1.9, maxLevel: 1 },
+  milestoneAmplifier: { id: 'milestoneAmplifier', name: 'Milestone Amplifier', category: 'rift', description: 'Approaching the objective unlocks increasingly powerful temporary Luck.', effect: '+5% Luck per level at each 25%, 50%, 75%, and 90% objective milestone.', baseCost: 14, costGrowth: 1.78, maxLevel: 10 },
+  anomalyHarvesting: { id: 'anomalyHarvesting', name: 'Anomaly Harvesting', category: 'rift', description: 'Extract additional Rift Points when a mutation ends.', effect: '+1 bonus Rift Point per completed mutation per level.', baseCost: 12, costGrowth: 1.8, maxLevel: 10 },
+  anomalyForecaster: { id: 'anomalyForecaster', name: 'Anomaly Forecaster', category: 'rift', description: 'See several possible mutations before one takes hold.', effect: 'Choose between three mutations instead of receiving one random option.', baseCost: 18, costGrowth: 1.85, maxLevel: 1 },
+  mutationStabilizer: { id: 'mutationStabilizer', name: 'Mutation Stabilizer', category: 'rift', description: 'Reduce the harmful side effects of active Rift Mutations.', effect: 'Reduces mutation penalties by 5% per level, up to 50%.', baseCost: 12, costGrowth: 1.78, maxLevel: 10 },
+  mutationAmplifier: { id: 'mutationAmplifier', name: 'Mutation Amplifier', category: 'rift', description: 'Make mutations more volatile and more rewarding.', effect: '+5% mutation benefits and +2% mutation penalties per level.', baseCost: 11, costGrowth: 1.78, maxLevel: 10 },
+  mutationExtraction: { id: 'mutationExtraction', name: 'Mutation Extraction', category: 'rift', description: 'Convert completed mutations into additional Rift Point rewards.', effect: '+1 Rift Point per completed mutation per level.', baseCost: 14, costGrowth: 1.8, maxLevel: 10 },
+  anomalyPersistence: { id: 'anomalyPersistence', name: 'Anomaly Persistence', category: 'rift', description: 'Keep beneficial and harmful mutations active for longer.', effect: '+5 mutation rolls of duration per level.', baseCost: 10, costGrowth: 1.75, maxLevel: 10 },
 };
+
+export const RIFT_MUTATIONS = [
+  { id: 'temporal-collapse', name: 'Temporal Collapse', description: 'Roll cooldowns shrink dramatically, but Rift Coin income is reduced.', effect: '×0.70 cooldown and ×0.75 Coins.' },
+  { id: 'gravitational-surge', name: 'Gravitational Surge', description: 'A gravity well bends rarity upward while pulling Coins out of the run.', effect: '×1.45 Luck and ×0.70 Coins.' },
+  { id: 'unstable-economy', name: 'Unstable Economy', description: 'The Rift wallet swings between lean and unusually profitable roll batches.', effect: 'Rift Coin yield alternates between ×0.55 and ×1.85 every five rolls.' },
+  { id: 'critical-instability', name: 'Critical Instability', description: 'Critical energy surges, but ordinary rarity becomes less reliable.', effect: '+8 percentage points of critical chance and ×0.85 Luck.' },
+  { id: 'nullification', name: 'Nullification', description: 'Permanent Rift perk effects are partially suppressed, but the challenge reward is amplified.', effect: 'Rift perk bonuses are halved and mutation completion rewards are doubled.' },
+] as const;
+
+export type RiftMutationId = typeof RIFT_MUTATIONS[number]['id'];
+export type RiftMutationState = { id: RiftMutationId; startedAt: number; startedAtRoll: number; endsAtRoll: number; };
+
+export function getRiftMutationDefinition(id: unknown) {
+  return RIFT_MUTATIONS.find(mutation => mutation.id === id);
+}
+
+export function riftMutationDurationRolls(persistenceLevel: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.anomalyPersistence.maxLevel, Math.floor(Number(persistenceLevel) || 0)));
+  return 25 + level * 5;
+}
+
+export function riftMutationPenaltyFactor(stabilizerLevel: number, amplifierLevel: number): number {
+  const stabilizer = Math.max(0, Math.min(RIFT_PERKS.mutationStabilizer.maxLevel, Math.floor(Number(stabilizerLevel) || 0)));
+  const amplifier = Math.max(0, Math.min(RIFT_PERKS.mutationAmplifier.maxLevel, Math.floor(Number(amplifierLevel) || 0)));
+  return Math.max(0.25, 1 - stabilizer * 0.05 + amplifier * 0.02);
+}
 
 export const RIFT_CHALLENGE_UPGRADES: Record<RiftChallengeUpgradeId, RiftChallengeUpgradeDefinition> = {
   fortune: {
@@ -285,6 +341,12 @@ export interface RiftChallengeRun {
   temporalDragMultiplier: number;
   /** Minute boundary for the active run's compound Coin interest. */
   lastInterestAt: number;
+  activeMutation: RiftMutationState | null;
+  pendingMutationChoices: RiftMutationId[];
+  lastMutationRoll: number;
+  completedMutations: number;
+  emergencyProtocolsUsed: number;
+  emergencyProtocolUntilRoll: number;
   /** Complete, isolated main-game save used while this Rift challenge is active. */
   gameState?: PlayerState | null;
 }
@@ -345,13 +407,15 @@ export function riftChallengeIsAvailable(mainProgress: Partial<RiftChallengeMain
 
 export function riftChallengeMechanicUnlocks(
   mainProgress: Partial<RiftChallengeMainProgress> | null | undefined,
+  earlyAuthorizationLevel = 0,
 ): RiftChallengeMechanicUnlocks {
   const progress = normalizeRiftMainProgress(mainProgress);
+  const authorization = Math.max(0, Math.min(4, Math.floor(Number(earlyAuthorizationLevel) || 0)));
   return {
-    fortune: progress.level >= 5,
-    speed: progress.level >= 10,
-    prosperity: progress.totalRolls >= 25,
-    critical: progress.totalCrits >= 10,
+    fortune: progress.level >= 5 || authorization >= 1,
+    speed: progress.level >= 10 || authorization >= 2,
+    prosperity: progress.totalRolls >= 25 || authorization >= 3,
+    critical: progress.totalCrits >= 10 || authorization >= 4,
   };
 }
 
@@ -402,6 +466,14 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
     temporalArbitrage: 0, probabilityDebt: 0, temporalCompression: 0,
     fractureCascade: 0, echoChamber: 0, dimensionalInterest: 0,
     overkill: 0, singularityFocus: 0,
+    bossResonance: 0, masteryBridge: 0, runeReconnection: 0,
+    automationOverride: 0, chronoEngine: 0, combatIntegration: 0,
+    initialCalibration: 0, preloadedBlueprint: 0, earlyAuthorization: 0,
+    riftConditioning: 0, advancedDeployment: 0, fortuneReservoir: 0,
+    criticalConversion: 0, fractureRecycling: 0, emergencyProtocol: 0,
+    milestoneAmplifier: 0, anomalyHarvesting: 0, anomalyForecaster: 0,
+    mutationStabilizer: 0, mutationAmplifier: 0, mutationExtraction: 0,
+    anomalyPersistence: 0,
   };
 }
 
