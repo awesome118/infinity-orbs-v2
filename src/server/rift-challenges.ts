@@ -331,14 +331,20 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
     ? progressFromGameState(storedRun.gameState)
     : archive.riftPlayerProgress ?? currentMainProgress;
   const earlyAuthorizationLevel = archive.riftPerkLevels.earlyAuthorization ?? 0;
+  const mechanicUnlocks = activeRun?.gameState
+    ? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel)
+    : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel);
+  if (activeRun) {
+    for (const id of Object.keys(activeRun.upgradeLevels) as RiftChallengeUpgradeId[]) {
+      if (safeInteger(activeRun.upgradeLevels[id]) > 0) mechanicUnlocks[id] = true;
+    }
+  }
   return {
     challenge: RIFT_FIRST_SPARK,
     challenges: RIFT_CHALLENGES,
     archive,
     mainProgress,
-    mechanicUnlocks: activeRun?.gameState
-      ? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel)
-      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel),
+    mechanicUnlocks,
     challengeAvailable: riftChallengeIsAvailable(mainProgress),
     kudosStats: {
       last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
@@ -745,7 +751,7 @@ export async function buyRiftChallengeUpgrade(
       progress,
       archive.riftPerkLevels.earlyAuthorization,
     );
-    if (!mechanicUnlocks[upgradeId]) {
+    if (!mechanicUnlocks[upgradeId] && run.upgradeLevels[upgradeId] <= 0) {
       throw new Error('Rift-game requirement not met: ' + RIFT_CHALLENGE_UPGRADES[upgradeId].mainRequirement + '.');
     }
     const definition = RIFT_CHALLENGE_UPGRADES[upgradeId];
