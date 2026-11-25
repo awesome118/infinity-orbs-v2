@@ -106,3 +106,4 @@ Pages diagnostics fix: do not poll Global Chat until server availability is true
 Pages update: Rift rewards and passive generation use only verified best-cleared difficulty; logarithmic Goal/Luck sliders; No Shards disables all personal/global Booster effects.
 Pages validation: Rift state snapshots suppress Global Booster effects and presentation while a run is active.
 Pages validation: Rift Yield multiplies the complete earned bar rate; previews display the full projected post-clear rate.
+Pages validation: match the Rift configuration label after replacing projected generation with the post-clear best rate.
