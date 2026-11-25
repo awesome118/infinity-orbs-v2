@@ -139,3 +139,5 @@ Pages Rift upgrade redesign: replace the plain perk list with a permanent resear
 Pages Rift upgrade test correction: use a plain text assertion for the research hero heading.
 
 Pages Rift upgrade pruning: remove Stolen Momentum and return prior purchases as Rift Points through a one-time archive v6 migration.
+
+Deploy prompt: remove Stolen Momentum, migrate existing purchases back to Rift Points, and start new Rift runs without carry-over ranks.
