@@ -448,7 +448,7 @@ export const RIFT_UNLOCKS: Record<RiftUnlockId, RiftUnlockDefinition> = {
     id: 'globalConduit',
     name: 'Worldline Conduit',
     description: 'Reconnect isolated runs to the live global systems instead of leaving them outside the experiment.',
-    effect: 'Active Global Boosters and community event buffs work in the Rift. You can also activate Global Boosters from inside a run.',
+    effect: 'Active Global Boosters and community event buffs affect Rift rolls. Activate Global Boosters during a run; the No Shards rule still disables boosters.',
     cost: 130,
   },
   riftMemory: {
