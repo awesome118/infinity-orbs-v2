@@ -184,7 +184,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(client, /panel=\{tab === 'rift-upgrades' \? 'upgrades' : tab === 'rift-relics' \? 'relics' : 'run'\}/);
   assert.doesNotMatch(client, /renderNavItem\('challenges', 'Rift Progression', Compass\)/);
 
-  assert.match(challengeUi, /Rift game active/);
+  assert.match(challengeUi, /Active Rift run/);
   assert.match(challengeUi, /Goal/);
   assert.match(challengeUi, /Temporal Drag/);
   assert.match(challengeUi, /Luck Suppression/);
