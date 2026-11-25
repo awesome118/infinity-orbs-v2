@@ -259,7 +259,7 @@ export const RIFT_MUTATIONS = [
   { id: 'gravitational-surge', name: 'Gravitational Surge', description: 'A gravity well bends rarity upward while pulling Coins out of the run.', effect: '×1.45 Luck and ×0.70 Coins.' },
   { id: 'unstable-economy', name: 'Unstable Economy', description: 'The Rift wallet swings between lean and unusually profitable roll batches.', effect: 'Rift Coin yield alternates between ×0.55 and ×1.85 every five rolls.' },
   { id: 'critical-instability', name: 'Critical Instability', description: 'Critical energy surges, but ordinary rarity becomes less reliable.', effect: '+8 percentage points of critical chance and ×0.85 Luck.' },
-  { id: 'nullification', name: 'Nullification', description: 'Permanent Rift perk effects are partially suppressed, but the challenge reward is amplified.', effect: 'Rift perk bonuses are halved and mutation completion rewards are doubled.' },
+  { id: 'nullification', name: 'Nullification', description: 'Rift Luck perks are partially suppressed in exchange for a larger mutation payout.', effect: 'Rift Luck perk bonuses are halved and mutation completion rewards are doubled.' },
 ] as const;
 
 export type RiftMutationId = typeof RIFT_MUTATIONS[number]['id'];
