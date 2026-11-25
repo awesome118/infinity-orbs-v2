@@ -21,7 +21,6 @@ import {
   riftRatePerHour,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
-  RIFT_MUTATIONS,
   getRiftMutationDefinition,
   riftMutationDurationRolls,
   RIFT_FIRST_SPARK,
