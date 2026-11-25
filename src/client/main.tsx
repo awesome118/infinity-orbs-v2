@@ -155,6 +155,8 @@ type ActiveTab =
   | 'altar'
   | 'mastery'
   | 'challenges'
+  | 'rift-upgrades'
+  | 'rift-relics'
   | 'collection'
   | 'runes'
   | 'quests'
@@ -563,7 +565,7 @@ function App() {
   }, [state?.level, state?.totalRolls, tutorialDismissed, combatTutorialDismissed, combatTutorialStep, combatTutorialStatusLoaded]);
   const riftActive = Boolean(state?.riftSession || state?.riftSaveContext?.startsWith('rift:'));
   const combatMode = tab === 'fight' || tab === 'dungeons' || tab === 'gear' || tab === 'forge' || tab === 'skills' || tab === 'arena' || tab === 'runes';
-  const riftChallengesMode = tab === 'challenges' && !state?.riftSession;
+  const riftChallengesMode = tab === 'challenges' || tab === 'rift-upgrades' || tab === 'rift-relics';
   const redditSimulatorMode = IS_GITHUB_PAGES_TEST && tab === 'reddit-simulator';
   const standalonePageMode = combatMode || riftChallengesMode;
   const combatModeRef = useRef(standalonePageMode);
@@ -1150,7 +1152,9 @@ function App() {
     boosters: 'Boosters',
     altar: 'Altar',
     mastery: 'Mastery',
-    challenges: 'Challenges',
+    challenges: 'Run',
+    'rift-upgrades': 'Rift Upgrades',
+    'rift-relics': 'Relics',
     collection: 'Collection',
     social: 'Guilds',
     profile: 'Progress',
@@ -1178,7 +1182,7 @@ function App() {
       return;
     }
     const targetIsCombatMode = nextTab === 'fight' || nextTab === 'dungeons' || nextTab === 'gear' || nextTab === 'forge' || nextTab === 'skills' || nextTab === 'arena' || nextTab === 'runes';
-    const targetIsRiftChallengesMode = nextTab === 'challenges' && !stateRef.current?.riftSession;
+    const targetIsRiftChallengesMode = nextTab === 'challenges' || nextTab === 'rift-upgrades' || nextTab === 'rift-relics';
     const targetIsStandalonePageMode = targetIsCombatMode || targetIsRiftChallengesMode;
     if (targetIsStandalonePageMode && rollActionLockRef.current) {
       showToast(targetIsRiftChallengesMode ? 'Finish the current roll before opening Rift Challenges.' : 'Finish the current roll before entering Combat.', 'info');
@@ -4419,8 +4423,10 @@ function App() {
             </>
           ) : (
             <>
-              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Rift Challenges pages">
-                {renderNavItem('challenges', 'Rift Progression', Compass)}
+              <div className="io-nav-primary io-nav-combat-list" role="group" aria-label="Rift pages">
+                {renderNavItem('challenges', 'Run', Compass)}
+                {renderNavItem('rift-upgrades', 'Upgrades', Zap)}
+                {renderNavItem('rift-relics', 'Relics', Gem)}
               </div>
               <div className="io-nav-trailing io-nav-combat-trailing">
                 <button type="button" onClick={() => changeTab('roll')} className="nav-tab io-combat-mode-switch io-nav-combat-desktop-return">
@@ -4490,6 +4496,7 @@ function App() {
           <CombatSection page={tab as CombatPage} onNavigate={changeTab} />
         ) : riftChallengesMode ? (
           <RiftChallengesSection
+            panel={tab === 'rift-upgrades' ? 'upgrades' : tab === 'rift-relics' ? 'relics' : 'run'}
             onEnterGame={() => {
               setTab('roll');
               setMoreNavOpen(false);
@@ -4564,32 +4571,6 @@ function App() {
             onBuyAllUpgrades={handleBuyAllUpgrades}
             onActivateTurbo={handleActivateTurbo}
             busy={false}
-          />
-        )}
-
-        {tab === 'challenges' && !riftChallengesMode && (
-          <RiftChallengesSection
-            onEnterGame={() => {
-              setTab('roll');
-              setMoreNavOpen(false);
-              setAutoRoll(false);
-              setLastOrb(null);
-              setLastBatch([]);
-              setBatchSummary(null);
-              setReadyAt(0);
-              void refreshAll({ allowSameRevisionBalanceChanges: true });
-            }}
-            onExit={() => {
-              setTab('roll');
-              setMoreNavOpen(false);
-              setAutoRoll(false);
-              setLastOrb(null);
-              setLastBatch([]);
-              setBatchSummary(null);
-              setReadyAt(0);
-              void refreshAll({ allowSameRevisionBalanceChanges: true });
-            }}
-            onRefreshPlayer={() => { void refreshAll({ allowSameRevisionBalanceChanges: true }); }}
           />
         )}
 

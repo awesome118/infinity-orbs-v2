@@ -90,20 +90,15 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /getRiftRelicEffects/);
   assert.match(game, /loadedDieCrossedMilestone/);
   assert.match(game, /fractureCascadeUntilRoll/);
-  assert.match(challengeUi, /aria-label="Rift menu"/);
-  assert.match(challengeUi, /className="nav-list"/);
-  assert.match(challengeUi, /nav-tab io-nav-item/);
-  assert.match(challengeUi, /aria-current=\{activePanel === 'run' \? 'page' : undefined\}/);
-  assert.match(challengeUi, /io-nav-icon/);
   assert.doesNotMatch(challengeUi, /<divclassName=/);
-  assert.match(challengeUi, /Compass/);
-  assert.match(challengeUi, /Gem/);
 
 
-  assert.match(challengeUi, /setActivePanel\('run'\)/);
   assert.match(challengeUi, /activePanel === 'upgrades'/);
   assert.match(challengeUi, /activePanel === 'relics'/);
   assert.match(challengeUi, /Configuration saved/);
+  assert.match(challengeUi, /panel: 'run' \| 'upgrades' \| 'relics'/);
+  assert.match(challengeUi, /const activePanel = panel/);
+  assert.doesNotMatch(challengeUi, /Rift menu|setActivePanel/);
   assert.match(challengeUi, /The Relic Forge/);
   assert.match(challengeUi, /One-time unlocks/);
   assert.match(challengeUi, /START RIFT/);
@@ -111,8 +106,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(challengeUi, /RIFT_RELIC_FORKED_EQUIP_SLOTS/);
   assert.match(challengeUi, /RIFT_RELIC_EQUIP_SLOTS/);
   assert.match(sharedGame, /riftSaveContext\?/);
-  assert.match(client, /riftChallengesMode = tab === 'challenges' && !state\?\.riftSession/);
-  assert.match(client, /tab === 'challenges' && !riftChallengesMode/);
+  assert.match(client, /riftChallengesMode = tab === 'challenges' \|\| tab === 'rift-upgrades' \|\| tab === 'rift-relics'/);
   assert.match(client, /state\?\.riftRunComplete/);
   assert.match(client, /currentState\?\.riftSaveContext/);
   assert.match(adminApi, /case '\/queue-force-roll'/);
@@ -125,8 +119,11 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(client, /getRiftChallengeDefinition\(currentState\.riftSession\?\.challengeId\)/);
   assert.match(client, /onEnterGame=\{\(\) =>/);
   assert.match(client, /renderNavItem\('reddit-simulator', 'Reddit Simulator', MessageSquare\)/);
-  assert.match(client, /renderNavItem\('challenges', 'Rift Progression', Compass\)/);
-  assert.doesNotMatch(client, /renderNavItem\('challenges', 'Challenges', Compass\)/);
+  assert.match(client, /renderNavItem\('challenges', 'Run', Compass\)/);
+  assert.match(client, /renderNavItem\('rift-upgrades', 'Upgrades', Zap\)/);
+  assert.match(client, /renderNavItem\('rift-relics', 'Relics', Gem\)/);
+  assert.match(client, /panel=\{tab === 'rift-upgrades' \? 'upgrades' : tab === 'rift-relics' \? 'relics' : 'run'\}/);
+  assert.doesNotMatch(client, /renderNavItem\('challenges', 'Rift Progression', Compass\)/);
 
   assert.match(challengeUi, /Rift game active/);
   assert.match(challengeUi, /Goal/);

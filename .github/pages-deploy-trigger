@@ -128,3 +128,5 @@ Deploy prompt: convert Rift workspace navigation into compact accessible tabs wi
 Deploy prompt: use the game's existing nav-list and nav-tab infrastructure for Rift sub-navigation, matching native page navigation styling.
 
 Deploy prompt: fix JSX panel wrapper spacing after adopting native Rift navigation tabs.
+
+Deploy prompt: promote Rift Run, Upgrades, and Relics to sibling routes in the game's standalone top-level navigation; remove nested Rift Progression submenu.

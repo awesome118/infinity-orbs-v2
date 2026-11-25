@@ -25,7 +25,7 @@ import {
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
 import { RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS, getRiftRelicEffects, riftRelicCost, type RiftRelicId } from '../../shared/rift-relics.js';
-import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert, Compass, Gem } from 'lucide-react';
+import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -80,16 +80,18 @@ function multiplierLabel(value: number): string {
 }
 
 export const RiftChallengesSection: React.FC<{
+  panel: 'run' | 'upgrades' | 'relics';
   onEnterGame?: () => void;
   onExit?: () => void;
   onRefreshPlayer?: () => void;
-}> = ({ onEnterGame, onExit, onRefreshPlayer }) => {
+}> = ({ panel, onEnterGame, onExit, onRefreshPlayer }) => {
+  const activePanel = panel;
   const [snapshot, setSnapshot] = useState<RiftChallengeSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [activePanel, setActivePanel] = useState<'run' | 'upgrades' | 'relics'>('run');  const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [modifierSettings, setModifierSettings] = useState<RiftModifierSettings>({ ...DEFAULT_RIFT_MODIFIERS });
   const [challengeToggles, setChallengeToggles] = useState<RiftChallengeToggles>({ ...DEFAULT_RIFT_CHALLENGES });
   const [configDirty, setConfigDirty] = useState(false);
@@ -350,39 +352,7 @@ export const RiftChallengesSection: React.FC<{
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{error}</div>}
 
-      <nav className="nav-list" aria-label="Rift menu">
-        <button
-          id="rift-tab-run"
-          type="button"
-          onClick={() => setActivePanel('run')}
-          aria-current={activePanel === 'run' ? 'page' : undefined}
-          className={'nav-tab io-nav-item' + (activePanel === 'run' ? ' is-active' : '')}
-        >
-          <Compass className="io-nav-icon" />
-          <span className="io-nav-label">Run</span>
-        </button>
-        <button
-          id="rift-tab-upgrades"
-          type="button"
-          onClick={() => setActivePanel('upgrades')}
-          aria-current={activePanel === 'upgrades' ? 'page' : undefined}
-          className={'nav-tab io-nav-item' + (activePanel === 'upgrades' ? ' is-active' : '')}
-        >
-          <Zap className="io-nav-icon" />
-          <span className="io-nav-label">Upgrades</span>
-        </button>
-        <button
-          id="rift-tab-relics"
-          type="button"
-          onClick={() => setActivePanel('relics')}
-          aria-current={activePanel === 'relics' ? 'page' : undefined}
-          className={'nav-tab io-nav-item' + (activePanel === 'relics' ? ' is-active' : '')}
-        >
-          <Gem className="io-nav-icon" />
-          <span className="io-nav-label">Relics</span>
-          <span className="io-nav-unlock">{archive.equippedRiftRelics.length}/{relicSlotLimit}</span>
-        </button>
-      </nav>
+
 
       <div className="space-y-5">
         {activePanel === 'run' && (
