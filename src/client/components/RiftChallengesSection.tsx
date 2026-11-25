@@ -10,6 +10,10 @@ import {
   riftModifierFromSliderPosition,
   riftModifierSliderPosition,
   getRiftChallengeDefinition,
+  getRiftMutationDefinition,
+  RIFT_MUTATION_UNLOCK_ROLLS,
+  RIFT_MUTATION_UNLOCK_PROGRESS,
+  riftMutationRewardMultiplier,
   riftModifierRewardPreview,
   riftRatePerHour,
   riftPerkCost,
@@ -172,6 +176,14 @@ export const RiftChallengesSection: React.FC<{
     const best = Math.max(2, run.bestRarity);
     return Math.max(0, Math.min(100, Math.log10(best) / Math.log10(runTarget) * 100));
   }, [run?.bestRarity, runTarget]);
+  const currentMutation = getRiftMutationDefinition(run?.mutationId);
+  const mutationRollsRemaining = currentMutation && run
+    ? Math.max(0, run.mutationEndsAtRoll - run.totalRolls)
+    : 0;
+  const mutationRewardBonusPercent = Math.round((riftMutationRewardMultiplier(run?.mutationsCompleted ?? 0) - 1) * 100);
+  const mutationGateReached = Boolean(run &&
+    run.totalRolls >= RIFT_MUTATION_UNLOCK_ROLLS &&
+    progressPercent >= RIFT_MUTATION_UNLOCK_PROGRESS * 100);
 
   const retryLoad = async () => {
     setLoading(true);
@@ -402,6 +414,26 @@ export const RiftChallengesSection: React.FC<{
               <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all" style={{ width: progressPercent + '%' }} />
             </div>
           </div>
+          {isActive && (
+            <div className="mt-3 rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/5 p-3">
+              <div className="text-[9px] font-black uppercase tracking-[.2em] text-fuchsia-300">Rift mutations</div>
+              {currentMutation && mutationRollsRemaining > 0 ? (
+                <>
+                  <div className="mt-1 text-sm font-black text-white">{currentMutation.name} · {mutationRollsRemaining} rolls left</div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{currentMutation.effect}</p>
+                </>
+              ) : (
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  {mutationGateReached
+                    ? 'The Rift is between anomalies. Another mutation may emerge after the quiet interval.'
+                    : 'Mutations begin after 20 rolls and 20% objective progress. Each lasts 12 rolls.'}
+                </p>
+              )}
+              <div className="mt-2 text-[10px] font-bold text-fuchsia-200">
+                {run.mutationsCompleted} endured · +{mutationRewardBonusPercent}% Rift Point reward at completion
+              </div>
+            </div>
+          )}
           {run.lastRoll && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-3 py-2.5">
               <div>
