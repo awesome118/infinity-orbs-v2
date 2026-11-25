@@ -152,13 +152,13 @@ test('Temporal Arbitrage turns selected Temporal Drag into Rift Luck', () => {
   assert.equal(normalizeRiftTemporalDragMultiplier(30), 20);
   assert.equal(riftTemporalArbitrageMultiplier(6, 0), 1);
   assert.equal(riftTemporalArbitrageMultiplier(6, 20), 2);
-  assert.equal(riftTemporalArbitrageMultiplier(20, 20), 4.8);
+  assert.ok(Math.abs(riftTemporalArbitrageMultiplier(20, 20) - 4.8) < 1e-12);
 });
 
 test('Temporal Compression reduces only the added Temporal Drag cooldown penalty', () => {
   assert.equal(riftTemporalCooldownMultiplier(1, 20), 1);
   assert.equal(riftTemporalCooldownMultiplier(20, 0), 20);
-  assert.equal(riftTemporalCooldownMultiplier(20, 20), 4.8);
+  assert.ok(Math.abs(riftTemporalCooldownMultiplier(20, 20) - 4.8) < 1e-12);
 });
 
 test('Probability Debt scales with dry streak and its 100-roll milestones', () => {
