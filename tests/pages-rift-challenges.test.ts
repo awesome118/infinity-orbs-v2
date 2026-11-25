@@ -11,6 +11,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   const mock = read('src/server/devvit-mock.ts');
   const client = read('src/client/main.tsx');
   const challengeUi = read('src/client/components/RiftChallengesSection.tsx');
+  const rollUi = read('src/client/components/RollSection.tsx');
   const moreBoosterUi = read('src/client/components/BoostersAndAutomation.tsx');
   const shared = read('src/shared/rift-challenges.ts');
   const sharedGame = read('src/shared/game.ts');
