@@ -1145,10 +1145,10 @@ export interface RiftPlayerSession {
   challengeId: string;
   targetRarity: number;
   baseCooldownMs: number;
-  upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
   challengeCoinMultiplier: number;
+  riftProgressCoinMultiplier: number;
   luckSuppressionMultiplier: number;
   secondBest: boolean;
   noAutomation: boolean;
@@ -2768,7 +2768,7 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
   // An active Rift owns its own base cadence. Normal Speed/Prestige modifiers
   // still work on that cadence, but the player's main-save cooldown is never used.
   let cd = s.riftSession
-    ? Math.max(500, s.riftSession.baseCooldownMs - coinReduction - directCooldownReduction - (s.riftSession.upgradeLevels.speed * 90))
+    ? Math.max(500, s.riftSession.baseCooldownMs - coinReduction - directCooldownReduction)
     : Math.max(
         floor,
         (liveBalance?.['roll.baseCooldownMs'] ?? BASE_COOLDOWN_MS) - coinReduction - directCooldownReduction,
