@@ -21,6 +21,9 @@ import {
   riftRatePerHour,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
+  RIFT_MUTATIONS,
+  getRiftMutationDefinition,
+  riftMutationDurationRolls,
   RIFT_FIRST_SPARK,
   RIFT_PERKS,
   type RiftChallengeArchive,
@@ -30,6 +33,7 @@ import {
   type RiftChallengeSnapshot,
   type RiftChallengeUpgradeId,
   type RiftPerkId,
+  type RiftMutationId,
   type RiftPerkLevels,
 } from '../shared/rift-challenges.js';
 
@@ -150,6 +154,24 @@ function normalizeRun(value: unknown): RiftChallengeRun | null {
     lastRoll,
     temporalDragMultiplier: normalizeRiftTemporalDragMultiplier(value.temporalDragMultiplier),
     lastInterestAt: safeInteger(value.lastInterestAt, safeInteger(value.startedAt)),
+    activeMutation: (() => {
+      const mutation = isRecord(value.activeMutation) ? value.activeMutation : null;
+      return mutation && getRiftMutationDefinition(mutation.id)
+        ? {
+            id: mutation.id as RiftMutationId,
+            startedAt: safeInteger(mutation.startedAt),
+            startedAtRoll: safeInteger(mutation.startedAtRoll),
+            endsAtRoll: safeInteger(mutation.endsAtRoll),
+          }
+        : null;
+    })(),
+    pendingMutationChoices: Array.isArray(value.pendingMutationChoices)
+      ? value.pendingMutationChoices.filter((id): id is RiftMutationId => getRiftMutationDefinition(id) !== undefined).slice(0, 3)
+      : [],
+    lastMutationRoll: safeInteger(value.lastMutationRoll),
+    completedMutations: safeInteger(value.completedMutations),
+    emergencyProtocolsUsed: safeInteger(value.emergencyProtocolsUsed),
+    emergencyProtocolUntilRoll: safeInteger(value.emergencyProtocolUntilRoll),
     gameState: isRecord(value.gameState) ? value.gameState as unknown as PlayerState : null,
   };
 }
@@ -308,14 +330,15 @@ function snapshot(archive: RiftChallengeArchive, currentMainProgress: RiftChalle
   const mainProgress = storedRun?.gameState
     ? progressFromGameState(storedRun.gameState)
     : archive.riftPlayerProgress ?? currentMainProgress;
+  const earlyAuthorizationLevel = archive.riftPerkLevels.earlyAuthorization ?? 0;
   return {
     challenge: RIFT_FIRST_SPARK,
     challenges: RIFT_CHALLENGES,
     archive,
     mainProgress,
     mechanicUnlocks: activeRun?.gameState
-      ? riftChallengeMechanicUnlocks(mainProgress)
-      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress),
+      ? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel)
+      : activeRun?.mechanicUnlocks ?? riftChallengeMechanicUnlocks(mainProgress, earlyAuthorizationLevel),
     challengeAvailable: riftChallengeIsAvailable(mainProgress),
     kudosStats: {
       last24Hours: archive.kudosReceivedAt.filter(timestamp => timestamp >= Date.now() - RIFT_KUDOS_WINDOW_MS).length,
@@ -594,15 +617,19 @@ export async function awardRiftCompletionKudos(postIdValue?: unknown): Promise<{
   });
 }
 
-export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_SPARK.id): Promise<RiftChallengeSnapshot> {
+export async function startRiftChallenge(
+  challengeIdValue: unknown = RIFT_FIRST_SPARK.id,
+  blueprintIdValue: unknown = 'fortune',
+): Promise<RiftChallengeSnapshot> {
   const challenge = getRiftChallengeDefinition(String(challengeIdValue ?? RIFT_FIRST_SPARK.id));
   if (!challenge) throw new Error('Choose a valid Rift Challenge.');
   return withPlayerMutationLock(async () => {
     const archive = await readArchive();
     accrueRiftProgress(archive);
+    const mainGameState = await loadRaw({ source: 'main' });
     const mainProgress = archive.activeRun?.gameState
       ? progressFromGameState(archive.activeRun.gameState)
-      : archive.riftPlayerProgress ?? await readMainProgress();
+      : archive.riftPlayerProgress ?? progressFromGameState(mainGameState);
     if (mainProgress.level < challenge.requiredMainLevel) {
       throw new Error('Reach Level ' + challenge.requiredMainLevel + ' in ' + (challenge.prerequisiteId ? 'the previous Rift run' : 'the main game') + ' to unlock ' + challenge.name + '.');
     }
@@ -619,6 +646,25 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
     const now = Date.now();
     const state = createInitialState(now);
     const seedCoins = archive.riftPerkLevels.riftStartCoins * 100;
+    const masteryBridgeLevel = archive.riftPerkLevels.masteryBridge ?? 0;
+    if (masteryBridgeLevel > 0) {
+      const sourceSkills = mainGameState.masterySkills ?? {};
+      state.masterySkills = Object.fromEntries(
+        Object.entries(sourceSkills).map(([id, raw]) => {
+          const level = Math.max(0, Math.floor(Number(raw) || 0));
+          const transferred = level > 0 ? Math.max(1, Math.floor(level * masteryBridgeLevel / 10)) : 0;
+          return [id, transferred];
+        }),
+      ) as typeof state.masterySkills;
+      state.masteryPoints = Math.max(0, Math.floor(Number(mainGameState.masteryPoints) || 0));
+    }
+    if ((archive.riftPerkLevels.chronoEngine ?? 0) > 0) {
+      state.masterySkills = { ...state.masterySkills, cooldownReclaimer: Math.max(1, state.masterySkills?.cooldownReclaimer ?? 0) };
+    }
+    if ((archive.riftPerkLevels.automationOverride ?? 0) > 0) {
+      state.upgrades.auto = 1;
+      state.manualRolls = Math.max(3, state.manualRolls);
+    }
     state.username = String(context.username ?? '').slice(0, 100) || undefined;
     state.coins = seedCoins;
     state.lifetimeCoins = seedCoins;
@@ -629,6 +675,14 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
     state.saveGeneration = 0;
     state.stateRevision = 0;
     const riftProgress = progressFromGameState(state);
+    const validBlueprintId = RIFT_CHALLENGE_UPGRADES[blueprintIdValue as RiftChallengeUpgradeId]
+      ? blueprintIdValue as RiftChallengeUpgradeId
+      : 'fortune';
+    const blueprintLevel = Math.max(0, Math.min(4, archive.riftPerkLevels.preloadedBlueprint ?? 0));
+    const startingUpgradeLevels: Record<RiftChallengeUpgradeId, number> = {
+      fortune: 0, speed: 0, prosperity: 0, critical: 0,
+    };
+    if (blueprintLevel > 0) startingUpgradeLevels[validBlueprintId] = blueprintLevel;
     archive.activeRun = {
       runId: createRunId(),
       challengeId: challenge.id as RiftChallengeId,
@@ -640,12 +694,18 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       totalRolls: state.totalRolls,
       bestRarity: Math.max(2, state.highestRarity),
       nextRollAt: 0,
-      upgradeLevels: { fortune: 0, speed: 0, prosperity: 0, critical: 0 },
+      upgradeLevels: startingUpgradeLevels,
       mainProgressAtStart: riftProgress,
-      mechanicUnlocks: riftChallengeMechanicUnlocks(riftProgress),
+      mechanicUnlocks: riftChallengeMechanicUnlocks(riftProgress, archive.riftPerkLevels.earlyAuthorization),
       lastRoll: null,
       temporalDragMultiplier: 1,
       lastInterestAt: now,
+      activeMutation: null,
+      pendingMutationChoices: [],
+      lastMutationRoll: 0,
+      completedMutations: 0,
+      emergencyProtocolsUsed: 0,
+      emergencyProtocolUntilRoll: 0,
       gameState: state,
     };
     await writeArchive(archive);
