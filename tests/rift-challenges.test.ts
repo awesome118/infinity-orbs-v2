@@ -123,6 +123,26 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
   assert.ok(riftPerkCost('mainLuck', 1) > riftPerkCost('mainLuck', 0));
   assert.equal(RIFT_PERKS.mainLuck.maxLevel, 10);
   assert.equal(RIFT_PERKS.riftStartCoins.maxLevel, 20);
+  assert.equal(RIFT_PERKS.mutationPersistence.maxLevel, 5);
+  assert.equal(RIFT_PERKS.mutationCycle.maxLevel, 5);
+  assert.equal(RIFT_PERKS.mutationMastery.maxLevel, 5);
+  assert.equal(RIFT_PERKS.riftCoinYield.maxLevel, 10);
+  assert.equal(RIFT_PERKS.riftCrit.maxLevel, 10);
+  assert.equal(riftPerkCost('mutationPersistence', 0), RIFT_PERKS.mutationPersistence.baseCost);
+  assert.ok(riftPerkCost('mutationCycle', 1) > riftPerkCost('mutationCycle', 0));
+  assert.equal(emptyRiftPerkLevels().mutationPersistence, 0);
+  assert.equal(emptyRiftPerkLevels().riftCrit, 0);
+  assert.equal(Object.keys(emptyRiftPerkLevels()).length, Object.keys(RIFT_PERKS).length);
+});
+
+test('Mutation Mastery scales completed-mutation Rift Point rewards within its cap', () => {
+  assert.equal(riftMutationRewardMultiplier(0), 1);
+  assert.equal(riftMutationRewardMultiplier(1), 1.05);
+  assert.equal(riftMutationRewardMultiplier(5), 1.25);
+  assert.equal(riftMutationRewardMultiplier(5, 1), 1.30);
+  assert.equal(riftMutationRewardMultiplier(5, 5), 1.50);
+  assert.equal(riftMutationRewardMultiplier(100, 5), 1.50);
+  assert.equal(riftMutationRewardMultiplier(100, 100), 1.50);
 });
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
@@ -146,6 +166,8 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
       probabilityDebt: 0, dimensionalInterest: 0,
+      mutationPersistence: 0, mutationCycle: 0, mutationMastery: 0,
+      riftCoinYield: 0, riftCrit: 0,
     },
     riftRelicLevels: {
       'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
