@@ -4506,7 +4506,6 @@ async function saveActiveRiftPlayerState(
       const awardMutationCompletion = () => {
         run.completedMutations = safeNonNegativeInteger(run.completedMutations) + 1;
         const baseMutationReward = 1 +
-          safeNonNegativeInteger(mutationLevels.anomalyHarvesting) +
           safeNonNegativeInteger(mutationLevels.mutationExtraction);
         const mutationMultiplier = run.activeMutation?.id === 'nullification' ? 2 : 1;
         const mutationReward = Math.min(Number.MAX_SAFE_INTEGER, baseMutationReward * mutationMultiplier);
@@ -6934,6 +6933,7 @@ export async function applyRolls(
       ? 1 + Math.min(2, Math.max(0, Math.log10(Math.max(1, bestRarity / s.riftSession.targetRarity))) *
         (s.riftSession.fractureRecyclingLevel ?? 0) * 0.05)
       : 1) *
+    (mutationActive ? 1 + (s.riftSession?.anomalyHarvestingLevel ?? 0) * 0.05 : 1) *
     mutationCoinMultiplier;
   coinsGained = normalizeCoinAmount(Math.round(coinsGained * coinBonusMul));
 
