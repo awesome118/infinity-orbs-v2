@@ -481,7 +481,7 @@ export interface RiftChallengeRun {
 }
 
 export interface RiftChallengeArchive {
-  version: 8;
+  version: 9;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -601,7 +601,7 @@ export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRolls
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 8,
+    version: 9,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
