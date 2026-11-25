@@ -114,3 +114,5 @@ Pages Relic Forge: Scrap + Rift Point crafting, three-rank relics, two-slot load
 Pages Relic Forge validation correction: tolerant Observer floating-point assertion, affordable first relic rank, and tested Temporal Drag conversion formulas.
 
 Pages Rift upgrades: Probability Debt, Dimensional Interest, Stolen Momentum, Timeline Fork, and a prominent START RIFT button.
+
+Pages Rift upgrades final validation: updated Start Rift assertion, Timeline Fork third-slot enforcement, and immediate interest-rate recalculation.
