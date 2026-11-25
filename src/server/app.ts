@@ -125,7 +125,7 @@ import { PURCHASE_PACKS, spendShards, FEATURE_UNLOCK_LEVELS, calculateLevelFromX
 import { APP_VERSION } from '../shared/version.js';
 import { globalFeaturesForRequest } from '../shared/admin-cli.js';
 import { getCombatSnapshot, getCombatMarksBalance, performCombatBeat, equipCombatItem, scrapCombatItem, forgeCombatGear, equipCombatSkill, rollCombatSkill, rankUpCombatSkillGacha, buyCombatUpgrade, setCombatOrbFocus, getCombatArenaOpponents, challengeCombatArena, setCombatAutoTactic, setCombatDungeon, equipCombatRune, sacrificeCombatRuneInto, updateCombatRuneAutoSacrificeSettings, processCombatRuneAutoSacrifice, hasCompletedCombatTutorial, markCombatTutorialSeen, buyCombatStrategyGuideRank } from './combat.js';
-import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftPerk, buyRiftRelic, buyRiftUnlock, setEquippedRiftRelic, abandonRiftChallenge, updateRiftModifiers } from './rift-challenges.js';
+import { getRiftChallengeStatus, startRiftChallenge, rollRiftChallenge, buyRiftPerk, buyRiftRelic, buyRiftUnlock, setEquippedRiftRelic, abandonRiftChallenge, updateRiftModifiers, registerRiftCompletionPost, getRiftCompletionPostInfo } from './rift-challenges.js';
 
 const payments = (devvitServer as typeof devvitServer & {
   payments: {
@@ -1146,6 +1146,16 @@ export function createApp() {
     }
   });
 
+  app.get('/api/rift-completion/info', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      res.json(await getRiftCompletionPostInfo(req.query.postId));
+    } catch (error: any) {
+      const message = error?.message || 'Could not load the Rift completion post.';
+      res.status(message === 'REDDIT_LOGIN_REQUIRED' ? 401 : 404).json({ error: message });
+    }
+  });
+
   app.get('/api/rift-challenges', async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
@@ -1621,6 +1631,42 @@ export function createApp() {
       const result = await roll(req.body?.auto === true, ticketId, ticketIndex, req.body?.useAllFreeRolls === true, req.body?.useTimeEnergy === true, ticketSeed, progressAttemptId);
       const rolledOrb = (result as { orb?: { rarity?: number; name?: string } }).orb;
       if (rolledOrb) queueCombatOrbFocusSync(rolledOrb.rarity, rolledOrb.name);
+
+      // The first-clear marker is attached only after the isolated Rift save commits.
+      // Publishing is secondary: a Reddit failure must never roll back a completed challenge.
+      const completion = result.state?.riftChallengeFirstClear;
+      if (completion?.runId) {
+        try {
+          const registeredPostId = await redis.get('io:rift-completion:run:v1:' + completion.runId);
+          if (!registeredPostId) {
+            const subredditName = String(context.subredditName ?? '').trim();
+            if (!subredditName) throw new Error('Subreddit context is unavailable for the Rift announcement.');
+            const title = 'u/' + completion.ownerUsername + ' has completed the Rift ' + completion.challengeName + ' for the first time!';
+            const body = 'u/' + completion.ownerUsername + ' has completed the Rift ' + completion.challengeName + ' for the first time.\\n\\nThis is a first-clear achievement. Open Infinity Orbs to explore the Rift and attempt the next challenge.';
+            const post = await reddit.submitCustomPost({
+              runAs: 'USER',
+              subredditName,
+              title,
+              entry: 'rift',
+              userGeneratedContent: { text: body },
+            });
+            const postId = String(post?.id ?? '').trim();
+            if (!postId) throw new Error('Reddit did not return a Rift completion post ID.');
+            await registerRiftCompletionPost({
+              postId,
+              runId: completion.runId,
+              ownerId: completion.ownerId,
+              ownerUsername: completion.ownerUsername,
+              challengeId: completion.challengeId,
+              challengeName: completion.challengeName,
+              subredditName,
+              createdAt: Date.now(),
+            });
+          }
+        } catch (postError) {
+          console.error('[Rift Completion] The first-clear reward committed, but its announcement could not be published.', postError);
+        }
+      }
       res.json(result);
     } catch (e) { badRequest(res, e, 'Roll failed.'); }
   });
