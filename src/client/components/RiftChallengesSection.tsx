@@ -5,6 +5,7 @@ import {
   RIFT_ASCENT,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_PERKS,
+  RIFT_UNLOCKS,
   normalizeRiftChallengeToggles,
   normalizeRiftModifierSettings,
   riftModifierFromSliderPosition,
@@ -20,9 +21,10 @@ import {
   type RiftModifierId,
   type RiftModifierSettings,
   type RiftPerkId,
+  type RiftUnlockId,
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
-import { RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, getRiftRelicEffects, riftRelicCost, type RiftRelicId } from '../../shared/rift-relics.js';
+import { RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, RIFT_RELIC_FORKED_EQUIP_SLOTS, getRiftRelicEffects, riftRelicCost, type RiftRelicId } from '../../shared/rift-relics.js';
 import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
@@ -142,14 +144,15 @@ export const RiftChallengesSection: React.FC<{
     () => riftModifierRewardPreview(modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield ?? 0),
     [modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield],
   );
+  const relicSlotLimit = archive?.riftUnlocks.timelineFork ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
   const relicEffects = useMemo(
-    () => getRiftRelicEffects(archive?.equippedRiftRelics, archive?.riftRelicLevels),
-    [archive?.equippedRiftRelics, archive?.riftRelicLevels],
+    () => getRiftRelicEffects(archive?.equippedRiftRelics, archive?.riftRelicLevels, relicSlotLimit),
+    [archive?.equippedRiftRelics, archive?.riftRelicLevels, relicSlotLimit],
   );
   const relicCompletionReward = Math.ceil(rewardPreview.pointsPerClear * relicEffects.completionRewardMultiplier);
   const projectedRate = useMemo(
     () => archive
-      ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles)
+      ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles, archive.riftPoints)
       : rewardPreview.rpPerHour,
     [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.bestModifierSettings, archive?.bestChallengeToggles, rewardPreview.rpPerHour],
   );
@@ -160,6 +163,7 @@ export const RiftChallengesSection: React.FC<{
       archive.riftPerkLevels,
       modifierSettings,
       challengeToggles,
+      archive.riftPoints,
     );
     return Math.max(projectedRate, candidateRate);
   }, [archive?.completedChallengeIds, archive?.riftPerkLevels, modifierSettings, challengeToggles, projectedRate, rewardPreview.rpPerHour]);
@@ -235,6 +239,7 @@ export const RiftChallengesSection: React.FC<{
     id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
   );
   const buyPerk = (id: RiftPerkId) => void performAction(id, '/api/rift-challenges/perk', { perkId: id });
+  const buyUnlock = (id: RiftUnlockId) => void performAction('unlock-' + id, '/api/rift-challenges/unlock', { unlockId: id });
   const forgeRelic = (id: RiftRelicId) => void performAction('forge-' + id, '/api/rift-challenges/relic/forge', { relicId: id });
   const equipRelic = (id: RiftRelicId, equipped: boolean) => void performAction('equip-' + id, '/api/rift-challenges/relic/equip', { relicId: id, equipped });
 
@@ -350,9 +355,20 @@ export const RiftChallengesSection: React.FC<{
               </p>
               <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">Every run starts with +1 free Multiball.</p>
             </div>
-            <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
-              <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Difficulty score</div>
-              <div className="text-xl font-black tabular-nums text-white">{rewardPreview.difficultyScore.toFixed(2)}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-3 py-2 text-right">
+                <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Difficulty score</div>
+                <div className="text-xl font-black tabular-nums text-white">{rewardPreview.difficultyScore.toFixed(2)}</div>
+              </div>
+              <button
+                id="start-rift-button"
+                type="button"
+                onClick={startRift}
+                disabled={mainLevel < RIFT_ASCENT.requiredMainLevel || busyAction !== null}
+                className="min-h-12 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-400 px-6 py-3 text-sm font-black tracking-wide text-slate-950 shadow-lg shadow-violet-950/30 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {busyAction === 'start-rift-ascent' ? 'OPENING RIFT…' : 'START RIFT'}
+              </button>
             </div>
           </div>
 
@@ -444,14 +460,7 @@ export const RiftChallengesSection: React.FC<{
             >
               {busyAction === 'save-modifiers' ? 'Saving setup…' : 'Save configuration'}
             </button>
-            <button
-              type="button"
-              onClick={startRift}
-              disabled={mainLevel < RIFT_ASCENT.requiredMainLevel || busyAction !== null}
-              className="min-h-11 flex-1 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-400 px-5 py-3 text-sm font-black text-slate-950 shadow-lg shadow-violet-950/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
-            >
-              {busyAction === 'start-rift-ascent' ? 'Opening Rift…' : 'BEGIN RIFT ASCENT'}
-            </button>
+
           </div>
           {mainLevel < RIFT_ASCENT.requiredMainLevel && (
             <p className="mt-3 text-[10px] text-amber-300">Reach Level {RIFT_ASCENT.requiredMainLevel} in the main game to enter the Rift.</p>
@@ -522,6 +531,43 @@ export const RiftChallengesSection: React.FC<{
         </div>
       </section>
 
+      <section className="rounded-3xl border border-cyan-300/20 bg-slate-900/70 p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Permanent research</div>
+            <h2 className="mt-1 text-xl font-black text-white">One-time unlocks</h2>
+            <p className="mt-1 text-xs text-slate-400">These purchases permanently unlock new Rift options. They do not consume a relic rank or equipment slot.</p>
+          </div>
+          <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/5 px-3 py-2 text-right">
+            <div className="text-[9px] font-black uppercase tracking-widest text-cyan-200">Available</div>
+            <div className="text-xl font-black tabular-nums text-white">{formatNumber(riftProjection.points)} RP</div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {Object.values(RIFT_UNLOCKS).map(unlock => {
+            const unlocked = archive.riftUnlocks[unlock.id] === true;
+            const canBuy = !unlocked && !isActive && archive.completedChallengeIds.includes(RIFT_ASCENT.id) && riftProjection.points >= unlock.cost && busyAction === null;
+            return (
+              <article key={unlock.id} className={'rounded-2xl border p-4 ' + (unlocked ? 'border-cyan-300/30 bg-cyan-300/[.05]' : 'border-slate-700 bg-slate-950/55')}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-black text-white">{unlock.name}</h3>
+                  <span className="rounded-md bg-slate-800 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-200">{unlocked ? 'UNLOCKED' : 'ONE-TIME'}</span>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{unlock.description}</p>
+                <p className="mt-2 text-[10px] font-bold text-cyan-200">{unlock.effect}</p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-slate-500">{unlocked ? 'Permanent unlock' : formatNumber(unlock.cost) + ' Rift Points'}</span>
+                  <button type="button" onClick={() => buyUnlock(unlock.id)} disabled={!canBuy}
+                    className="rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-[10px] font-black text-cyan-100 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-35">
+                    {busyAction === 'unlock-' + unlock.id ? 'Unlocking…' : unlocked ? 'UNLOCKED' : 'UNLOCK'}
+                  </button>
+                </div>
+                {!archive.completedChallengeIds.includes(RIFT_ASCENT.id) && <p className="mt-2 text-[10px] text-amber-300">Complete Rift Ascent to unlock permanent research.</p>}
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#211b13] via-[#15131a] to-[#101629] p-5 shadow-xl shadow-slate-950/30 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -529,7 +575,7 @@ export const RiftChallengesSection: React.FC<{
             <div className="text-[10px] font-black uppercase tracking-[.2em] text-amber-300">Scrap + Rift Points</div>
             <h2 className="mt-1 text-2xl font-black text-white">The Relic Forge</h2>
             <p className="mt-1 text-xs leading-relaxed text-slate-400">
-              Forge permanent artifacts from salvaged gear and Rift energy. Each relic has three ranks and a unique mechanic. Equip up to {RIFT_RELIC_EQUIP_SLOTS}; your loadout is locked for the duration of a run.
+              Forge permanent artifacts from salvaged gear and Rift energy. Each relic has three ranks and a unique mechanic. Equip up to {relicSlotLimit}; Timeline Fork permanently unlocks the third slot. Your loadout is locked for the duration of a run.
             </p>
           </div>
           <div className="flex gap-2">
@@ -560,7 +606,7 @@ export const RiftChallengesSection: React.FC<{
                     : 'No relics equipped'}
                 </div>
               </div>
-              <div className="text-[10px] font-black tabular-nums text-amber-200">{archive.equippedRiftRelics.length}/{RIFT_RELIC_EQUIP_SLOTS} SLOTS</div>
+              <div className="text-[10px] font-black tabular-nums text-amber-200">{archive.equippedRiftRelics.length}/{relicSlotLimit} SLOTS</div>
             </div>
             {isActive && (
               <p className="mt-3 rounded-lg border border-indigo-300/20 bg-indigo-400/[.06] px-3 py-2 text-[10px] text-indigo-200">
@@ -574,7 +620,7 @@ export const RiftChallengesSection: React.FC<{
                 const equipped = archive.equippedRiftRelics.includes(relic.id);
                 const cost = riftRelicCost(relic.id, level);
                 const canForge = !isActive && !maxed && riftProjection.points >= cost.riftPoints && snapshot.scrapBalance >= cost.scrap && busyAction === null;
-                const canEquip = !isActive && level > 0 && (equipped || archive.equippedRiftRelics.length < RIFT_RELIC_EQUIP_SLOTS) && busyAction === null;
+                const canEquip = !isActive && level > 0 && (equipped || archive.equippedRiftRelics.length < relicSlotLimit) && busyAction === null;
                 return (
                   <article key={relic.id} className={'rounded-2xl border p-4 ' + (equipped ? 'border-amber-300/35 bg-amber-200/[.06]' : 'border-slate-700/80 bg-slate-950/55')}>
                     <div className="flex items-start justify-between gap-3">
@@ -600,7 +646,7 @@ export const RiftChallengesSection: React.FC<{
                         {level > 0 && (
                           <button type="button" onClick={() => equipRelic(relic.id, !equipped)} disabled={!canEquip}
                             className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-35">
-                            {busyAction === 'equip-' + relic.id ? 'Saving…' : equipped ? 'Unequip' : archive.equippedRiftRelics.length >= RIFT_RELIC_EQUIP_SLOTS ? 'Slots full' : 'Equip'}
+                            {busyAction === 'equip-' + relic.id ? 'Saving…' : equipped ? 'Unequip' : archive.equippedRiftRelics.length >= relicSlotLimit ? 'Slots full' : 'Equip'}
                           </button>
                         )}
                         <button type="button" onClick={() => forgeRelic(relic.id)} disabled={!canForge}
