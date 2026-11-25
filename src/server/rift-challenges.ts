@@ -360,7 +360,6 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_ASCENT
     state.shardPityRolls = 0;
     state.saveGeneration = 0;
     state.stateRevision = 0;
-    const riftProgress = progressFromGameState(state);
     archive.activeRun = {
       runId: createRunId(),
       challengeId: challenge.id as RiftChallengeId,
