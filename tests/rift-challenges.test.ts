@@ -137,7 +137,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 5,
+    version: 6,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
