@@ -6195,7 +6195,7 @@ export async function applyRolls(
       ? riftSingularityFocusMultiplier(s.highestRarity, s.riftSession.targetRarity, s.riftSession.singularityFocusLevel)
       : 1;
     const riftSampleLuck = Math.min(Number.MAX_VALUE,
-      riftSampleLuck * riftDebtMultiplier * riftCascadeMultiplier * riftSingularityMultiplier);
+      effectiveLuck * riftDebtMultiplier * riftCascadeMultiplier * riftSingularityMultiplier);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
     const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
     let isInfinityOrb = false;
