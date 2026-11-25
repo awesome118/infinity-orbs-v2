@@ -5,19 +5,12 @@ import {
   emptyRiftPerkLevels,
   emptyRiftUnlocks,
   normalizeRiftMainProgress,
-  riftChallengeCoinMultiplier,
-  riftChallengeCooldownMs,
-  riftChallengeCriticalChance,
-  riftChallengeEffectiveLuck,
   riftChallengeIsAvailable,
   riftChallengeUnlockStatus,
-  riftChallengeMechanicUnlocks,
-  riftChallengeUpgradeCost,
   riftPerkCost,
   riftRatePerHour,
   riftProbabilityDebtMultiplier,
   RIFT_UNLOCKS,
-  RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
   RIFT_PERKS,
@@ -67,42 +60,11 @@ test('later Rift challenges require main-game levels and the previous first clea
   assert.equal(riftChallengeUnlockStatus(RIFT_CHALLENGES[2], { level: 15 }, ['fractured-tempo']).unlocked, true);
 });
 
-test('Rift game progress independently unlocks challenge mechanics', () => {
-  assert.deepEqual(
-    riftChallengeMechanicUnlocks({ level: 9, totalRolls: 24, totalCrits: 9 }),
-    { fortune: true, speed: false, prosperity: false, critical: false },
-  );
-  assert.deepEqual(
-    riftChallengeMechanicUnlocks({ level: 10, totalRolls: 25, totalCrits: 10 }),
-    { fortune: true, speed: true, prosperity: true, critical: true },
-  );
-});
-
 test('Rift game progress normalization rejects malformed counters', () => {
   assert.deepEqual(
     normalizeRiftMainProgress({ level: Number.NaN, totalRolls: -1, totalCrits: 2.5, highestRarity: Infinity }),
     { level: 1, totalRolls: 0, totalCrits: 0, highestRarity: 2, masteryPoints: 0 },
   );
-});
-
-test('challenge upgrade prices rise with levels and Dimensional Tax', () => {
-  const base = riftChallengeUpgradeCost('fortune', 0, 0);
-  const higherLevel = riftChallengeUpgradeCost('fortune', 1, 0);
-  const taxed = riftChallengeUpgradeCost('fortune', 0, 100);
-  assert.equal(base, RIFT_CHALLENGE_UPGRADES.fortune.baseCost);
-  assert.ok(higherLevel > base);
-  assert.equal(taxed, Math.ceil(base * 1.5));
-  assert.equal(riftChallengeUpgradeCost('fortune', 0, 10_000), taxed);
-});
-
-test('challenge upgrade effects stay within their intended bounds', () => {
-  assert.equal(riftChallengeEffectiveLuck(0), 1);
-  assert.equal(riftChallengeEffectiveLuck(10), 2.2);
-  assert.equal(riftChallengeCooldownMs(0), 1_500);
-  assert.equal(riftChallengeCooldownMs(10), 600);
-  assert.equal(riftChallengeCooldownMs(10, 2_100), 1_200);
-  assert.equal(riftChallengeCoinMultiplier(5), 2);
-  assert.equal(riftChallengeCriticalChance(10), 0.15);
 });
 
 test('the Rift Bar increases its hourly rate on first clears, not on replays', () => {
@@ -137,7 +99,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 6,
+    version: 7,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -160,6 +122,7 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftRelicLevels: {
       'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
       observer: 0, 'loaded-die': 0, 'fracture-cascade': 0,
+      'mirror-array': 0, 'stillness-engine': 0, 'rift-tithe': 0,
     },
     equippedRiftRelics: [],
     riftUnlocks: { timelineFork: false },
@@ -180,14 +143,12 @@ test('modifier settings normalize to safe, neutral minimums', () => {
     temporalDrag: 1.5,
     fortuneSuppression: Infinity,
     coinScarcity: -10,
-    upgradeInflation: 12.25,
     ignored: 999,
   }), {
     instability: 1,
     temporalDrag: 1.5,
     fortuneSuppression: 1,
     coinScarcity: 1,
-    upgradeInflation: 12.25,
   });
   assert.deepEqual(normalizeRiftChallengeToggles({ secondBest: true, noShards: true, noAutomation: 1 }), {
     secondBest: true,
