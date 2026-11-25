@@ -661,7 +661,9 @@ export async function startRiftChallenge(
           return [id, transferred];
         }),
       ) as typeof state.masterySkills;
-      state.masteryPoints = Math.max(0, Math.floor(Number(mainGameState.masteryPoints) || 0));
+      state.masteryPoints = Math.max(0, Math.floor(
+        (Number(mainGameState.masteryPoints) || 0) * masteryBridgeLevel / 10,
+      ));
     }
     if ((archive.riftPerkLevels.chronoEngine ?? 0) > 0) {
       state.masterySkills = { ...state.masterySkills, cooldownReclaimer: Math.max(1, state.masterySkills?.cooldownReclaimer ?? 0) };
