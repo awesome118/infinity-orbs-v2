@@ -4,6 +4,8 @@ import {
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   emptyRiftUnlocks,
+  normalizeRiftUnlocks,
+  riftStartingProgressRarity,
   normalizeRiftMainProgress,
   riftChallengeIsAvailable,
   riftChallengeUnlockStatus,
@@ -126,8 +128,8 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
   assert.equal(RIFT_PERKS.mutationPersistence.maxLevel, 5);
   assert.equal(RIFT_PERKS.mutationCycle.maxLevel, 5);
   assert.equal(RIFT_PERKS.mutationMastery.maxLevel, 5);
-  assert.equal(RIFT_PERKS.riftCoinYield.maxLevel, 10);
-  assert.equal(RIFT_PERKS.riftCrit.maxLevel, 10);
+  assert.equal('riftCoinYield' in RIFT_PERKS, false);
+  assert.equal('riftCrit' in RIFT_PERKS, false);
   assert.equal(riftPerkCost('mutationPersistence', 0), RIFT_PERKS.mutationPersistence.baseCost);
   assert.ok(riftPerkCost('mutationCycle', 1) > riftPerkCost('mutationCycle', 0));
   assert.equal(emptyRiftPerkLevels().mutationPersistence, 0);
@@ -147,7 +149,7 @@ test('Mutation Mastery scales completed-mutation Rift Point rewards within its c
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 9,
+    version: 10,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -167,7 +169,6 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
       probabilityDebt: 0, dimensionalInterest: 0,
       mutationPersistence: 0, mutationCycle: 0, mutationMastery: 0,
-      riftCoinYield: 0, riftCrit: 0,
     },
     riftRelicLevels: {
       'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
@@ -175,7 +176,7 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
       'mirror-array': 0, 'stillness-engine': 0, 'rift-tithe': 0,
     },
     equippedRiftRelics: [],
-    riftUnlocks: { timelineFork: false },
+    riftUnlocks: { timelineFork: false, bossResonance: false, runeConfluence: false, globalConduit: false, riftMemory: false },
   });
 });
 
@@ -255,8 +256,28 @@ test('Dimensional Interest rewards holding Rift Points and never exceeds double 
   assert.equal(riftRatePerHour(['rift-ascent'], perks, DEFAULT_RIFT_MODIFIERS, DEFAULT_RIFT_CHALLENGES, 100_000), 2);
 });
 
-test('Timeline Fork is a permanent one-time research unlock', () => {
-  assert.deepEqual(emptyRiftUnlocks(), { timelineFork: false });
-  assert.equal(RIFT_UNLOCKS.timelineFork.cost, 120);
+test('Permanent Rift unlocks restore actual game systems and start progress', () => {
+  assert.deepEqual(emptyRiftUnlocks(), {
+    timelineFork: false,
+    bossResonance: false,
+    runeConfluence: false,
+    globalConduit: false,
+    riftMemory: false,
+  });
+  assert.deepEqual(normalizeRiftUnlocks({ timelineFork: true, bossResonance: true, runeConfluence: 1, globalConduit: true, riftMemory: true, unknown: true }), {
+    timelineFork: true,
+    bossResonance: true,
+    runeConfluence: false,
+    globalConduit: true,
+    riftMemory: true,
+  });
   assert.equal(RIFT_UNLOCKS.timelineFork.effect, 'Equip 3 relics instead of 2.');
+  assert.match(RIFT_UNLOCKS.bossResonance.effect, /Combat Boss Luck/);
+  assert.match(RIFT_UNLOCKS.runeConfluence.effect, /Combat Rune/);
+  assert.match(RIFT_UNLOCKS.globalConduit.effect, /Global Boosters/);
+  assert.equal(RIFT_UNLOCKS.riftMemory.cost, 100);
+  assert.equal(riftStartingProgressRarity(1_000, 1_000, 1_000), 4);
+  assert.equal(riftStartingProgressRarity(100_000, 100_000, 1_000_000), 16);
+  assert.equal(riftStartingProgressRarity(100, 1_000, 100_000), 7);
+  assert.equal(riftStartingProgressRarity(2, 1_000, 100_000), 2);
 });
