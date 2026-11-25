@@ -24,6 +24,13 @@ import {
   riftModifierRewardPreview,
   riftModifierFromSliderPosition,
   riftModifierSliderPosition,
+  RIFT_MUTATIONS,
+  RIFT_MUTATION_UNLOCK_ROLLS,
+  RIFT_MUTATION_UNLOCK_PROGRESS,
+  RIFT_MUTATION_DURATION_ROLLS,
+  RIFT_MUTATION_BREAK_ROLLS,
+  riftMutationProgress,
+  riftMutationRewardMultiplier,
 } from '../src/shared/rift-challenges.js';
 
 test('The First Spark retains its Level 5 unlock and original objective', () => {
@@ -40,6 +47,27 @@ test('Rift challenge catalog is sequential and has increasing objectives', () =>
   assert.deepEqual(RIFT_CHALLENGES.map(challenge => challenge.targetRarity), [1_000, 10_000, 100_000]);
   assert.equal(RIFT_CHALLENGES[1].prerequisiteId, 'first-spark');
   assert.equal(RIFT_CHALLENGES[2].prerequisiteId, 'fractured-tempo');
+});
+
+test('Rift mutations are delayed, temporary, and improve completion rewards', () => {
+  assert.equal(RIFT_MUTATION_UNLOCK_ROLLS, 20);
+  assert.equal(RIFT_MUTATION_UNLOCK_PROGRESS, 0.2);
+  assert.equal(RIFT_MUTATION_DURATION_ROLLS, 12);
+  assert.equal(RIFT_MUTATION_BREAK_ROLLS, 8);
+  assert.equal(riftMutationProgress(2, 1_000) < RIFT_MUTATION_UNLOCK_PROGRESS, true);
+  assert.equal(riftMutationProgress(8, 1_000) >= RIFT_MUTATION_UNLOCK_PROGRESS, true);
+  assert.equal(RIFT_MUTATIONS.length, 4);
+  assert.equal(new Set(RIFT_MUTATIONS.map(mutation => mutation.id)).size, RIFT_MUTATIONS.length);
+  assert.ok(RIFT_MUTATIONS.every(mutation =>
+    mutation.luckMultiplier > 0 &&
+    mutation.cooldownMultiplier > 0 &&
+    mutation.coinMultiplier > 0 &&
+    mutation.effect.length > 0
+  ));
+  assert.equal(riftMutationRewardMultiplier(0), 1);
+  assert.equal(riftMutationRewardMultiplier(1), 1.05);
+  assert.equal(riftMutationRewardMultiplier(5), 1.25);
+  assert.equal(riftMutationRewardMultiplier(100), 1.25);
 });
 
 test('later Rift challenges require main-game levels and the previous first clear', () => {
@@ -99,7 +127,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 7,
+    version: 8,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
