@@ -4406,8 +4406,25 @@ async function saveActiveRiftPlayerState(
   const userId = currentUserId();
   const expectedTicketKey = rollTicketKey(userId, session.runId);
   const ticketWrites = allExtraWrites.filter(write => write.key === expectedTicketKey);
-  const unsupportedRequiredWrites = allExtraWrites.filter(write => write.key !== expectedTicketKey && !write.optional);
-  if (ticketWrites.length > 1 || unsupportedRequiredWrites.length > 0) {
+  const globalBoosterWrites = allExtraWrites.filter(write => write.key === GLOBAL_BOOSTERS_KEY);
+  const transactionalExtraWrites = [...ticketWrites, ...globalBoosterWrites];
+  const canWriteGlobalBoosters = session.riftGlobalEffectsEnabled === true && session.noShards !== true;
+  const unsupportedRequiredWrites = allExtraWrites.filter(write =>
+    write.key !== expectedTicketKey &&
+    write.key !== GLOBAL_BOOSTERS_KEY &&
+    !write.optional,
+  );
+  if (
+    ticketWrites.length > 1 ||
+    globalBoosterWrites.length > 1 ||
+    (globalBoosterWrites.length > 0 && !canWriteGlobalBoosters) ||
+    unsupportedRequiredWrites.length > 0 ||
+    new Set(allExtraWrites.map(write => write.key)).size !== allExtraWrites.length ||
+    allExtraWrites.some(write => !write.key || typeof write.nextValue !== 'string' || (
+      write.expiration !== undefined &&
+      (!(write.expiration instanceof Date) || !Number.isFinite(write.expiration.getTime()) || write.expiration.getTime() <= Date.now())
+    ))
+  ) {
     throw new Error('This shared-account reward is unavailable while an isolated Rift challenge is active.');
   }
 
@@ -4427,12 +4444,12 @@ async function saveActiveRiftPlayerState(
   await touchPlayerActivity(userId, String(state.username ?? context.username ?? userId));
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const txn = await redis.watch(keyName, ...ticketWrites.map(write => write.key), ...codexWriteKeys);
+    const txn = await redis.watch(keyName, ...transactionalExtraWrites.map(write => write.key), ...codexWriteKeys);
     let transactionClosed = false;
     try {
-      const [raw, ...ticketRawValues] = await Promise.all([
+      const [raw, ...extraRawValues] = await Promise.all([
         redis.get(keyName),
-        ...ticketWrites.map(write => redis.get(write.key)),
+        ...transactionalExtraWrites.map(write => redis.get(write.key)),
       ]);
       if (typeof raw !== 'string' || !raw) {
         await txn.unwatch();
@@ -4453,12 +4470,17 @@ async function saveActiveRiftPlayerState(
         throw new Error('RIFT_RUN_MISMATCH');
       }
 
-      for (let index = 0; index < ticketWrites.length; index += 1) {
-        const actual = ticketRawValues[index] == null ? null : String(ticketRawValues[index]);
-        if (actual !== ticketWrites[index].expectedValue) {
+      for (let index = 0; index < transactionalExtraWrites.length; index += 1) {
+        const write = transactionalExtraWrites[index];
+        const actual = extraRawValues[index] == null ? null : String(extraRawValues[index]);
+        if (actual !== write.expectedValue) {
           await txn.unwatch();
           transactionClosed = true;
-          throw new Error('Roll ticket changed before the Rift save. Please refresh and try again.');
+          throw new Error(write.conflictMessage ?? (
+            write.key === GLOBAL_BOOSTERS_KEY
+              ? 'Global Booster changed before the Rift save. Please retry.'
+              : 'Roll ticket changed before the Rift save. Please refresh and try again.'
+          ));
         }
       }
       const latestGameState = isPlainRecord(run.gameState)
@@ -4614,7 +4636,7 @@ async function saveActiveRiftPlayerState(
       for (let index = 0; index < codexWrites.length; index += 1) {
         await txn.hSet(codexWriteKeys[index], codexWrites[index].fields);
       }
-      for (const write of ticketWrites) {
+      for (const write of transactionalExtraWrites) {
         if (write.expiration) await txn.set(write.key, write.nextValue, { expiration: write.expiration });
         else await txn.set(write.key, write.nextValue);
       }
