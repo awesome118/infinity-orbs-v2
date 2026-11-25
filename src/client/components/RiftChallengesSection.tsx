@@ -22,6 +22,7 @@ import {
   type RiftPerkId,
 } from '../../shared/rift-challenges.js';
 import { formatNumber, formatRarity } from '../../shared/game.js';
+import { RIFT_RELICS, RIFT_RELIC_EQUIP_SLOTS, getRiftRelicEffects, riftRelicCost, type RiftRelicId } from '../../shared/rift-relics.js';
 import { Activity, ArrowUpRight, Zap, SlidersHorizontal, ShieldAlert } from 'lucide-react';
 
 async function challengeRequest<T>(path: string, method = 'GET', body?: Record<string, unknown>): Promise<T> {
@@ -141,6 +142,11 @@ export const RiftChallengesSection: React.FC<{
     () => riftModifierRewardPreview(modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield ?? 0),
     [modifierSettings, challengeToggles, archive?.riftPerkLevels.riftYield],
   );
+  const relicEffects = useMemo(
+    () => getRiftRelicEffects(archive?.equippedRiftRelics, archive?.riftRelicLevels),
+    [archive?.equippedRiftRelics, archive?.riftRelicLevels],
+  );
+  const relicCompletionReward = Math.ceil(rewardPreview.pointsPerClear * relicEffects.completionRewardMultiplier);
   const projectedRate = useMemo(
     () => archive
       ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles)
@@ -229,6 +235,8 @@ export const RiftChallengesSection: React.FC<{
     id, '/api/rift-challenges/upgrade', { upgradeId: id, runId: run?.runId },
   );
   const buyPerk = (id: RiftPerkId) => void performAction(id, '/api/rift-challenges/perk', { perkId: id });
+  const forgeRelic = (id: RiftRelicId) => void performAction('forge-' + id, '/api/rift-challenges/relic/forge', { relicId: id });
+  const equipRelic = (id: RiftRelicId, equipped: boolean) => void performAction('equip-' + id, '/api/rift-challenges/relic/equip', { relicId: id, equipped });
 
   const updateModifier = (id: RiftModifierId, value: number) => {
     setModifierSettings(previous => ({ ...previous, [id]: value }));
@@ -415,7 +423,7 @@ export const RiftChallengesSection: React.FC<{
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Reward preview on clear</div>
-              <div className="mt-1 text-2xl font-black tabular-nums text-cyan-200">+{formatNumber(rewardPreview.pointsPerClear)} RP</div>
+              <div className="mt-1 text-2xl font-black tabular-nums text-cyan-200">+{formatNumber(relicCompletionReward)} RP</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-black/20 p-3">
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Best rate after clear</div>
@@ -512,6 +520,104 @@ export const RiftChallengesSection: React.FC<{
             </div>
           ))}
         </div>
+      </section>
+
+
+      <section className="overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#211b13] via-[#15131a] to-[#101629] p-5 shadow-xl shadow-slate-950/30 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <div className="text-[10px] font-black uppercase tracking-[.2em] text-amber-300">Scrap + Rift Points</div>
+            <h2 className="mt-1 text-2xl font-black text-white">The Relic Forge</h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">
+              Forge permanent artifacts from salvaged gear and Rift energy. Each relic has three ranks and a unique mechanic. Equip up to {RIFT_RELIC_EQUIP_SLOTS}; your loadout is locked for the duration of a run.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <div className="rounded-xl border border-amber-300/20 bg-black/25 px-3 py-2 text-right">
+              <div className="text-[9px] font-black uppercase tracking-widest text-amber-200">Scrap</div>
+              <div className="text-lg font-black tabular-nums text-white">{formatNumber(snapshot.scrapBalance)}</div>
+            </div>
+            <div className="rounded-xl border border-violet-300/20 bg-black/25 px-3 py-2 text-right">
+              <div className="text-[9px] font-black uppercase tracking-widest text-violet-200">Rift Points</div>
+              <div className="text-lg font-black tabular-nums text-white">{formatNumber(riftProjection.points)}</div>
+            </div>
+          </div>
+        </div>
+
+        {!archive.completedChallengeIds.includes(RIFT_ASCENT.id) ? (
+          <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/[.06] p-4">
+            <div className="text-sm font-black text-amber-100">Forge sealed</div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">Complete Rift Ascent at least once to unlock relic crafting and loadout slots. Both Scrap and Rift Points will be required for every rank.</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Equipped for next run</div>
+                <div className="mt-1 text-xs font-bold text-white">
+                  {archive.equippedRiftRelics.length
+                    ? archive.equippedRiftRelics.map(id => RIFT_RELICS[id].name).join(' · ')
+                    : 'No relics equipped'}
+                </div>
+              </div>
+              <div className="text-[10px] font-black tabular-nums text-amber-200">{archive.equippedRiftRelics.length}/{RIFT_RELIC_EQUIP_SLOTS} SLOTS</div>
+            </div>
+            {isActive && (
+              <p className="mt-3 rounded-lg border border-indigo-300/20 bg-indigo-400/[.06] px-3 py-2 text-[10px] text-indigo-200">
+                Your current run is using its saved relic loadout. Forge and equipment changes become available after the run ends.
+              </p>
+            )}
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {Object.values(RIFT_RELICS).map(relic => {
+                const level = archive.riftRelicLevels[relic.id] ?? 0;
+                const maxed = level >= relic.maxLevel;
+                const equipped = archive.equippedRiftRelics.includes(relic.id);
+                const cost = riftRelicCost(relic.id, level);
+                const canForge = !isActive && !maxed && riftProjection.points >= cost.riftPoints && snapshot.scrapBalance >= cost.scrap && busyAction === null;
+                const canEquip = !isActive && level > 0 && (equipped || archive.equippedRiftRelics.length < RIFT_RELIC_EQUIP_SLOTS) && busyAction === null;
+                return (
+                  <article key={relic.id} className={'rounded-2xl border p-4 ' + (equipped ? 'border-amber-300/35 bg-amber-200/[.06]' : 'border-slate-700/80 bg-slate-950/55')}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-black text-white">{relic.name}</h3>
+                          <span className="rounded-md bg-slate-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-200">Rank {level}/{relic.maxLevel}</span>
+                          {equipped && <span className="rounded-md bg-amber-300/15 px-2 py-0.5 text-[9px] font-black text-amber-100">EQUIPPED</span>}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{relic.description}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+                      <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{level > 0 ? 'Current effect' : 'Next rank'}</div>
+                      <div className="mt-1 text-xs font-bold text-amber-100">{level > 0 ? relic.rankEffects[level - 1] : relic.rankEffects[0]}</div>
+                      {level > 0 && !maxed && <div className="mt-1 text-[10px] text-slate-500">Next: {relic.rankEffects[level]}</div>}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[10px] leading-relaxed text-slate-400">
+                        {maxed ? 'Fully reinforced' : <>Next rank: <span className="font-bold text-amber-100">{formatNumber(cost.scrap)} Scrap</span> + <span className="font-bold text-violet-200">{formatNumber(cost.riftPoints)} RP</span></>}
+                      </div>
+                      <div className="flex gap-2">
+                        {level > 0 && (
+                          <button type="button" onClick={() => equipRelic(relic.id, !equipped)} disabled={!canEquip}
+                            className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[10px] font-black text-amber-100 hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-35">
+                            {busyAction === 'equip-' + relic.id ? 'Saving…' : equipped ? 'Unequip' : archive.equippedRiftRelics.length >= RIFT_RELIC_EQUIP_SLOTS ? 'Slots full' : 'Equip'}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => forgeRelic(relic.id)} disabled={!canForge}
+                          className="rounded-lg border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-[10px] font-black text-violet-100 hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-35">
+                          {busyAction === 'forge-' + relic.id ? 'Forging…' : maxed ? 'MAX RANK' : level === 0 ? 'Forge' : 'Reinforce'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-violet-400" style={{ width: (level / relic.maxLevel * 100) + '%' }} />
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
+        )}
       </section>
 
       {run && (

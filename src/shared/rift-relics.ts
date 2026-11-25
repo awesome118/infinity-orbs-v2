@@ -44,7 +44,7 @@ export const RIFT_RELICS: Record<RiftRelicId, RiftRelicDefinition> = {
   observer: {
     id: 'observer', name: 'The Observer', category: 'precision',
     description: 'Luck rises as your best Orb approaches the Rift goal.',
-    rankEffects: ['Up to ×1.33 Luck near the goal', 'Up to ×2.67 Luck near the goal', '×2 Luck at 90%; ×5 at 99%'],
+    rankEffects: ['Up to ×2.33 Luck at 99% progress', 'Up to ×3.67 Luck at 99% progress', '×2 Luck at 90%; ×5 at 99%'],
     baseScrapCost: 420, baseRiftPointCost: 22, costGrowth: 2.25, maxLevel: 3,
   },
   'loaded-die': {

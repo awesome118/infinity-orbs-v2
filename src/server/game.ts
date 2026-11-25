@@ -4260,7 +4260,7 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
         ? 1 + (modifierSettings.temporalDrag - 1) * relicEffects.temporalArbitrageEfficiency
         : 1,
       riftRelicLuckExcessMultiplier: relicEffects.luckExcessMultiplier,
-      riftObserverLuckMultiplier: riftObserverLuckMultiplier(safeNonNegativeInteger(run.bestRarity, 2), targetRarity, relicEffects.observerRank),
+      riftObserverLuckMultiplier: riftObserverLuckMultiplier(Math.max(2, safeNonNegativeInteger(run.bestRarity)), targetRarity, relicEffects.observerRank),
       riftLoadedDieMultiplier: relicEffects.loadedDieMultiplier,
       riftFractureCascadeMultiplier: relicEffects.fractureCascadeRank > 0 &&
         safeNonNegativeInteger(run.fractureCascadeUntilRoll) > safeNonNegativeInteger(gameState.totalRolls)
