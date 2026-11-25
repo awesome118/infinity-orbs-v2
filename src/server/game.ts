@@ -8,8 +8,17 @@ import { CODEX_MIGRATION_BATCH_SIZE, CODEX_SHARD_COUNT, CODEX_STORAGE_VERSION, c
 import { getActivePlayerMutationLock, withPlayerMutationLock, withPlayerMutationLockFor } from './player-lock.js';
 import * as notificationsModule from '@devvit/notifications';
 import {
+  accrueRiftDimensionalInterest,
   getRiftChallengeDefinition,
+  normalizeRiftTemporalDragMultiplier,
+  riftEchoChamberChance,
+  riftFractureCascadeDuration,
+  riftFractureCascadeMultiplier,
+  riftOverkillRewardMultiplier,
+  riftProbabilityDebtMultiplier,
   riftRatePerHour,
+  riftSingularityFocusMultiplier,
+  riftTemporalArbitrageMultiplier,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
@@ -4170,6 +4179,13 @@ interface ActiveRiftRunContext {
   baseCooldownMs: number;
   riftLuckPerkLevel: number;
   riftSpeedPerkLevel: number;
+  temporalDragMultiplier: number;
+  temporalArbitrageLevel: number;
+  temporalCompressionLevel: number;
+  probabilityDebtLevel: number;
+  fractureCascadeLevel: number;
+  echoChamberLevel: number;
+  singularityFocusLevel: number;
   challengeCoinMultiplier: number;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   gameState: PlayerState;
@@ -4224,6 +4240,13 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       baseCooldownMs: challenge.baseCooldownMs,
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
+      temporalDragMultiplier: normalizeRiftTemporalDragMultiplier(run.temporalDragMultiplier),
+      temporalArbitrageLevel: safeNonNegativeInteger(riftPerks.temporalArbitrage),
+      temporalCompressionLevel: safeNonNegativeInteger(riftPerks.temporalCompression),
+      probabilityDebtLevel: safeNonNegativeInteger(riftPerks.probabilityDebt),
+      fractureCascadeLevel: safeNonNegativeInteger(riftPerks.fractureCascade),
+      echoChamberLevel: safeNonNegativeInteger(riftPerks.echoChamber),
+      singularityFocusLevel: safeNonNegativeInteger(riftPerks.singularityFocus),
       challengeCoinMultiplier: challenge.coinMultiplier,
       upgradeLevels: {
         fortune: safeNonNegativeInteger(levels.fortune),
@@ -4384,6 +4407,18 @@ async function saveActiveRiftPlayerState(
         throw new Error('Rift player save reached its revision limit.');
       }
 
+      const riftPerkLevels = isPlainRecord(archive.riftPerkLevels) ? archive.riftPerkLevels : {};
+      const interest = accrueRiftDimensionalInterest(
+        state.coins,
+        state.lifetimeCoins ?? state.coins,
+        run.lastInterestAt,
+        run.startedAt,
+        safeNonNegativeInteger(riftPerkLevels.dimensionalInterest),
+        now,
+      );
+      state.coins = interest.coins;
+      state.lifetimeCoins = interest.lifetimeCoins;
+      run.lastInterestAt = interest.lastInterestAt;
       const storedState = serializeRiftPlayerState(state, nextRevision);
       run.gameState = storedState;
       run.coins = storedState.coins;
@@ -4414,7 +4449,13 @@ async function saveActiveRiftPlayerState(
           highestRarity: Math.max(2, Number(storedState.highestRarity) || 2),
           masteryPoints: safeNonNegativeInteger(storedState.masteryPoints),
         } satisfies RiftChallengeMainProgress;
-        const reward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        const baseReward = firstClear ? challenge.firstClearPoints : challenge.repeatClearPoints;
+        const rewardMultiplier = riftOverkillRewardMultiplier(
+          riftBestRarity,
+          challenge.targetRarity,
+          safeNonNegativeInteger(riftPerkLevels.overkill),
+        );
+        const reward = Math.min(Number.MAX_SAFE_INTEGER, Math.round(baseReward * rewardMultiplier));
         archive.riftPoints = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.riftPoints) + reward);
         archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + reward);
         const bestByChallenge = isPlainRecord(archive.bestRarityByChallenge) ? archive.bestRarityByChallenge : {};
@@ -4734,6 +4775,13 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       baseCooldownMs: activeRiftRun.baseCooldownMs,
       riftLuckPerkLevel: activeRiftRun.riftLuckPerkLevel,
       riftSpeedPerkLevel: activeRiftRun.riftSpeedPerkLevel,
+      temporalDragMultiplier: activeRiftRun.temporalDragMultiplier,
+      temporalArbitrageLevel: activeRiftRun.temporalArbitrageLevel,
+      temporalCompressionLevel: activeRiftRun.temporalCompressionLevel,
+      probabilityDebtLevel: activeRiftRun.probabilityDebtLevel,
+      fractureCascadeLevel: activeRiftRun.fractureCascadeLevel,
+      echoChamberLevel: activeRiftRun.echoChamberLevel,
+      singularityFocusLevel: activeRiftRun.singularityFocusLevel,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
       upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
@@ -5998,7 +6046,8 @@ export async function applyRolls(
   // Rune Luck remains an explicit rarity multiplier, separate from Starseeker.
   const challengeLuckMultiplier =
     (1 + (s.riftSession?.upgradeLevels.fortune ?? 0) * 0.12) *
-    (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05);
+    (1 + (s.riftSession?.riftLuckPerkLevel ?? 0) * 0.05) *
+    riftTemporalArbitrageMultiplier(s.riftSession?.temporalDragMultiplier ?? 1, s.riftSession?.temporalArbitrageLevel ?? 0);
   const baseLuckCandidate = (luckMultiplier(luckState) + Math.max(0, communityLuck - 1) + bossLuckBonus) *
     riftMultipliers.luckMultiplier * challengeLuckMultiplier;
   const baseLuck = Number.isFinite(baseLuckCandidate) ? Math.max(1, baseLuckCandidate) : Number.MAX_VALUE;
@@ -6035,10 +6084,10 @@ export async function applyRolls(
       Number.MAX_SAFE_INTEGER - s.totalRolls - baseBatchRollCount,
     ));
   let runeBonusRollsUsed = 0;
-  const runeBonusRollSpecs: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean }[] = [];
+  const runeBonusRollSpecs: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean; exactRarity?: number; isInfinityOrb?: boolean }[] = [];
   const addRuneBonusRolls = (
     requestedCount: number,
-    spec: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean },
+    spec: { minRarity?: number; echoDepth?: number; echoOnly?: boolean; skipAllProcs?: boolean; exactRarity?: number; isInfinityOrb?: boolean },
   ): number => {
     const requested = Number.isFinite(requestedCount) ? Math.max(0, Math.floor(requestedCount)) : 0;
     const count = Math.min(requested, runeBonusRollBudget - runeBonusRollsUsed);
@@ -6090,7 +6139,8 @@ export async function applyRolls(
     const isGuaranteedThirdBall = !s.riftSession && forcedRarity == null && lifetimeRollsBeforeBatch + virtualRollOffset === 2;
 
     // Chain Patcher guarantees the exact requested rarity, not a critical multiplier.
-    const critEligible = !isGuaranteedThirdBall && !(exactRarity && forcedRarity != null && i === 0);
+    const isExactRiftEcho = Number.isFinite(Number(currentRuneSpec?.exactRarity)) && Number(currentRuneSpec?.exactRarity) >= 2;
+    const critEligible = !isGuaranteedThirdBall && !isExactRiftEcho && !(exactRarity && forcedRarity != null && i === 0);
     const critCountInGroup = critEligible
       ? sampleBinomialCount(sampleWeight, effectiveCritChance, rng)
       : 0;
@@ -6131,12 +6181,31 @@ export async function applyRolls(
     // diminishing-return factor to the continuous roll distribution.
     // The third lifetime Orb overrides the random result with a guaranteed beginner drop.
     const minimumRarity = 2 + (s.prestigeUpgrades?.luckyFloor ?? 0);
+    const groupDryStreakBeforeSample = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
+    // Estimate where the representative maximum lands within a compressed group.
+    const groupDryStreakAtMaximum = groupDryStreakBeforeSample + Math.floor((sampleWeight - 1) / 2);
+    const riftDebtMultiplier = s.riftSession
+      ? riftProbabilityDebtMultiplier(groupDryStreakAtMaximum, s.riftSession.probabilityDebtLevel)
+      : 1;
+    const riftCascadeActive = s.riftSession && (s.riftFractureCascadeRollsRemaining ?? 0) > 0;
+    const riftCascadeMultiplier = riftCascadeActive
+      ? riftFractureCascadeMultiplier(s.riftSession?.fractureCascadeLevel ?? 0)
+      : 1;
+    const riftSingularityMultiplier = s.riftSession
+      ? riftSingularityFocusMultiplier(s.highestRarity, s.riftSession.targetRarity, s.riftSession.singularityFocusLevel)
+      : 1;
+    const riftSampleLuck = Math.min(Number.MAX_VALUE,
+      riftSampleLuck * riftDebtMultiplier * riftCascadeMultiplier * riftSingularityMultiplier);
     const beginnerRarity = 101 + Math.floor(rng() * 20);
     const runeRarityFloor = Math.max(minimumRarity, currentRuneSpec?.minRarity ?? minimumRarity);
     let isInfinityOrb = false;
     let rolledRarity: number;
     let criticalMultiplierAppliedBeforeFloor = false;
-    if (isGuaranteedThirdBall) {
+    if (isExactRiftEcho) {
+      rolledRarity = Math.max(minimumRarity, Math.min(MAX_ORB_RARITY, Math.floor(Number(currentRuneSpec?.exactRarity) || 2)));
+      isInfinityOrb = currentRuneSpec?.isInfinityOrb === true;
+      criticalMultiplierAppliedBeforeFloor = true;
+    } else if (isGuaranteedThirdBall) {
       rolledRarity = beginnerRarity;
     } else if (forcedRarity && i === 0) {
       rolledRarity = forcedRarity;
@@ -6145,7 +6214,7 @@ export async function applyRolls(
       // effective rolls. Square the combined sample scale because Luck's
       // rarity contribution is square-rooted in the shared rarity function.
       const sampleScale = sampleWeight * averageGroupMultiplier;
-      const sampleLuck = Math.min(Number.MAX_VALUE, effectiveLuck * sampleScale * sampleScale);
+      const sampleLuck = Math.min(Number.MAX_VALUE, riftSampleLuck * sampleScale * sampleScale);
       const maxCategoryMultiplier = isCompressedGroup
         ? Math.max(ordinaryGroupCount > 0 ? 1 : 0, normalCriticalGroupCount > 0 ? criticalMultiplier : 0, groupSupernovaCount > 0 ? supernovaMultiplier : 0)
         : averageGroupMultiplier;
@@ -6164,9 +6233,11 @@ export async function applyRolls(
       // The group-level max scale already includes its sampled critical mix.
       criticalMultiplierAppliedBeforeFloor = true;
     }
-    const baseRarity = exactRarity && forcedRarity != null && i === 0
-      ? forcedRarity
-      : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
+    const baseRarity = isExactRiftEcho
+      ? rolledRarity
+      : exactRarity && forcedRarity != null && i === 0
+        ? forcedRarity
+        : Math.max(minimumRarity, isGuaranteedThirdBall ? rolledRarity : runeRarityFloor, rolledRarity);
     const rawCritRarity = isCrit && !criticalMultiplierAppliedBeforeFloor
       ? Math.round(baseRarity * (isSupernova ? supernovaMultiplier : criticalMultiplier))
       : baseRarity;
@@ -6179,7 +6250,7 @@ export async function applyRolls(
     // distribution and would understate the sum of 500,000 individual rewards.
     const rewardRarity = sampleWeight > 1
       ? rollContinuum(
-        effectiveLuck,
+        riftSampleLuck,
         rng,
         runeLuckMultiplier,
         runeRarityFloor,
@@ -6196,7 +6267,7 @@ export async function applyRolls(
       ? rarity
       : normalCriticalGroupCount > 0
         ? rollContinuum(
-          effectiveLuck,
+          riftSampleLuck,
           rng,
           runeLuckMultiplier * criticalMultiplier,
           runeRarityFloor * criticalMultiplier,
@@ -6207,7 +6278,7 @@ export async function applyRolls(
       ? rarity
       : groupSupernovaCount > 0
         ? rollContinuum(
-          effectiveLuck,
+          riftSampleLuck,
           rng,
           runeLuckMultiplier * supernovaMultiplier,
           runeRarityFloor * supernovaMultiplier,
@@ -6331,10 +6402,6 @@ export async function applyRolls(
     );
     const totalRollsBeforeSample = s.totalRolls - sampleWeight;
     const previousAllTimeRarity = s.highestRarity;
-    const groupDryStreakBeforeSample = Math.max(0, Math.floor(Number(s.rollsSinceBest ?? 0) || 0));
-    // A group maximum is equally likely to occur at any represented position.
-    // Use the expected pre-record position for Aftershock and dry-streak state.
-    const groupDryStreakAtMaximum = groupDryStreakBeforeSample + Math.floor((sampleWeight - 1) / 2);
     const groupDryStreakAverage = groupDryStreakBeforeSample + (sampleWeight + 1) / 2;
     const isNewRarityRecord = rarity > previousAllTimeRarity || (isInfinityOrb && !s.highestRarityIsInfinity);
     const dryStreakForBatchProcs = isNewRarityRecord
@@ -6356,6 +6423,26 @@ export async function applyRolls(
     } else {
       s.rollsSinceBest = groupDryStreakBeforeSample + sampleWeight;
       s.highestDryStreak = Math.max(s.highestDryStreak ?? 0, s.rollsSinceBest);
+    }
+
+    // A record starts a new Fracture Cascade; a non-record group consumes its remaining charge.
+    if (s.riftSession && s.riftSession.fractureCascadeLevel > 0) {
+      const duration = riftFractureCascadeDuration(s.riftSession.fractureCascadeLevel);
+      if (isNewRarityRecord) {
+        s.riftFractureCascadeRollsRemaining = Math.max(0, duration - Math.floor((sampleWeight - 1) / 2));
+      } else {
+        s.riftFractureCascadeRollsRemaining = Math.max(0,
+          (s.riftFractureCascadeRollsRemaining ?? 0) - sampleWeight);
+      }
+    }
+
+    // Rift Echo Chamber adds separate, exact copies of the sampled Orb. Echo rolls cannot recurse.
+    const riftEchoChance = riftEchoChamberChance(s.riftSession?.echoChamberLevel ?? 0);
+    if (s.riftSession && !suppressOtherRuneProcs && riftEchoChance > 0) {
+      const riftEchoCount = sampleBinomialCount(sampleWeight, riftEchoChance, rng);
+      if (riftEchoCount > 0) {
+        addRuneBonusRolls(riftEchoCount, { exactRarity: rarity, isInfinityOrb, skipAllProcs: true });
+      }
     }
 
     // Discovery Oracle rewards a new-to-this-player rarity at most once per activation.
