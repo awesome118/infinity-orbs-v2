@@ -135,7 +135,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /riftStolenMomentumLevel/);
   assert.match(server, /probabilityDebtRolls/);
   assert.match(game, /riftProbabilityDebtMultiplier/);
-  assert.match(game, /const interestBonus =/);
+  assert.match(shared, /const interestBonus =/);
   assert.match(server, /export async function buyRiftRelic/);
   assert.match(server, /export async function setEquippedRiftRelic/);
   assert.match(server, /spendCombatScrapForRiftForge/);
