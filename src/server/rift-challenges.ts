@@ -741,7 +741,10 @@ export async function buyRiftChallengeUpgrade(
     const gameState = ensureRunGameState(run);
     accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest);
     const progress = progressFromGameState(gameState);
-    const mechanicUnlocks = riftChallengeMechanicUnlocks(progress);
+    const mechanicUnlocks = riftChallengeMechanicUnlocks(
+      progress,
+      archive.riftPerkLevels.earlyAuthorization,
+    );
     if (!mechanicUnlocks[upgradeId]) {
       throw new Error('Rift-game requirement not met: ' + RIFT_CHALLENGE_UPGRADES[upgradeId].mainRequirement + '.');
     }
@@ -779,9 +782,20 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
     archive.riftPoints -= cost;
     archive.riftPerkLevels[perkId] = currentLevel + 1;
     if (archive.activeRun?.status === 'active' && archive.activeRun.gameState) {
-      const nextRevision = safeInteger(archive.activeRun.gameState.stateRevision) + 1;
+      const activeState = archive.activeRun.gameState;
+      if (perkId === 'automationOverride' && archive.riftPerkLevels.automationOverride > 0) {
+        activeState.upgrades = { ...activeState.upgrades, auto: Math.max(1, activeState.upgrades?.auto ?? 0) };
+        activeState.manualRolls = Math.max(3, activeState.manualRolls ?? 0);
+      }
+      if (perkId === 'chronoEngine' && archive.riftPerkLevels.chronoEngine > 0) {
+        activeState.masterySkills = {
+          ...activeState.masterySkills,
+          cooldownReclaimer: Math.max(1, activeState.masterySkills?.cooldownReclaimer ?? 0),
+        };
+      }
+      const nextRevision = safeInteger(activeState.stateRevision) + 1;
       if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
-      archive.activeRun.gameState.stateRevision = nextRevision;
+      activeState.stateRevision = nextRevision;
     }
     archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels);
     await writeArchive(archive);
@@ -810,6 +824,69 @@ export async function setRiftTemporalDrag(
     accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest);
     run.temporalDragMultiplier = multiplier;
     const state = ensureRunGameState(run);
+    const nextRevision = safeInteger(state.stateRevision) + 1;
+    if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+    state.stateRevision = nextRevision;
+    syncRunSummaryFromGameState(run);
+    await writeArchive(archive);
+    return snapshot(archive, run.mainProgressAtStart);
+  });
+}
+
+export async function chooseRiftMutation(
+  mutationIdValue: unknown,
+  expectedRunIdValue: unknown,
+): Promise<RiftChallengeSnapshot> {
+  const mutationId = String(mutationIdValue ?? '') as RiftMutationId;
+  if (!getRiftMutationDefinition(mutationId)) throw new Error('Choose a valid Rift Mutation.');
+  return withPlayerMutationLock(async () => {
+    const archive = await readArchive();
+    accrueRiftProgress(archive);
+    const run = archive.activeRun;
+    if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
+    assertExpectedRunId(run, expectedRunIdValue);
+    if (run.activeMutation) throw new Error('A Rift Mutation is already active.');
+    if (!Array.isArray(run.pendingMutationChoices) || !run.pendingMutationChoices.includes(mutationId)) {
+      throw new Error('That mutation was not offered for this run.');
+    }
+    const now = Date.now();
+    run.activeMutation = {
+      id: mutationId,
+      startedAt: now,
+      startedAtRoll: run.totalRolls,
+      endsAtRoll: run.totalRolls + riftMutationDurationRolls(archive.riftPerkLevels.anomalyPersistence),
+    };
+    run.pendingMutationChoices = [];
+    const state = ensureRunGameState(run);
+    const nextRevision = safeInteger(state.stateRevision) + 1;
+    if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+    state.stateRevision = nextRevision;
+    syncRunSummaryFromGameState(run);
+    await writeArchive(archive);
+    return snapshot(archive, run.mainProgressAtStart);
+  });
+}
+
+export async function activateRiftEmergencyProtocol(
+  expectedRunIdValue: unknown,
+): Promise<RiftChallengeSnapshot> {
+  return withPlayerMutationLock(async () => {
+    const archive = await readArchive();
+    accrueRiftProgress(archive);
+    const run = archive.activeRun;
+    if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
+    assertExpectedRunId(run, expectedRunIdValue);
+    if (safeInteger(archive.riftPerkLevels.emergencyProtocol) <= 0) {
+      throw new Error('Emergency Protocol must be unlocked first.');
+    }
+    const availableCharges = safeInteger(archive.riftPerkLevels.emergencyProtocol) +
+      safeInteger(archive.riftPerkLevels.advancedDeployment) -
+      safeInteger(run.emergencyProtocolsUsed);
+    if (availableCharges <= 0) throw new Error('No Emergency Protocol charges remain this run.');
+    const state = ensureRunGameState(run);
+    state.lastRollAt = null;
+    run.emergencyProtocolsUsed = safeInteger(run.emergencyProtocolsUsed) + 1;
+    run.emergencyProtocolUntilRoll = run.totalRolls + 5;
     const nextRevision = safeInteger(state.stateRevision) + 1;
     if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
     state.stateRevision = nextRevision;
