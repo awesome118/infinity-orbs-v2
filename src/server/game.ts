@@ -5888,7 +5888,7 @@ async function readRiftMainGameMultipliers(userId: string): Promise<{ luckMultip
 function sampleSecondOrderUniform(countValue: number, random: () => number): number {
   const count = Math.max(2, Math.floor(Number(countValue) || 2));
   const raw = Number(random());
-  const target = Number.isFinite(raw) ? Math.max(0, Math.min(1 - Number.EPSILON, raw)) : 0.5;
+  const target = Number.isFinite(raw) ? Math.max(Number.EPSILON, Math.min(1 - Number.EPSILON, raw)) : 0.5;
   // The second-smallest of n uniform samples has CDF
   // 1 - (1-x)^n - n*x*(1-x)^(n-1). Since rarity is inverse-uniform,
   // this produces the second-highest rarity represented by a compressed group.
