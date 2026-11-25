@@ -1194,7 +1194,7 @@ export function createApp() {
   app.post('/api/rift-challenges/start', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      res.json(await startRiftChallenge(req.body?.challengeId));
+      res.json(await startRiftChallenge(req.body?.challengeId, req.body?.blueprintId));
     } catch (error: any) {
       const message = error?.message || 'Could not start this challenge.';
       const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
@@ -1263,6 +1263,43 @@ export function createApp() {
       const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
         : message.startsWith('Need ') || message.includes('already at maximum') ||
           message.includes('valid Rift perk') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/mutation', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The active Rift run ID is missing. Refresh and try again.' });
+      }
+      res.json(await chooseRiftMutation(req.body?.mutationId, runId));
+    } catch (error: any) {
+      const message = error?.message || 'Rift Mutation could not be activated.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : message.includes('valid Rift Mutation') || message.includes('was not offered') ||
+          message.includes('already active') ? 400
+        : transientContentionError(error) ? 503 : 500;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.post('/api/rift-challenges/emergency', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const runId = req.body?.runId;
+      if (typeof runId !== 'string' || runId.length > 120) {
+        return res.status(400).json({ error: 'The active Rift run ID is missing. Refresh and try again.' });
+      }
+      res.json(await activateRiftEmergencyProtocol(runId));
+    } catch (error: any) {
+      const message = error?.message || 'Emergency Protocol could not be activated.';
+      const status = message === 'REDDIT_LOGIN_REQUIRED' ? 401
+        : message === 'CHALLENGE_RUN_MISMATCH' ? 409
+        : message.includes('must be unlocked') || message.includes('charges remain') ? 400
         : transientContentionError(error) ? 503 : 500;
       res.status(status).json({ error: message });
     }
