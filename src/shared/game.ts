@@ -2841,6 +2841,10 @@ export function theoreticalCooldownMs(s: PlayerState, isAuto = false, liveBalanc
     const timeDrag = Math.max(1, Math.min(20, Number(s.riftSession.temporalDragMultiplier) || 1));
     const compression = Math.min(0.80, Math.max(0, Number(s.riftSession.temporalCompressionLevel ?? 0)) * 0.04);
     cd *= 1 + (timeDrag - 1) * (1 - compression);
+    if (s.riftSession.activeMutation?.id === 'temporal-collapse') {
+      const amplifierLevel = Math.max(0, Math.min(10, Math.floor(Number(s.riftSession.mutationAmplifierLevel) || 0)));
+      cd *= Math.max(0.35, 1 - 0.30 * (1 + amplifierLevel * 0.05));
+    }
   }
   return Number.isFinite(cd) ? Math.max(s.riftSession ? 500 : 0, Math.round(cd)) : (s.riftSession ? 500 : 0);
 }
