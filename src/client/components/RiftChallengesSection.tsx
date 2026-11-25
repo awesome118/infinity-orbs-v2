@@ -154,7 +154,7 @@ export const RiftChallengesSection: React.FC<{
     () => archive
       ? riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles, archive.riftPoints)
       : rewardPreview.rpPerHour,
-    [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.bestModifierSettings, archive?.bestChallengeToggles, rewardPreview.rpPerHour],
+    [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.bestModifierSettings, archive?.bestChallengeToggles, archive?.riftPoints, rewardPreview.rpPerHour],
   );
   const configuredBestRate = useMemo(() => {
     if (!archive) return rewardPreview.rpPerHour;
@@ -166,7 +166,7 @@ export const RiftChallengesSection: React.FC<{
       archive.riftPoints,
     );
     return Math.max(projectedRate, candidateRate);
-  }, [archive?.completedChallengeIds, archive?.riftPerkLevels, modifierSettings, challengeToggles, projectedRate, rewardPreview.rpPerHour]);
+  }, [archive?.completedChallengeIds, archive?.riftPerkLevels, archive?.riftPoints, modifierSettings, challengeToggles, projectedRate, rewardPreview.rpPerHour]);
 
   const runTarget = Math.max(2, run?.targetRarity ?? challenge?.targetRarity ?? RIFT_ASCENT.targetRarity);
   const progressPercent = useMemo(() => {

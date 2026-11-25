@@ -121,7 +121,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(challengeUi, /Coin Scarcity/);
   assert.match(challengeUi, /Upgrade Inflation/);
   assert.match(challengeUi, /Second-best/);
-  assert.match(challengeUi, /BEGIN RIFT ASCENT/);
+  assert.match(challengeUi, /START RIFT/);
   assert.match(challengeUi, /Best rate after clear/i);
   assert.match(challengeUi, /ENTER RIFT GAME/);
   assert.doesNotMatch(challengeUi, /\/api\/rift-challenges\/roll/);

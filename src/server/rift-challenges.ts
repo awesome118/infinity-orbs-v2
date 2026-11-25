@@ -211,7 +211,7 @@ function accrueRiftProgress(archive: RiftChallengeArchive, now = Date.now()): vo
   archive.riftPoints = nextBalance;
   archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, archive.totalRiftPointsEarned + earnedNow);
   archive.riftProgress = nextBalance >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accumulated - wholePoints);
-  archive.riftRatePerHour = rate;
+  archive.riftRatePerHour = riftRatePerHour(archive.completedChallengeIds, archive.riftPerkLevels, archive.bestModifierSettings, archive.bestChallengeToggles, archive.riftPoints);
   archive.riftLastAccruedAt = safeNow;
 }
 
@@ -544,7 +544,8 @@ export async function setEquippedRiftRelic(relicIdValue: unknown, equippedValue:
     const current = [...archive.equippedRiftRelics];
     if (equippedValue) {
       if (current.includes(relicId)) return snapshot(archive, await readMainProgress());
-      if (current.length >= RIFT_RELIC_EQUIP_SLOTS) throw new Error('All relic slots are occupied. Unequip a relic first.');
+      const availableSlots = archive.riftUnlocks.timelineFork ? RIFT_RELIC_FORKED_EQUIP_SLOTS : RIFT_RELIC_EQUIP_SLOTS;
+      if (current.length >= availableSlots) throw new Error('All relic slots are occupied. Unequip a relic first.');
       current.push(relicId);
     } else {
       const index = current.indexOf(relicId);

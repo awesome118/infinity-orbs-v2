@@ -4317,7 +4317,7 @@ function advanceStoredRiftProgress(archive: Record<string, unknown>, now: number
   archive.riftPoints = points;
   archive.totalRiftPointsEarned = Math.min(Number.MAX_SAFE_INTEGER, safeNonNegativeInteger(archive.totalRiftPointsEarned) + earned);
   archive.riftProgress = points >= Number.MAX_SAFE_INTEGER ? 0 : Math.max(0, accrued - whole);
-  archive.riftRatePerHour = rate;
+  archive.riftRatePerHour = riftRatePerHour(completed, levels as never, modifierSettings, challengeToggles, safeNonNegativeInteger(archive.riftPoints));
   archive.riftLastAccruedAt = now;
 }
 
