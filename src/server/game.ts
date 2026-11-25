@@ -6233,7 +6233,9 @@ export async function applyRolls(
         mutationCoinMultiplier = 1 + (0.70 - 1) * mutationPenalty;
         break;
       case 'unstable-economy':
-        mutationCoinMultiplier = Math.floor(s.totalRolls / 5) % 2 === 0 ? 0.55 : 1.85;
+        mutationCoinMultiplier = Math.floor(s.totalRolls / 5) % 2 === 0
+          ? 1 + (0.55 - 1) * mutationPenalty
+          : 1 + (1.85 - 1) * mutationBenefit;
         break;
       case 'critical-instability':
         mutationLuckMultiplier = 1 + (0.85 - 1) * mutationPenalty;
