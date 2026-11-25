@@ -4547,7 +4547,7 @@ async function saveActiveRiftPlayerState(
         run.nextMutationAtRoll = 0;
       }
       run.mutationsCompleted = mutationsCompleted;
-      archive.version = 8;
+      archive.version = 9;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
