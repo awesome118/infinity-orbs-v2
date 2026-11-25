@@ -19,6 +19,8 @@ import {
   riftRatePerHour,
   riftSingularityFocusMultiplier,
   riftTemporalArbitrageMultiplier,
+  riftMutationPenaltyFactor,
+  RIFT_MUTATIONS,
   type RiftChallengeArchive,
   type RiftChallengeMainProgress,
 } from '../shared/rift-challenges.js';
@@ -4186,6 +4188,30 @@ interface ActiveRiftRunContext {
   fractureCascadeLevel: number;
   echoChamberLevel: number;
   singularityFocusLevel: number;
+  bossResonanceLevel: number;
+  masteryBridgeLevel: number;
+  runeReconnectionLevel: number;
+  automationOverrideLevel: number;
+  chronoEngineLevel: number;
+  combatIntegrationLevel: number;
+  initialCalibrationLevel: number;
+  earlyAuthorizationLevel: number;
+  riftConditioningLevel: number;
+  riftConditioningCompletions: number;
+  fortuneReservoirLevel: number;
+  criticalConversionLevel: number;
+  fractureRecyclingLevel: number;
+  emergencyProtocolLevel: number;
+  milestoneAmplifierLevel: number;
+  anomalyHarvestingLevel: number;
+  anomalyForecasterLevel: number;
+  mutationStabilizerLevel: number;
+  mutationAmplifierLevel: number;
+  mutationExtractionLevel: number;
+  anomalyPersistenceLevel: number;
+  activeMutation: { id: string; startedAtRoll: number; endsAtRoll: number } | null;
+  emergencyProtocolUntilRoll: number;
+  emergencyProtocolCharges: number;
   challengeCoinMultiplier: number;
   upgradeLevels: { fortune: number; speed: number; prosperity: number; critical: number };
   gameState: PlayerState;
@@ -4247,6 +4273,42 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       fractureCascadeLevel: safeNonNegativeInteger(riftPerks.fractureCascade),
       echoChamberLevel: safeNonNegativeInteger(riftPerks.echoChamber),
       singularityFocusLevel: safeNonNegativeInteger(riftPerks.singularityFocus),
+      bossResonanceLevel: safeNonNegativeInteger(riftPerks.bossResonance),
+      masteryBridgeLevel: safeNonNegativeInteger(riftPerks.masteryBridge),
+      runeReconnectionLevel: safeNonNegativeInteger(riftPerks.runeReconnection),
+      automationOverrideLevel: safeNonNegativeInteger(riftPerks.automationOverride),
+      chronoEngineLevel: safeNonNegativeInteger(riftPerks.chronoEngine),
+      combatIntegrationLevel: safeNonNegativeInteger(riftPerks.combatIntegration),
+      initialCalibrationLevel: safeNonNegativeInteger(riftPerks.initialCalibration),
+      earlyAuthorizationLevel: safeNonNegativeInteger(riftPerks.earlyAuthorization),
+      riftConditioningLevel: safeNonNegativeInteger(riftPerks.riftConditioning),
+      riftConditioningCompletions: Array.isArray(archive.completedChallengeIds) ? archive.completedChallengeIds.length : 0,
+      fortuneReservoirLevel: safeNonNegativeInteger(riftPerks.fortuneReservoir),
+      criticalConversionLevel: safeNonNegativeInteger(riftPerks.criticalConversion),
+      fractureRecyclingLevel: safeNonNegativeInteger(riftPerks.fractureRecycling),
+      emergencyProtocolLevel: safeNonNegativeInteger(riftPerks.emergencyProtocol),
+      milestoneAmplifierLevel: safeNonNegativeInteger(riftPerks.milestoneAmplifier),
+      anomalyHarvestingLevel: safeNonNegativeInteger(riftPerks.anomalyHarvesting),
+      anomalyForecasterLevel: safeNonNegativeInteger(riftPerks.anomalyForecaster),
+      mutationStabilizerLevel: safeNonNegativeInteger(riftPerks.mutationStabilizer),
+      mutationAmplifierLevel: safeNonNegativeInteger(riftPerks.mutationAmplifier),
+      mutationExtractionLevel: safeNonNegativeInteger(riftPerks.mutationExtraction),
+      anomalyPersistenceLevel: safeNonNegativeInteger(riftPerks.anomalyPersistence),
+      activeMutation: isPlainRecord(run.activeMutation) && typeof run.activeMutation.id === 'string' &&
+        Number.isSafeInteger(run.activeMutation.startedAtRoll) && Number.isSafeInteger(run.activeMutation.endsAtRoll)
+        ? {
+            id: run.activeMutation.id.slice(0, 60),
+            startedAtRoll: safeNonNegativeInteger(run.activeMutation.startedAtRoll),
+            endsAtRoll: safeNonNegativeInteger(run.activeMutation.endsAtRoll),
+          }
+        : null,
+      emergencyProtocolUntilRoll: safeNonNegativeInteger(run.emergencyProtocolUntilRoll),
+      emergencyProtocolCharges: Math.max(
+        0,
+        safeNonNegativeInteger(riftPerks.emergencyProtocol) +
+          safeNonNegativeInteger(riftPerks.advancedDeployment) -
+          safeNonNegativeInteger(run.emergencyProtocolsUsed),
+      ),
       challengeCoinMultiplier: challenge.coinMultiplier,
       upgradeLevels: {
         fortune: safeNonNegativeInteger(levels.fortune),
@@ -4782,6 +4844,30 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
       fractureCascadeLevel: activeRiftRun.fractureCascadeLevel,
       echoChamberLevel: activeRiftRun.echoChamberLevel,
       singularityFocusLevel: activeRiftRun.singularityFocusLevel,
+      bossResonanceLevel: activeRiftRun.bossResonanceLevel,
+      masteryBridgeLevel: activeRiftRun.masteryBridgeLevel,
+      runeReconnectionLevel: activeRiftRun.runeReconnectionLevel,
+      automationOverrideLevel: activeRiftRun.automationOverrideLevel,
+      chronoEngineLevel: activeRiftRun.chronoEngineLevel,
+      combatIntegrationLevel: activeRiftRun.combatIntegrationLevel,
+      initialCalibrationLevel: activeRiftRun.initialCalibrationLevel,
+      earlyAuthorizationLevel: activeRiftRun.earlyAuthorizationLevel,
+      riftConditioningLevel: activeRiftRun.riftConditioningLevel,
+      fortuneReservoirLevel: activeRiftRun.fortuneReservoirLevel,
+      criticalConversionLevel: activeRiftRun.criticalConversionLevel,
+      fractureRecyclingLevel: activeRiftRun.fractureRecyclingLevel,
+      emergencyProtocolLevel: activeRiftRun.emergencyProtocolLevel,
+      milestoneAmplifierLevel: activeRiftRun.milestoneAmplifierLevel,
+      anomalyHarvestingLevel: activeRiftRun.anomalyHarvestingLevel,
+      anomalyForecasterLevel: activeRiftRun.anomalyForecasterLevel,
+      mutationStabilizerLevel: activeRiftRun.mutationStabilizerLevel,
+      mutationAmplifierLevel: activeRiftRun.mutationAmplifierLevel,
+      mutationExtractionLevel: activeRiftRun.mutationExtractionLevel,
+      anomalyPersistenceLevel: activeRiftRun.anomalyPersistenceLevel,
+      activeMutation: activeRiftRun.activeMutation,
+      emergencyProtocolUntilRoll: activeRiftRun.emergencyProtocolUntilRoll,
+      emergencyProtocolCharges: activeRiftRun.emergencyProtocolCharges,
+      riftConditioningCompletions: activeRiftRun.riftConditioningCompletions,
       challengeCoinMultiplier: activeRiftRun.challengeCoinMultiplier,
       upgradeLevels: { ...activeRiftRun.upgradeLevels },
     };
