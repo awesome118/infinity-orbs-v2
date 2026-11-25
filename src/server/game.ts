@@ -4289,8 +4289,7 @@ async function readActiveRiftRun(userId: string): Promise<ActiveRiftRunContext |
       baseCooldownMs: isModifierRun ? Math.max(500, storedBaseCooldownMs || Math.ceil(RIFT_ASCENT.baseCooldownMs * modifierSettings.temporalDrag)) : challenge.baseCooldownMs,
       riftLuckPerkLevel: safeNonNegativeInteger(riftPerks.riftLuck),
       riftSpeedPerkLevel: safeNonNegativeInteger(riftPerks.riftSpeed),
-      challengeCoinMultiplier: (isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier) *
-        (1 + Math.min(10, safeNonNegativeInteger(riftPerks.riftCoinYield)) * 0.03),
+      challengeCoinMultiplier: isModifierRun ? 1 / modifierSettings.coinScarcity : challenge.coinMultiplier,
       riftBossBonusEnabled: riftUnlocks.bossResonance,
       riftRuneConfluenceEnabled: riftUnlocks.runeConfluence,
       riftGlobalEffectsEnabled: riftUnlocks.globalConduit,
@@ -4553,7 +4552,7 @@ async function saveActiveRiftPlayerState(
         run.nextMutationAtRoll = 0;
       }
       run.mutationsCompleted = mutationsCompleted;
-      archive.version = 9;
+      archive.version = 10;
       advanceStoredRiftProgress(archive, now);
 
       let completed = false;
