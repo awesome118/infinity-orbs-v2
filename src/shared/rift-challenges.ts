@@ -119,7 +119,15 @@ export type RiftPerkId =
   | 'riftLuck'
   | 'riftSpeed'
   | 'riftYield'
-  | 'riftStartCoins';
+  | 'riftStartCoins'
+  | 'temporalArbitrage'
+  | 'probabilityDebt'
+  | 'temporalCompression'
+  | 'fractureCascade'
+  | 'echoChamber'
+  | 'dimensionalInterest'
+  | 'overkill'
+  | 'singularityFocus';
 
 export type RiftPerkLevels = Record<RiftPerkId, number>;
 
@@ -165,6 +173,54 @@ export const RIFT_PERKS: Record<RiftPerkId, RiftPerkDefinition> = {
     description: 'Seed each new challenge with a small reserve.',
     effect: '+100 starting challenge Coins per level.',
     baseCost: 2, costGrowth: 1.48, maxLevel: 20,
+  },
+  temporalArbitrage: {
+    id: 'temporalArbitrage', name: 'Temporal Arbitrage', category: 'rift',
+    description: 'Turn Temporal Drag into Luck. The slower you choose to roll, the stronger this becomes.',
+    effect: '+1% conversion per level. At level 20, ×6 Time grants ×2 Luck and ×20 grants ×4.8.',
+    baseCost: 5, costGrowth: 1.70, maxLevel: 20,
+  },
+  probabilityDebt: {
+    id: 'probabilityDebt', name: 'Probability Debt', category: 'rift',
+    description: 'Failed rolls accumulate Luck until a new personal best clears the debt.',
+    effect: 'Each failed roll adds 0.1% Luck per level, with another 0.1% per level every 100 failures.',
+    baseCost: 6, costGrowth: 1.72, maxLevel: 10,
+  },
+  temporalCompression: {
+    id: 'temporalCompression', name: 'Temporal Compression', category: 'rift',
+    description: 'Compress the cooldown penalty from Temporal Drag without reducing its Luck conversion.',
+    effect: 'Ignore 4% of the added cooldown per level, up to 80%.',
+    baseCost: 7, costGrowth: 1.72, maxLevel: 20,
+  },
+  fractureCascade: {
+    id: 'fractureCascade', name: 'Fracture Cascade', category: 'rift',
+    description: 'A new personal best primes a chain of increasingly fortunate follow-up rolls.',
+    effect: 'Next 5 + 2 per level rolls gain +5% Luck per level.',
+    baseCost: 5, costGrowth: 1.72, maxLevel: 10,
+  },
+  echoChamber: {
+    id: 'echoChamber', name: 'Echo Chamber', category: 'rift',
+    description: 'Some Orbs repeat themselves as separate bonus Orbs. Echoes count toward progress and collection.',
+    effect: '+1% echo chance per level, up to 20%.',
+    baseCost: 8, costGrowth: 1.78, maxLevel: 20,
+  },
+  dimensionalInterest: {
+    id: 'dimensionalInterest', name: 'Dimensional Interest', category: 'rift',
+    description: 'Unspent challenge Coins compound while a Rift run is active.',
+    effect: '+0.25% Coin interest per level, compounded each minute.',
+    baseCost: 5, costGrowth: 1.70, maxLevel: 10,
+  },
+  overkill: {
+    id: 'overkill', name: 'Overkill', category: 'rift',
+    description: 'Rarity beyond the challenge objective is converted into a larger completion reward.',
+    effect: '+10% reward per excess order of magnitude per level.',
+    baseCost: 10, costGrowth: 1.80, maxLevel: 10,
+  },
+  singularityFocus: {
+    id: 'singularityFocus', name: 'Singularity Focus', category: 'rift',
+    description: 'Luck intensifies as your best Orb approaches the challenge objective.',
+    effect: 'At level 10, reach ×2 Luck at 90% and ×5 at 99% objective progress.',
+    baseCost: 7, costGrowth: 1.75, maxLevel: 10,
   },
 };
 
@@ -225,6 +281,10 @@ export interface RiftChallengeRun {
   mainProgressAtStart: RiftChallengeMainProgress;
   mechanicUnlocks: RiftChallengeMechanicUnlocks;
   lastRoll: RiftChallengeLastRoll | null;
+  /** Player-selected Temporal Drag setting, from ×1 to ×20. */
+  temporalDragMultiplier: number;
+  /** Minute boundary for the active run's compound Coin interest. */
+  lastInterestAt: number;
   /** Complete, isolated main-game save used while this Rift challenge is active. */
   gameState?: PlayerState | null;
 }
@@ -339,6 +399,9 @@ export function emptyRiftPerkLevels(): RiftPerkLevels {
   return {
     mainLuck: 0, mainCoins: 0, mainXp: 0,
     riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
+    temporalArbitrage: 0, probabilityDebt: 0, temporalCompression: 0,
+    fractureCascade: 0, echoChamber: 0, dimensionalInterest: 0,
+    overkill: 0, singularityFocus: 0,
   };
 }
 
@@ -346,6 +409,112 @@ export function riftPerkCost(id: RiftPerkId, currentLevel: number): number {
   const definition = RIFT_PERKS[id];
   const level = Math.max(0, Math.min(definition.maxLevel, Math.floor(Number(currentLevel) || 0)));
   return Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(definition.baseCost * Math.pow(definition.costGrowth, level)));
+}
+
+export const RIFT_TEMPORAL_DRAG_MAX = 20;
+export const RIFT_TEMPORAL_DRAG_STEP = 0.5;
+
+export function normalizeRiftTemporalDragMultiplier(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.max(1, Math.min(RIFT_TEMPORAL_DRAG_MAX,
+    Math.round(numeric / RIFT_TEMPORAL_DRAG_STEP) * RIFT_TEMPORAL_DRAG_STEP));
+}
+
+export function riftTemporalArbitrageMultiplier(timeMultiplier: number, levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.temporalArbitrage.maxLevel, Math.floor(Number(levelValue) || 0)));
+  return 1 + (normalizeRiftTemporalDragMultiplier(timeMultiplier) - 1) * level * 0.01;
+}
+
+export function riftTemporalCooldownMultiplier(timeMultiplier: number, levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.temporalCompression.maxLevel, Math.floor(Number(levelValue) || 0)));
+  const compression = Math.min(0.80, level * 0.04);
+  return 1 + (normalizeRiftTemporalDragMultiplier(timeMultiplier) - 1) * (1 - compression);
+}
+
+export function riftProbabilityDebtMultiplier(failedRollsValue: number, levelValue: number): number {
+  const failedRolls = Number.isFinite(Number(failedRollsValue))
+    ? Math.max(0, Math.floor(Number(failedRollsValue)))
+    : 0;
+  const level = Math.max(0, Math.min(RIFT_PERKS.probabilityDebt.maxLevel, Math.floor(Number(levelValue) || 0)));
+  if (level <= 0 || failedRolls <= 0) return 1;
+  return 1 + failedRolls * level * 0.001 + Math.floor(failedRolls / 100) * level * 0.001;
+}
+
+export function riftFractureCascadeMultiplier(levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.fractureCascade.maxLevel, Math.floor(Number(levelValue) || 0)));
+  return 1 + level * 0.05;
+}
+
+export function riftFractureCascadeDuration(levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.fractureCascade.maxLevel, Math.floor(Number(levelValue) || 0)));
+  return level <= 0 ? 0 : 5 + level * 2;
+}
+
+export function riftEchoChamberChance(levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.echoChamber.maxLevel, Math.floor(Number(levelValue) || 0)));
+  return level * 0.01;
+}
+
+export function riftSingularityFocusMultiplier(bestRarityValue: number, targetRarityValue: number, levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.singularityFocus.maxLevel, Math.floor(Number(levelValue) || 0)));
+  const target = Math.max(2, Number(targetRarityValue) || 2);
+  const best = Math.max(2, Number(bestRarityValue) || 2);
+  if (level <= 0) return 1;
+  const progress = Math.max(0, Math.min(1, Math.log10(best) / Math.max(1, Math.log10(target))));
+  const fullStrength = progress < 0.90
+    ? 1 + (progress / 0.90)
+    : progress < 0.99
+      ? 2 + ((progress - 0.90) / 0.09) * 3
+      : 5;
+  return 1 + (fullStrength - 1) * (level / RIFT_PERKS.singularityFocus.maxLevel);
+}
+
+export function riftOverkillRewardMultiplier(bestRarityValue: number, targetRarityValue: number, levelValue: number): number {
+  const level = Math.max(0, Math.min(RIFT_PERKS.overkill.maxLevel, Math.floor(Number(levelValue) || 0)));
+  const best = Math.max(2, Number(bestRarityValue) || 2);
+  const target = Math.max(2, Number(targetRarityValue) || 2);
+  if (level <= 0 || best <= target) return 1;
+  const excessOrders = Math.max(0, Math.min(10, Math.log10(best / target)));
+  return 1 + excessOrders * level * 0.10;
+}
+
+export function accrueRiftDimensionalInterest(
+  coinsValue: unknown,
+  lifetimeCoinsValue: unknown,
+  lastInterestAtValue: unknown,
+  startedAtValue: unknown,
+  levelValue: number,
+  nowValue = Date.now(),
+): { coins: number; lifetimeCoins: number; lastInterestAt: number; minutesAccrued: number } {
+  const safeBalance = (value: unknown) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  const startedAt = Number.isSafeInteger(Number(startedAtValue)) ? Math.max(0, Number(startedAtValue)) : 0;
+  const lastInterestAt = Number.isSafeInteger(Number(lastInterestAtValue))
+    ? Math.max(startedAt, Number(lastInterestAtValue))
+    : startedAt;
+  const now = Number.isSafeInteger(Number(nowValue)) ? Math.max(lastInterestAt, Number(nowValue)) : lastInterestAt;
+  const level = Math.max(0, Math.min(RIFT_PERKS.dimensionalInterest.maxLevel, Math.floor(Number(levelValue) || 0)));
+  const minutesAccrued = level > 0 ? Math.max(0, Math.floor((now - lastInterestAt) / 60_000)) : 0;
+  const nextInterestAt = level > 0 ? lastInterestAt + minutesAccrued * 60_000 : now;
+  if (minutesAccrued <= 0) {
+    return {
+      coins: safeBalance(coinsValue),
+      lifetimeCoins: safeBalance(lifetimeCoinsValue),
+      lastInterestAt: nextInterestAt,
+      minutesAccrued,
+    };
+  }
+  const factor = Math.pow(1 + level * 0.0025, minutesAccrued);
+  const compound = (value: unknown) => {
+    const amount = safeBalance(value) * factor;
+    return Number.isFinite(amount) ? Math.max(0, amount) : Number.MAX_VALUE;
+  };
+  return {
+    coins: compound(coinsValue),
+    lifetimeCoins: compound(lifetimeCoinsValue),
+    lastInterestAt: nextInterestAt,
+    minutesAccrued,
+  };
 }
 
 export function riftRatePerHour(completedChallengeIds: readonly string[], perkLevels: Partial<RiftPerkLevels> | null | undefined): number {
