@@ -280,6 +280,20 @@ export function riftMutationPenaltyFactor(stabilizerLevel: number, amplifierLeve
   return Math.max(0.25, 1 - stabilizer * 0.05 + amplifier * 0.02);
 }
 
+/**
+ * Normalized logarithmic progress from the run's starting rarity (2) to its
+ * objective. Equal jumps in orders of magnitude contribute equal progress.
+ * Returns a clamped fraction from 0 to 1.
+ */
+export function riftObjectiveProgress(bestRarityValue: number, targetRarityValue: number): number {
+  const start = 2;
+  const best = Number.isFinite(Number(bestRarityValue)) ? Math.max(start, Number(bestRarityValue)) : start;
+  const target = Number.isFinite(Number(targetRarityValue)) ? Math.max(start, Number(targetRarityValue)) : start;
+  if (target <= start) return best >= target ? 1 : 0;
+  const progress = Math.log(best / start) / Math.log(target / start);
+  return Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : (best >= target ? 1 : 0);
+}
+
 export const RIFT_CHALLENGE_UPGRADES: Record<RiftChallengeUpgradeId, RiftChallengeUpgradeDefinition> = {
   fortune: {
     name: 'Fortune Lens',
@@ -533,7 +547,7 @@ export function riftSingularityFocusMultiplier(bestRarityValue: number, targetRa
   const target = Math.max(2, Number(targetRarityValue) || 2);
   const best = Math.max(2, Number(bestRarityValue) || 2);
   if (level <= 0) return 1;
-  const progress = Math.max(0, Math.min(1, Math.log10(best) / Math.max(1, Math.log10(target))));
+  const progress = riftObjectiveProgress(best, target);
   const fullStrength = progress < 0.90
     ? 1 + (progress / 0.90)
     : progress < 0.99
