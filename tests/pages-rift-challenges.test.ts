@@ -83,21 +83,40 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /Auto Roll is disabled by this Rift challenge/);
   assert.match(game, /Offline rolls are disabled in The First Spark/);
   assert.match(game, /Automation is disabled in The First Spark/);
-  assert.match(game, /Global Boosters are outside this isolated Rift run/);
+  assert.match(game, /Unlock Worldline Conduit to use Global Boosters inside a Rift run/);
   assert.match(game, /const luckCcu = s\.riftSession/);
 
   assert.match(sharedGame, /interface RiftPlayerSession/);
   assert.match(sharedGame, /riftTemporalArbitrageMultiplier/);
   assert.match(sharedGame, /riftProgressCoinMultiplier/);
   assert.match(sharedGame, /riftMutationCooldownMultiplier/);
-  assert.match(sharedGame, /riftCritChanceBonus/);
+  assert.match(sharedGame, /riftBossBonusEnabled/);
+  assert.match(sharedGame, /riftRuneConfluenceEnabled/);
+  assert.match(sharedGame, /riftGlobalEffectsEnabled/);
+  assert.match(shared, /normalizeRiftUnlocks/);
+  assert.match(shared, /bossResonance/);
+  assert.match(shared, /runeConfluence/);
+  assert.match(shared, /globalConduit/);
+  assert.match(shared, /riftMemory/);
+  assert.match(server, /legacyRemovedStatPerkRefund/);
+  assert.match(server, /archiveVersion < 10/);
+  assert.match(server, /startingBestRarity/);
+  assert.match(server, /riftStartingProgressRarity/);
+  assert.match(shared, /riftStartingProgressRarity/);
+  assert.match(moreBoosterUi, /globalOnly/);
+  assert.match(client, /tab === 'boosters' \? \(/);
+  assert.match(client, /riftGlobalEffectsEnabled/);
   assert.match(shared, /mutationPersistence/);
   assert.match(shared, /mutationCycle/);
   assert.match(shared, /mutationMastery/);
-  assert.match(shared, /riftCoinYield/);
-  assert.match(shared, /riftCrit/);
-  assert.match(game, /riftCritChanceBonus: Math\.min\(10, safeNonNegativeInteger\(riftPerks\.riftCrit\)\) \* 0\.005/);
-  assert.match(game, /Math\.min\(10, safeNonNegativeInteger\(riftPerks\.riftCoinYield\)\) \* 0\.03/);
+  assert.doesNotMatch(shared, /riftCoinYield|riftCrit/);
+  assert.doesNotMatch(game, /riftCritChanceBonus/);
+  assert.match(game, /riftBossBonusEnabled/);
+  assert.match(game, /riftRuneConfluenceEnabled/);
+  assert.match(game, /riftGlobalEffectsEnabled/);
+  assert.match(game, /combatBossLuckBonus\(combatBossesBeaten\)/);
+  assert.match(game, /combatRuneMajorAbilityEffects\(parsed\?\.runes, parsed\?\.equippedRunes\)/);
+  assert.match(game, /Unlock Worldline Conduit to use Global Boosters inside a Rift run/);
   assert.match(game, /RIFT_MUTATION_DURATION_ROLLS \+ mutationPersistence/);
   assert.match(game, /RIFT_MUTATION_BREAK_ROLLS - mutationCycle/);
   assert.match(shared, /RIFT_MUTATION_UNLOCK_ROLLS = 20/);
@@ -108,7 +127,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /riftMutationLuckMultiplier/);
   assert.match(rollUi, /Rift mutation active/);
   assert.match(challengeUi, /Rift mutations/);
-  assert.match(game, /archive\.version = 9/);
+  assert.match(game, /archive\.version = 10/);
+  assert.match(game, /version: 10/);
   assert.match(game, /RIFT_MUTATION_BREAK_ROLLS/);
   assert.match(game, /riftMutationCoinMultiplier/);
   assert.match(game, /getRiftRelicEffects/);
@@ -194,6 +214,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(server, /archive\.riftPoints -= cost\.riftPoints/);
 
   // Rift presentation is active-save scoped and never replaces the real game UI.
+  const moreBoosterUi = read('src/client/components/BoostersAndAutomation.tsx');
   const rollUi = read('src/client/components/RollSection.tsx');
   const riftTheme = read('src/client/rift-theme.css');
   assert.match(client, /const riftActive = Boolean/);
