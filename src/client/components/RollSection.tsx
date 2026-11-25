@@ -680,6 +680,17 @@ export const RollSection: React.FC<RollSectionProps> = ({
         </div>
       )}
 
+      {state.riftSession?.riftMutation && (
+        <div className="w-full rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[9px] font-black uppercase tracking-[.2em] text-fuchsia-300">Rift mutation active</span>
+            <span className="text-[10px] font-bold tabular-nums text-fuchsia-200">{state.riftSession.riftMutation.rollsRemaining} rolls remaining</span>
+          </div>
+          <div className="mt-1 text-sm font-black text-white">{state.riftSession.riftMutation.name}</div>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-300">{state.riftSession.riftMutation.description} {state.riftSession.riftMutation.effect}</p>
+        </div>
+      )}
+
       {/* Main Celestial Orb Stage (Orbits & Main Orb are concentric and centered together) */}
       <div ref={rollStageRef} className={`roll-stage relative w-full flex items-center justify-center select-none ${isFirstSession ? 'is-first-session' : ''} ${busy ? 'is-rolling' : ''} ${riftCompletionPhase ? 'io-rift-completion-' + riftCompletionPhase : ''}`}>
         {/* Ambient Glow Background centered on orb */}
