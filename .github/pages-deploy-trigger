@@ -1,4 +1,5 @@
 Deploy GitHub Pages after the completed prompt-level change.
+
 Deploy prompt: desktop combat equip, orb reveal visuals, and original Kenney CC0 sounds.
 
 Deploy prompt: quieter, less repetitive sound effects.
@@ -130,3 +131,5 @@ Deploy prompt: use the game's existing nav-list and nav-tab infrastructure for R
 Deploy prompt: fix JSX panel wrapper spacing after adopting native Rift navigation tabs.
 
 Deploy prompt: promote Rift Run, Upgrades, and Relics to sibling routes in the game's standalone top-level navigation; remove nested Rift Progression submenu.
+
+Pages deployment reliability: split build/upload and deploy into dependent jobs to avoid the intermittent Pages artifact-lookup race.
