@@ -8,10 +8,12 @@ import {
   type PlayerState,
 } from '../shared/game.js';
 import {
+  accrueRiftDimensionalInterest,
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
   getRiftChallengeDefinition,
   normalizeRiftMainProgress,
+  normalizeRiftTemporalDragMultiplier,
   riftChallengeIsAvailable,
   riftChallengeMechanicUnlocks,
   riftChallengeUpgradeCost,
@@ -146,6 +148,8 @@ function normalizeRun(value: unknown): RiftChallengeRun | null {
       critical: isRecord(value.mechanicUnlocks) && value.mechanicUnlocks.critical === true,
     },
     lastRoll,
+    temporalDragMultiplier: normalizeRiftTemporalDragMultiplier(value.temporalDragMultiplier),
+    lastInterestAt: safeInteger(value.lastInterestAt, safeInteger(value.startedAt)),
     gameState: isRecord(value.gameState) ? value.gameState as unknown as PlayerState : null,
   };
 }
@@ -271,6 +275,22 @@ function ensureRunGameState(run: RiftChallengeRun): PlayerState {
   return run.gameState;
 }
 
+function accrueRunDimensionalInterest(run: RiftChallengeRun, level: number, now = Date.now()): number {
+  const state = ensureRunGameState(run);
+  const result = accrueRiftDimensionalInterest(
+    state.coins,
+    state.lifetimeCoins ?? state.coins,
+    run.lastInterestAt,
+    run.startedAt,
+    level,
+    now,
+  );
+  state.coins = result.coins;
+  state.lifetimeCoins = result.lifetimeCoins;
+  run.lastInterestAt = result.lastInterestAt;
+  return result.minutesAccrued;
+}
+
 function syncRunSummaryFromGameState(run: RiftChallengeRun, now = Date.now()): void {
   const state = ensureRunGameState(run);
   run.coins = Math.max(0, Number(state.coins) || 0);
@@ -320,8 +340,18 @@ function assertExpectedRunId(run: RiftChallengeRun, expectedRunIdValue: unknown)
 export async function getRiftChallengeStatus(): Promise<RiftChallengeSnapshot> {
   return withPlayerMutationLock(async () => {
     const archive = await readArchive();
-    accrueRiftProgress(archive);
-    if (archive.activeRun?.status === 'active') syncRunSummaryFromGameState(archive.activeRun);
+    const now = Date.now();
+    accrueRiftProgress(archive, now);
+    if (archive.activeRun?.status === 'active') {
+      const run = archive.activeRun;
+      const accruedMinutes = accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest, now);
+      if (accruedMinutes > 0) {
+        const nextRevision = safeInteger(ensureRunGameState(run).stateRevision) + 1;
+        if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+        ensureRunGameState(run).stateRevision = nextRevision;
+      }
+      syncRunSummaryFromGameState(run, now);
+    }
     await writeArchive(archive);
     if (archive.activeRun?.status === 'active') {
       return snapshot(archive, archive.activeRun.mainProgressAtStart);
@@ -355,6 +385,16 @@ export async function getRiftChallengeAdminStatus(userIdValue: unknown): Promise
     const now = Date.now();
     const archive = await readArchive(userId);
     accrueRiftProgress(archive, now);
+    if (archive.activeRun?.status === 'active') {
+      const run = archive.activeRun;
+      const accruedMinutes = accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest, now);
+      if (accruedMinutes > 0) {
+        const nextRevision = safeInteger(ensureRunGameState(run).stateRevision) + 1;
+        if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+        ensureRunGameState(run).stateRevision = nextRevision;
+      }
+      syncRunSummaryFromGameState(run, now);
+    }
     await writeArchive(archive, userId);
     return {
       archive,
@@ -614,6 +654,8 @@ export async function startRiftChallenge(challengeIdValue: unknown = RIFT_FIRST_
       mainProgressAtStart: riftProgress,
       mechanicUnlocks: riftChallengeMechanicUnlocks(riftProgress),
       lastRoll: null,
+      temporalDragMultiplier: 1,
+      lastInterestAt: now,
       gameState: state,
     };
     await writeArchive(archive);
@@ -675,6 +717,9 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
   return withPlayerMutationLock(async () => {
     const archive = await readArchive();
     accrueRiftProgress(archive);
+    if (archive.activeRun?.status === 'active' && archive.activeRun.gameState) {
+      accrueRunDimensionalInterest(archive.activeRun, archive.riftPerkLevels.dimensionalInterest);
+    }
     const definition = RIFT_PERKS[perkId];
     const currentLevel = archive.riftPerkLevels[perkId];
     if (currentLevel >= definition.maxLevel) throw new Error('This Rift perk is already at maximum level.');
@@ -693,6 +738,33 @@ export async function buyRiftPerk(perkIdValue: unknown): Promise<RiftChallengeSn
       ? progressFromGameState(archive.activeRun.gameState)
       : await readMainProgress();
     return snapshot(archive, mainProgress);
+  });
+}
+
+export async function setRiftTemporalDrag(
+  multiplierValue: unknown,
+  expectedRunIdValue: unknown,
+): Promise<RiftChallengeSnapshot> {
+  const numeric = Number(multiplierValue);
+  if (!Number.isFinite(numeric) || numeric < 1 || numeric > 20) {
+    throw new Error('Temporal Drag must be between ×1 and ×20.');
+  }
+  const multiplier = normalizeRiftTemporalDragMultiplier(numeric);
+  return withPlayerMutationLock(async () => {
+    const archive = await readArchive();
+    accrueRiftProgress(archive);
+    const run = archive.activeRun;
+    if (!run || run.status !== 'active') throw new Error('CHALLENGE_RUN_MISMATCH');
+    assertExpectedRunId(run, expectedRunIdValue);
+    accrueRunDimensionalInterest(run, archive.riftPerkLevels.dimensionalInterest);
+    run.temporalDragMultiplier = multiplier;
+    const state = ensureRunGameState(run);
+    const nextRevision = safeInteger(state.stateRevision) + 1;
+    if (!Number.isSafeInteger(nextRevision)) throw new Error('Rift player save reached its revision limit.');
+    state.stateRevision = nextRevision;
+    syncRunSummaryFromGameState(run);
+    await writeArchive(archive);
+    return snapshot(archive, run.mainProgressAtStart);
   });
 }
 
