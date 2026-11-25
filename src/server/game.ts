@@ -41,7 +41,7 @@ import {
 import { createRollBatchPlan, effectiveWeightAtSample, virtualRollOffsetAtSample, sampleBinomialCount, getRarityBounds, MAX_SIMULATED_ROLLS_PER_REQUEST, MAX_EFFECTIVE_ROLLS_PER_BATCH, MAX_SIMULATED_OFFLINE_ROLLS_PER_BATCH, MAX_SIMULATED_FRENZY_ROLLS_PER_BATCH, MAX_EFFECTIVE_FRENZY_ROLLS_PER_BATCH } from '../shared/roll-batching.js';
 import { createRollRandomSource } from '../shared/roll-rng.js';
 import { buildGuildUserFlair, countGuildTaskRareOrbs } from '../shared/social.js';
-import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus } from '../shared/combat.js';
+import { combatRuneBonuses, combatRuneLuckMultiplier, combatRuneMajorAbilityEffects, combatTotalBossesBeaten, combatBossLuckBonus, combatOrbDamageMultiplier } from '../shared/combat.js';
 import {
   createInitialState,
   type PlayerState,
