@@ -96,8 +96,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /mutationMastery/);
   assert.match(shared, /riftCoinYield/);
   assert.match(shared, /riftCrit/);
-  assert.match(game, /riftCritChanceBonus/);
-  assert.match(game, /safeNonNegativeInteger\(riftPerks\.riftCoinYield\) \* 0\.03/);
+  assert.match(game, /riftCritChanceBonus: Math\.min\(10, safeNonNegativeInteger\(riftPerks\.riftCrit\)\) \* 0\.005/);
+  assert.match(game, /Math\.min\(10, safeNonNegativeInteger\(riftPerks\.riftCoinYield\)\) \* 0\.03/);
   assert.match(game, /RIFT_MUTATION_DURATION_ROLLS \+ mutationPersistence/);
   assert.match(game, /RIFT_MUTATION_BREAK_ROLLS - mutationCycle/);
   assert.match(shared, /RIFT_MUTATION_UNLOCK_ROLLS = 20/);
