@@ -104,6 +104,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
           const postId = String(url.searchParams.get('postId') ?? '').trim();
           return jsonResponse(await game.getOrbFrenzyInfo({ postId, allowAdminTestOwner: true }));
         }
+        case '/api/rift-completion/info':
+          return jsonResponse(await riftChallenges.getRiftCompletionPostInfo(url.searchParams.get('postId')));
         case '/api/frenzy/progress':
           return jsonResponse(await game.getOrbFrenzyClaimProgress());
         case '/api/time-energy/progress':
@@ -258,6 +260,8 @@ async function handleApiRequest(url: URL, method: string, body: JsonRecord): Pro
         return jsonResponse(await game.claimCommunityReward());
       case '/api/frenzy/start':
         return jsonResponse(await game.startOrbFrenzy());
+      case '/api/rift-completion/simulator/create':
+        return jsonResponse(await riftChallenges.createRiftCompletionSimulatorPost(body.challengeId));
       case '/api/frenzy/simulator/create':
         return jsonResponse(await game.createFrenzySimulatorPost(body.rarity));
       case '/api/frenzy/simulator/claim': {

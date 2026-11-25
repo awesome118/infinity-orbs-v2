@@ -143,3 +143,4 @@ Pages Rift upgrade pruning: remove Stolen Momentum and return prior purchases as
 Deploy prompt: remove Stolen Momentum, migrate existing purchases back to Rift Points, and start new Rift runs without carry-over ranks.
 
 Pages migration type fix: update the Rift archive schema type to version 6.
+Rift first-clear post and simulator support
