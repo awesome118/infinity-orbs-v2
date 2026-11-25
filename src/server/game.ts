@@ -6183,7 +6183,10 @@ export async function applyRolls(
       };
       const fullRuneEffects = combatRuneMajorAbilityEffects(parsed?.runes, parsed?.equippedRunes);
       runeAbilityEffects = Object.fromEntries(
-        Object.entries(fullRuneEffects).map(([key, value]) => [key, Number(value) * runeShare]),
+        Object.entries(fullRuneEffects).map(([key, value]) => {
+          const neutralValue = key.endsWith('BonusRolls') || key.endsWith('BonusShards') ? 1 : 0;
+          return [key, neutralValue + (Number(value) - neutralValue) * runeShare];
+        }),
       ) as typeof runeAbilityEffects;
       if (s.riftSession && (s.riftSession.combatIntegrationLevel ?? 0) > 0) {
         const focus = Number(parsed.orbFocusRarity);
