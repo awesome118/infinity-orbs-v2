@@ -4419,7 +4419,7 @@ async function saveActiveRiftPlayerState(
     globalBoosterWrites.length > 1 ||
     (globalBoosterWrites.length > 0 && !canWriteGlobalBoosters) ||
     unsupportedRequiredWrites.length > 0 ||
-    new Set(allExtraWrites.map(write => write.key)).size !== allExtraWrites.length ||
+    new Set(transactionalExtraWrites.map(write => write.key)).size !== transactionalExtraWrites.length ||
     allExtraWrites.some(write => !write.key || typeof write.nextValue !== 'string' || (
       write.expiration !== undefined &&
       (!(write.expiration instanceof Date) || !Number.isFinite(write.expiration.getTime()) || write.expiration.getTime() <= Date.now())
