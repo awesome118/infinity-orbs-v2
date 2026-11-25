@@ -386,7 +386,7 @@ export const RiftChallengesSection: React.FC<{
 
       <div className="space-y-5">
         {activePanel === 'run' && (
-          <divclassName="space-y-5">
+          <div className="space-y-5">
       {!isActive && (
         <section className="rounded-3xl border border-violet-400/25 bg-slate-900/75 p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -663,7 +663,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'upgrades' && (
-          <divclassName="space-y-5">
+          <div className="space-y-5">
       <section className="rounded-3xl border border-violet-400/20 bg-slate-900/70 p-5 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -765,7 +765,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'relics' && (
-          <divclassName="space-y-5">
+          <div className="space-y-5">
       <section className="overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#211b13] via-[#15131a] to-[#101629] p-5 shadow-xl shadow-slate-950/30 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">

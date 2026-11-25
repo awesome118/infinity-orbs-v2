@@ -95,6 +95,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(challengeUi, /nav-tab io-nav-item/);
   assert.match(challengeUi, /aria-current=\{activePanel === 'run' \? 'page' : undefined\}/);
   assert.match(challengeUi, /io-nav-icon/);
+  assert.doesNotMatch(challengeUi, /<divclassName=/);
   assert.match(challengeUi, /Compass/);
   assert.match(challengeUi, /Gem/);
 

@@ -126,3 +126,5 @@ Deploy prompt: rerun Rift menu test after correcting the navigation assertion.
 Deploy prompt: convert Rift workspace navigation into compact accessible tabs with active underline and arrow-key navigation.
 
 Deploy prompt: use the game's existing nav-list and nav-tab infrastructure for Rift sub-navigation, matching native page navigation styling.
+
+Deploy prompt: fix JSX panel wrapper spacing after adopting native Rift navigation tabs.
