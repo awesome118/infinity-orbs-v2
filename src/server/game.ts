@@ -4742,10 +4742,7 @@ export async function loadRaw(options: { registerActivity?: boolean; persistMigr
     masterySkills: normalizedMasterySkills,
     guildPerks: perks,
     guildCombo,
-    // No-Shards also suppresses shared Global Booster effects for this run.
-    globalBoosters: activeRiftRun
-      ? activeRiftRun.noShards ? createInitialState().globalBoosters : createInitialState().globalBoosters
-      : globalBoosters,
+    globalBoosters: activeRiftRun ? createInitialState().globalBoosters : globalBoosters,
     dailyStreakCommunity: activeRiftRun ? createInitialState().dailyStreakCommunity : dailyStreakCommunity,
   };
   // Cosmic Dust has no gameplay wallet cap. Parser normalization still
@@ -7427,6 +7424,12 @@ export async function settleOffline(s: PlayerState, options: { skipAutoOfflineCl
   s.globalBoosters = s.riftSession
     ? createInitialState().globalBoosters
     : await getGlobalBoosters();
+  // No-Shards suppresses any booster state as well as Shard drops. This is
+  // enforced server-side so stale or injected booster timers cannot grant effects.
+  if (s.riftSession?.noShards === true) {
+    s.activeBoosters = {};
+    s.globalBoosters = createInitialState().globalBoosters;
+  }
 
   // First Spark explicitly disables offline progression and every automation.
   // Resetting the local vault also clears any legacy migrated backlog.
