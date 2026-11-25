@@ -66,6 +66,78 @@ export const RIFT_CHALLENGES = [
   },
 ] as const;
 
+export const RIFT_MUTATION_UNLOCK_ROLLS = 20;
+export const RIFT_MUTATION_UNLOCK_PROGRESS = 0.2;
+export const RIFT_MUTATION_DURATION_ROLLS = 12;
+export const RIFT_MUTATION_BREAK_ROLLS = 8;
+export const RIFT_MUTATION_REWARD_PER_CLEAR = 0.05;
+export const RIFT_MUTATION_MAX_REWARD_BONUS = 0.25;
+
+export const RIFT_MUTATIONS = [
+  {
+    id: 'riftwind',
+    name: 'Riftwind',
+    description: 'A fast current tears through the run.',
+    effect: '−18% cooldown · −10% Luck · +15% Rift Coins',
+    luckMultiplier: 0.9,
+    cooldownMultiplier: 0.82,
+    coinMultiplier: 1.15,
+  },
+  {
+    id: 'fortune-bloom',
+    name: 'Fortune Bloom',
+    description: 'Probability bends toward rare outcomes.',
+    effect: '+40% Luck · +10% cooldown · +10% Rift Coins',
+    luckMultiplier: 1.4,
+    cooldownMultiplier: 1.1,
+    coinMultiplier: 1.1,
+  },
+  {
+    id: 'coinfall',
+    name: 'Coinfall',
+    description: 'The fracture sheds value faster than it sheds luck.',
+    effect: '−10% Luck · +5% cooldown · +75% Rift Coins',
+    luckMultiplier: 0.9,
+    cooldownMultiplier: 1.05,
+    coinMultiplier: 1.75,
+  },
+  {
+    id: 'unstable-orbit',
+    name: 'Unstable Orbit',
+    description: 'A dense pocket of probability bends the whole run.',
+    effect: '+25% Luck · +15% cooldown · +20% Rift Coins',
+    luckMultiplier: 1.25,
+    cooldownMultiplier: 1.15,
+    coinMultiplier: 1.2,
+  },
+] as const;
+
+export type RiftMutationId = typeof RIFT_MUTATIONS[number]['id'];
+export type RiftMutationDefinition = typeof RIFT_MUTATIONS[number];
+
+export function getRiftMutationDefinition(value: unknown): RiftMutationDefinition | undefined {
+  return RIFT_MUTATIONS.find(mutation => mutation.id === value);
+}
+
+/** Log-scaled objective progress, matching the Rift objective progress bar. */
+export function riftMutationProgress(bestRarityValue: unknown, targetRarityValue: unknown): number {
+  const best = Math.max(2, Number(bestRarityValue) || 2);
+  const target = Math.max(2, Number(targetRarityValue) || 2);
+  const denominator = Math.log10(target);
+  if (!Number.isFinite(denominator) || denominator <= 0) return 1;
+  return Math.max(0, Math.min(1, Math.log10(best) / denominator));
+}
+
+export function riftMutationRewardMultiplier(completedMutationsValue: unknown): number {
+  const completed = Number.isFinite(Number(completedMutationsValue))
+    ? Math.max(0, Math.floor(Number(completedMutationsValue)))
+    : 0;
+  return 1 + Math.min(
+    RIFT_MUTATION_MAX_REWARD_BONUS,
+    completed * RIFT_MUTATION_REWARD_PER_CLEAR,
+  );
+}
+
 export const RIFT_ASCENT = {
   id: 'rift-ascent',
   number: 0,
@@ -361,11 +433,18 @@ export interface RiftChallengeRun {
   fractureCascadeUntilRoll: number;
   /** Rolls since the last Rift personal best, used by Probability Debt. */
   probabilityDebtRolls: number;
+  /** Current temporary condition, if one is active. */
+  mutationId: RiftMutationId | null;
+  mutationEndsAtRoll: number;
+  /** Next eligible roll count; mutations also require objective progress. */
+  nextMutationAtRoll: number;
+  mutationsCompleted: number;
+  lastMutationId: RiftMutationId | null;
   gameState?: PlayerState | null;
 }
 
 export interface RiftChallengeArchive {
-  version: 7;
+  version: 8;
   activeRun: RiftChallengeRun | null;
   completedChallengeIds: string[];
   bestRarityByChallenge: Record<string, number>;
@@ -483,7 +562,7 @@ export function riftProbabilityDebtMultiplier(perkLevelValue: unknown, debtRolls
 export function createEmptyRiftChallengeArchive(now = Date.now()): RiftChallengeArchive {
   const riftPerkLevels = emptyRiftPerkLevels();
   return {
-    version: 7,
+    version: 8,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
