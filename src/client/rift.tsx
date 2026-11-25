@@ -24,6 +24,19 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function RiftCompletionPost() {
   const previewPostId = new URLSearchParams(window.location.search).get('previewPostId');
+  const fetchPostApi = (url: string, init?: RequestInit) => {
+    let fetcher: typeof fetch = fetch;
+    if (previewPostId && window.parent !== window) {
+      try {
+        if (window.parent.location.origin === window.location.origin) {
+          fetcher = window.parent.fetch.bind(window.parent);
+        }
+      } catch {
+        // Pages previews use the parent window's local API adapter when embedded.
+      }
+    }
+    return fetcher(url, init);
+  };
   const [info, setInfo] = useState<RiftCompletionPostInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,7 +45,7 @@ function RiftCompletionPost() {
   useEffect(() => {
     let active = true;
     const query = previewPostId ? '?postId=' + encodeURIComponent(previewPostId) : '';
-    void fetch('/api/rift-completion/info' + query, { cache: 'no-store' })
+    void fetchPostApi('/api/rift-completion/info' + query, { cache: 'no-store' })
       .then(readJson<RiftCompletionPostInfo>)
       .then(result => { if (active) setInfo(result); })
       .catch(reason => {
