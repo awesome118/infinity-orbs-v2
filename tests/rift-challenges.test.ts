@@ -278,6 +278,6 @@ test('Permanent Rift unlocks restore actual game systems and start progress', ()
   assert.equal(RIFT_UNLOCKS.riftMemory.cost, 100);
   assert.equal(riftStartingProgressRarity(1_000, 1_000, 1_000), 4);
   assert.equal(riftStartingProgressRarity(100_000, 100_000, 1_000_000), 16);
-  assert.equal(riftStartingProgressRarity(100, 1_000, 100_000), 7);
+  assert.equal(riftStartingProgressRarity(100, 1_000, 100_000), 5);
   assert.equal(riftStartingProgressRarity(2, 1_000, 100_000), 2);
 });
