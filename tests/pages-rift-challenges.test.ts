@@ -28,6 +28,7 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(api, /rollRiftChallenge/);
   assert.match(api, /buyRiftChallengeUpgrade/);
   assert.match(api, /buyRiftPerk\(body\.perkId\)/);
+  assert.match(api, /riftChallenges\.buyRiftUnlock\(body\.unlockId\)/);
   assert.match(api, /riftChallenges\.buyRiftRelic\(body\.relicId\)/);
   assert.match(api, /riftChallenges\.setEquippedRiftRelic\(body\.relicId, body\.equipped\)/);
   assert.match(api, /abandonRiftChallenge/);
@@ -90,6 +91,10 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /loadedDieCrossedMilestone/);
   assert.match(game, /fractureCascadeUntilRoll/);
   assert.match(challengeUi, /The Relic Forge/);
+  assert.match(challengeUi, /One-time unlocks/);
+  assert.match(challengeUi, /START RIFT/);
+  assert.match(challengeUi, /id=\"start-rift-button\"/);
+  assert.match(challengeUi, /RIFT_RELIC_FORKED_EQUIP_SLOTS/);
   assert.match(challengeUi, /RIFT_RELIC_EQUIP_SLOTS/);
   assert.match(sharedGame, /riftSaveContext\?/);
   assert.match(client, /riftChallengesMode = tab === 'challenges' && !state\?\.riftSession/);
@@ -126,6 +131,11 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
   assert.match(server, /progressFromGameState\(activeRun\.gameState\)/);
+  assert.match(server, /export async function buyRiftUnlock/);
+  assert.match(server, /riftStolenMomentumLevel/);
+  assert.match(server, /probabilityDebtRolls/);
+  assert.match(game, /riftProbabilityDebtMultiplier/);
+  assert.match(game, /const interestBonus =/);
   assert.match(server, /export async function buyRiftRelic/);
   assert.match(server, /export async function setEquippedRiftRelic/);
   assert.match(server, /spendCombatScrapForRiftForge/);

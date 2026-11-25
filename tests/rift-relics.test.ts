@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RIFT_RELIC_EQUIP_SLOTS,
+  RIFT_RELIC_FORKED_EQUIP_SLOTS,
   emptyRiftRelicLevels,
   getRiftRelicEffects,
   normalizeEquippedRiftRelics,
@@ -69,4 +70,19 @@ test('Clock Without Hands and Temporal Arbitrage convert the Temporal Drag penal
   assert.equal(riftTemporalArbitrageMultiplier(6, 0.2), 2);
   assert.equal(riftEffectiveTemporalDragMultiplier(1, 0.4), 1);
   assert.equal(riftTemporalArbitrageMultiplier(1, 0.2), 1);
+});
+
+
+test('Timeline Fork permits one additional owned relic without weakening the normal two-slot limit', () => {
+  const levels = {
+    ...emptyRiftRelicLevels(),
+    'clock-without-hands': 1,
+    'temporal-arbitrage': 1,
+    'unlucky-star': 1,
+  };
+  const loadout = ['clock-without-hands', 'temporal-arbitrage', 'unlucky-star'];
+  assert.deepEqual(normalizeEquippedRiftRelics(loadout, levels), loadout.slice(0, 2));
+  assert.deepEqual(normalizeEquippedRiftRelics(loadout, levels, RIFT_RELIC_FORKED_EQUIP_SLOTS), loadout);
+  assert.equal(getRiftRelicEffects(loadout, levels).completionRewardMultiplier, 1);
+  assert.equal(getRiftRelicEffects(loadout, levels, RIFT_RELIC_FORKED_EQUIP_SLOTS).completionRewardMultiplier, 2);
 });
