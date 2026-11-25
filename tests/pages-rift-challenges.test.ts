@@ -28,6 +28,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(api, /rollRiftChallenge/);
   assert.match(api, /buyRiftChallengeUpgrade/);
   assert.match(api, /buyRiftPerk\(body\.perkId\)/);
+  assert.match(api, /riftChallenges\.buyRiftRelic\(body\.relicId\)/);
+  assert.match(api, /riftChallenges\.setEquippedRiftRelic\(body\.relicId, body\.equipped\)/);
   assert.match(api, /abandonRiftChallenge/);
   assert.match(mock, /BROWSER_STORAGE_PREFIX/);
   assert.match(mock, /localStorage/);
@@ -83,6 +85,12 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /const luckCcu = s\.riftSession/);
 
   assert.match(sharedGame, /interface RiftPlayerSession/);
+  assert.match(sharedGame, /riftTemporalArbitrageMultiplier/);
+  assert.match(game, /getRiftRelicEffects/);
+  assert.match(game, /loadedDieCrossedMilestone/);
+  assert.match(game, /fractureCascadeUntilRoll/);
+  assert.match(challengeUi, /The Relic Forge/);
+  assert.match(challengeUi, /RIFT_RELIC_EQUIP_SLOTS/);
   assert.match(sharedGame, /riftSaveContext\?/);
   assert.match(client, /riftChallengesMode = tab === 'challenges' && !state\?\.riftSession/);
   assert.match(client, /tab === 'challenges' && !riftChallengesMode/);
@@ -118,6 +126,10 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
   assert.match(server, /progressFromGameState\(activeRun\.gameState\)/);
+  assert.match(server, /export async function buyRiftRelic/);
+  assert.match(server, /export async function setEquippedRiftRelic/);
+  assert.match(server, /spendCombatScrapForRiftForge/);
+  assert.match(server, /archive\.riftPoints -= cost\.riftPoints/);
 
   // Rift presentation is active-save scoped and never replaces the real game UI.
   const rollUi = read('src/client/components/RollSection.tsx');

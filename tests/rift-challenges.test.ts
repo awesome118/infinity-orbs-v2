@@ -132,7 +132,7 @@ test('Rift Point shop costs scale and perks have clear caps', () => {
 
 test('a fresh archive starts at one Rift Point per hour and has no prior records', () => {
   assert.deepEqual(createEmptyRiftChallengeArchive(1234), {
-    version: 4,
+    version: 5,
     activeRun: null,
     completedChallengeIds: [],
     bestRarityByChallenge: {},
@@ -151,6 +151,11 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
     },
+    riftRelicLevels: {
+      'clock-without-hands': 0, 'temporal-arbitrage': 0, 'unlucky-star': 0,
+      observer: 0, 'loaded-die': 0, 'fracture-cascade': 0,
+    },
+    equippedRiftRelics: [],
   });
 });
 
