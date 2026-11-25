@@ -145,3 +145,4 @@ Deploy prompt: remove Stolen Momentum, migrate existing purchases back to Rift P
 Pages migration type fix: update the Rift archive schema type to version 6.
 Rift first-clear post and simulator support
 Rift relic initializer compatibility fix
+Rift test declaration and obsolete perk assertion fixes
