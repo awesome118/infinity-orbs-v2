@@ -90,6 +90,20 @@ export const RiftChallengesSection: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [activePanel, setActivePanel] = useState<'run' | 'upgrades' | 'relics'>('run');
+  const handlePanelTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    if (currentIndex < 0 || tabs.length === 0) return;
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  };
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [modifierSettings, setModifierSettings] = useState<RiftModifierSettings>({ ...DEFAULT_RIFT_MODIFIERS });
   const [challengeToggles, setChallengeToggles] = useState<RiftChallengeToggles>({ ...DEFAULT_RIFT_CHALLENGES });
@@ -351,39 +365,21 @@ export const RiftChallengesSection: React.FC<{
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">{error}</div>}
 
-      <nav className="grid grid-cols-3 gap-2 rounded-2xl border border-violet-300/15 bg-slate-950/60 p-1.5" aria-label="Rift menu">
-        <button
-          type="button"
-          onClick={() => setActivePanel('run')}
-          aria-pressed={activePanel === 'run'}
-          className={'rounded-xl border px-3 py-3 text-left transition ' + (activePanel === 'run' ? 'border-violet-300/35 bg-violet-400/15 text-white shadow-inner shadow-violet-400/10' : 'border-transparent text-slate-400 hover:bg-white/[.04] hover:text-slate-200')}
-        >
-          <span className="block text-xs font-black uppercase tracking-[.14em]">Run</span>
-          <span className="mt-1 block text-[9px] font-medium text-current/70">{isActive ? 'Continue active run' : 'Configure and launch'}</span>
+      <nav className="flex items-center gap-6 overflow-x-auto border-b border-slate-700/80 px-2" role="tablist" aria-label="Rift menu">
+        <button id="rift-tab-run" type="button" role="tab" aria-selected={activePanel === 'run'} aria-controls="rift-panel-run" tabIndex={activePanel === 'run' ? 0 : -1} onClick={() => setActivePanel('run')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'run' ? 'border-violet-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
+          Run
         </button>
-        <button
-          type="button"
-          onClick={() => setActivePanel('upgrades')}
-          aria-pressed={activePanel === 'upgrades'}
-          className={'rounded-xl border px-3 py-3 text-left transition ' + (activePanel === 'upgrades' ? 'border-cyan-300/35 bg-cyan-300/10 text-white shadow-inner shadow-cyan-300/10' : 'border-transparent text-slate-400 hover:bg-white/[.04] hover:text-slate-200')}
-        >
-          <span className="block text-xs font-black uppercase tracking-[.14em]">Upgrades</span>
-          <span className="mt-1 block text-[9px] font-medium text-current/70">Permanent perks and research</span>
+        <button id="rift-tab-upgrades" type="button" role="tab" aria-selected={activePanel === 'upgrades'} aria-controls="rift-panel-upgrades" tabIndex={activePanel === 'upgrades' ? 0 : -1} onClick={() => setActivePanel('upgrades')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'upgrades' ? 'border-cyan-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
+          Upgrades
         </button>
-        <button
-          type="button"
-          onClick={() => setActivePanel('relics')}
-          aria-pressed={activePanel === 'relics'}
-          className={'rounded-xl border px-3 py-3 text-left transition ' + (activePanel === 'relics' ? 'border-amber-300/35 bg-amber-300/10 text-white shadow-inner shadow-amber-300/10' : 'border-transparent text-slate-400 hover:bg-white/[.04] hover:text-slate-200')}
-        >
-          <span className="block text-xs font-black uppercase tracking-[.14em]">Relics</span>
-          <span className="mt-1 block text-[9px] font-medium text-current/70">{archive.equippedRiftRelics.length}/{relicSlotLimit} equipped · Forge</span>
+        <button id="rift-tab-relics" type="button" role="tab" aria-selected={activePanel === 'relics'} aria-controls="rift-panel-relics" tabIndex={activePanel === 'relics' ? 0 : -1} onClick={() => setActivePanel('relics')} onKeyDown={handlePanelTabKeyDown} className={'shrink-0 border-b-2 px-1 py-3 text-xs font-black uppercase tracking-[.14em] transition ' + (activePanel === 'relics' ? 'border-amber-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200')}>
+          Relics <span className="ml-1 text-[9px] font-semibold normal-case tracking-normal text-current/70">{archive.equippedRiftRelics.length}/{relicSlotLimit}</span>
         </button>
       </nav>
 
       <div className="space-y-5">
         {activePanel === 'run' && (
-          <div className="space-y-5">
+          <div id="rift-panel-run" role="tabpanel" aria-labelledby="rift-tab-run" tabIndex={0} className="space-y-5 focus-visible:outline-none">
       {!isActive && (
         <section className="rounded-3xl border border-violet-400/25 bg-slate-900/75 p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -660,7 +656,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'upgrades' && (
-          <div className="space-y-5">
+          <div id="rift-panel-upgrades" role="tabpanel" aria-labelledby="rift-tab-upgrades" tabIndex={0} className="space-y-5 focus-visible:outline-none">
       <section className="rounded-3xl border border-violet-400/20 bg-slate-900/70 p-5 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -762,7 +758,7 @@ export const RiftChallengesSection: React.FC<{
         )}
 
         {activePanel === 'relics' && (
-          <div className="space-y-5">
+          <div id="rift-panel-relics" role="tabpanel" aria-labelledby="rift-tab-relics" tabIndex={0} className="space-y-5 focus-visible:outline-none">
       <section className="overflow-hidden rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#211b13] via-[#15131a] to-[#101629] p-5 shadow-xl shadow-slate-950/30 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">

@@ -122,3 +122,5 @@ Pages Rift integration validation: assert Dimensional Interest in its shared Rif
 Deploy prompt: restructure the Rift menu into Run, Upgrades, and Relics workspaces with a consolidated resource header and full-width launch action.
 
 Deploy prompt: rerun Rift menu test after correcting the navigation assertion.
+
+Deploy prompt: convert Rift workspace navigation into compact accessible tabs with active underline and arrow-key navigation.
