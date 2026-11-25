@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   RIFT_CHALLENGES,
   RIFT_CHALLENGE_UPGRADES,
-  RIFT_MUTATIONS,
   getRiftMutationDefinition,
   RIFT_PERKS,
   normalizeRiftTemporalDragMultiplier,
