@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  accrueRiftDimensionalInterest,
   createEmptyRiftChallengeArchive,
   emptyRiftPerkLevels,
+  normalizeRiftTemporalDragMultiplier,
+  riftEchoChamberChance,
+  riftFractureCascadeDuration,
+  riftFractureCascadeMultiplier,
+  riftOverkillRewardMultiplier,
+  riftProbabilityDebtMultiplier,
   normalizeRiftMainProgress,
   riftChallengeCoinMultiplier,
   riftChallengeCooldownMs,
@@ -13,6 +20,9 @@ import {
   riftChallengeUpgradeCost,
   riftPerkCost,
   riftRatePerHour,
+  riftSingularityFocusMultiplier,
+  riftTemporalArbitrageMultiplier,
+  riftTemporalCooldownMultiplier,
   RIFT_CHALLENGE_UPGRADES,
   RIFT_CHALLENGES,
   RIFT_FIRST_SPARK,
@@ -109,6 +119,55 @@ test('a fresh archive starts at one Rift Point per hour and has no prior records
     riftPerkLevels: {
       mainLuck: 0, mainCoins: 0, mainXp: 0,
       riftLuck: 0, riftSpeed: 0, riftYield: 0, riftStartCoins: 0,
+      temporalArbitrage: 0, probabilityDebt: 0, temporalCompression: 0,
+      fractureCascade: 0, echoChamber: 0, dimensionalInterest: 0,
+      overkill: 0, singularityFocus: 0,
     },
   });
+});
+
+
+test('Temporal Arbitrage turns selected Temporal Drag into Rift Luck', () => {
+  assert.equal(normalizeRiftTemporalDragMultiplier(6.2), 6);
+  assert.equal(normalizeRiftTemporalDragMultiplier(30), 20);
+  assert.equal(riftTemporalArbitrageMultiplier(6, 0), 1);
+  assert.equal(riftTemporalArbitrageMultiplier(6, 20), 2);
+  assert.equal(riftTemporalArbitrageMultiplier(20, 20), 4.8);
+});
+
+test('Temporal Compression reduces only the added Temporal Drag cooldown penalty', () => {
+  assert.equal(riftTemporalCooldownMultiplier(1, 20), 1);
+  assert.equal(riftTemporalCooldownMultiplier(20, 0), 20);
+  assert.equal(riftTemporalCooldownMultiplier(20, 20), 4.8);
+});
+
+test('Probability Debt scales with dry streak and its 100-roll milestones', () => {
+  assert.equal(riftProbabilityDebtMultiplier(0, 10), 1);
+  assert.ok(Math.abs(riftProbabilityDebtMultiplier(100, 1) - 1.101) < 1e-12);
+  assert.ok(riftProbabilityDebtMultiplier(200, 10) > riftProbabilityDebtMultiplier(100, 10));
+});
+
+test('Fracture Cascade and Echo Chamber respect their maximum levels', () => {
+  assert.equal(riftFractureCascadeMultiplier(10), 1.5);
+  assert.equal(riftFractureCascadeDuration(10), 25);
+  assert.equal(riftEchoChamberChance(20), 0.2);
+});
+
+test('Singularity Focus ramps at the 90% and 99% logarithmic objective marks', () => {
+  assert.ok(Math.abs(riftSingularityFocusMultiplier(1e9, 1e10, 10) - 2) < 1e-12);
+  assert.ok(Math.abs(riftSingularityFocusMultiplier(Math.pow(10, 9.9), 1e10, 10) - 5) < 1e-9);
+  assert.equal(riftSingularityFocusMultiplier(1e10, 1e10, 0), 1);
+});
+
+test('Overkill converts excess orders of magnitude into completion rewards', () => {
+  assert.equal(riftOverkillRewardMultiplier(1e10, 1e10, 10), 1);
+  assert.equal(riftOverkillRewardMultiplier(1e14, 1e10, 10), 5);
+});
+
+test('Dimensional Interest compounds once per elapsed minute and preserves fractional Coins', () => {
+  const result = accrueRiftDimensionalInterest(100, 100, 1_000, 1_000, 1, 121_000);
+  assert.equal(result.minutesAccrued, 2);
+  assert.equal(result.lastInterestAt, 121_000);
+  assert.ok(Math.abs(result.coins - 100 * Math.pow(1.0025, 2)) < 1e-10);
+  assert.ok(result.lifetimeCoins >= result.coins);
 });
