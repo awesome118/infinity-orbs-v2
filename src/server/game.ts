@@ -419,9 +419,12 @@ const NON_PERSISTED_PLAYER_FIELDS = new Set([
 ]);
 
 function serializePlayerStateForRedis(state: PlayerState): string {
-  const persistedState = state.collectionStorageVersion === CODEX_STORAGE_VERSION
+  const persistedState: Record<string, unknown> = state.collectionStorageVersion === CODEX_STORAGE_VERSION
     ? Object.fromEntries(Object.entries(state).filter(([field]) => !NON_PERSISTED_PLAYER_FIELDS.has(field)))
-    : state;
+    : { ...state };
+  // Runtime-only completion markers must never survive into a later save,
+  // including migrations from legacy Codex storage versions.
+  delete persistedState.riftChallengeFirstClear;
   return JSON.stringify(persistedState);
 }
 
