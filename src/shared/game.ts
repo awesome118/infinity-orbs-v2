@@ -1181,6 +1181,8 @@ export interface PlayerState {
   riftSession?: RiftPlayerSession;
   /** Runtime-only flag returned on the roll that completes a Rift challenge. */
   riftRunComplete?: boolean;
+  /** Runtime-only first-clear announcement payload attached only after the Rift archive transaction commits. */
+  riftChallengeFirstClear?: { challengeId: string; challengeName: string; runId: string; completedAt: number; ownerId: string; ownerUsername: string };
   /** Runtime identity that lets the client distinguish a completed Rift response from the restored main save. */
   riftSaveContext?: string;
   /** Selected Orb rarity used by modifier rules such as Second-best. Never persisted in the player save. */
