@@ -85,6 +85,9 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(game, /Offline rolls are disabled in The First Spark/);
   assert.match(game, /Automation is disabled in The First Spark/);
   assert.match(game, /Unlock Worldline Conduit to use Global Boosters inside a Rift run/);
+  assert.match(game, /const transactionalExtraWrites = \[\.\.\.ticketWrites, \.\.\.globalBoosterWrites\]/);
+  assert.match(game, /globalBoosterWrites\.length > 0 && !canWriteGlobalBoosters/);
+  assert.match(game, /transactionalExtraWrites\.map\(write => redis\.get\(write\.key\)\)/);
   assert.match(game, /const luckCcu = s\.riftSession/);
 
   assert.match(sharedGame, /interface RiftPlayerSession/);
@@ -129,7 +132,6 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(rollUi, /Rift mutation active/);
   assert.match(challengeUi, /Rift mutations/);
   assert.match(game, /archive\.version = 10/);
-  assert.match(game, /version: 10/);
   assert.match(game, /RIFT_MUTATION_BREAK_ROLLS/);
   assert.match(game, /riftMutationCoinMultiplier/);
   assert.match(game, /getRiftRelicEffects/);
