@@ -199,7 +199,8 @@ test('GitHub Pages boots the actual game with persistent isolated Rift progressi
   assert.match(shared, /fractured-tempo/);
   assert.match(shared, /hollow-economy/);
   assert.match(server, /accrueRiftProgress/);
-  assert.match(server, /progressFromGameState\(activeRun\.gameState\)/);
+  assert.match(server, /return progressFromGameState\(state\)/);
+  assert.match(server, /loadRaw\(\{ registerActivity: false, persistMigrations: false, source: 'main' \}\)/);
   assert.match(server, /export async function buyRiftUnlock/);
   assert.match(server, /legacyStolenMomentumRefund/);
   assert.match(server, /archiveVersion < 6/);
