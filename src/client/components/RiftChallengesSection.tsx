@@ -7,6 +7,7 @@ import {
   normalizeRiftTemporalDragMultiplier,
   riftChallengeUpgradeCost,
   riftPerkCost,
+  riftObjectiveProgress,
   riftTemporalArbitrageMultiplier,
   riftTemporalCooldownMultiplier,
   type RiftChallengeId,
@@ -105,9 +106,11 @@ export const RiftChallengesSection: React.FC<{
   const progressPercent = useMemo(() => {
     if (!run || !challenge) return 0;
     const best = Math.max(2, run.bestRarity);
-    const actualProgress = Math.log10(best) / Math.log10(challenge.targetRarity) * 100;
+    const actualProgress = riftObjectiveProgress(best, challenge.targetRarity) * 100;
     const calibrationProgress = archive?.riftPerkLevels.initialCalibration ?? 0;
-    return Math.max(0, Math.min(100, actualProgress + calibrationProgress));
+    return actualProgress >= 100
+      ? 100
+      : Math.max(0, Math.min(99, actualProgress + calibrationProgress));
   }, [run?.bestRarity, challenge?.targetRarity, archive?.riftPerkLevels.initialCalibration]);
 
   const retryLoad = async () => {
